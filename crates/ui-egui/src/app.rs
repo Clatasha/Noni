@@ -29,6 +29,12 @@ mod display;
 pub(crate) mod key_actions;
 pub(crate) mod more_actions;
 
+struct CopiedClipEffects {
+    chain: Vec<bv_timeline::Effect>,
+    pan_crop_at: usize,
+    automation: Vec<bv_timeline::Envelope>,
+}
+
 /// Something to do once the user has answered "Save changes?".
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Pending {
@@ -214,6 +220,7 @@ pub struct BananaApp {
     /// on the timeline asks how to add it (Add as Takes among the ways).
     pub(crate) media_drag_secondary: bool,
     pub(crate) clipboard: Option<ClipboardData>,
+    copied_clip_effects: Option<CopiedClipEffects>,
     pub(crate) timeline: TimelineView,
     pub(crate) preview: PreviewState,
     pub(crate) trimmer: TrimmerState,
@@ -585,6 +592,7 @@ impl BananaApp {
             media_drag: None,
             media_drag_secondary: false,
             clipboard: None,
+            copied_clip_effects: None,
             timeline: TimelineView::default(),
             preview: PreviewState::default(),
             trimmer: TrimmerState::default(),

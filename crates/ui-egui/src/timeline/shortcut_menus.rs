@@ -280,6 +280,26 @@ pub(super) fn event_menu(ui: &mut Ui, app: &mut BananaApp, clip: ClipId) {
     ui.separator();
     cmd(ui, app, Cmd::Cut);
     cmd(ui, app, Cmd::Copy);
+    if video {
+        if icon_item(
+            ui,
+            tr("Copy Effects"),
+            Some(Icon::Copy),
+            "",
+            !c.effects.is_empty(),
+        ) {
+            app.copy_clip_effects(clip);
+        }
+        if icon_item(
+            ui,
+            tr("Paste Effects"),
+            Some(Icon::Paste),
+            "",
+            !c.locked && app.has_copied_clip_effects(),
+        ) {
+            app.paste_clip_effects(clip);
+        }
+    }
     cmd(ui, app, Cmd::PasteAttributes);
     cmd_as(
         ui,

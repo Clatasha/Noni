@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use bv_core::{Tick, TimeRange};
 use bv_timeline::{ChannelMap, ClipId, RippleScope, TrackId, TrackKind};
 
-use super::{BananaApp, Pending, Tool};
+use super::{BananaApp, CopiedClipEffects, Pending, Tool};
 use crate::dock::{self, Tab};
 
 /// Built-in window layouts (View › Window Layouts).
@@ -204,6 +204,49 @@ impl BananaApp {
         });
         self.selection = ids.into_iter().collect();
         self.ask_generated_copies(mark);
+    }
+
+    pub(crate) fn copy_clip_effects(&mut self, id: ClipId) {
+        let Some(clip) = self.project().clip(id).filter(|clip| !clip.effects.is_empty()) else {
+            return;
+        };
+        self.copied_clip_effects = Some(CopiedClipEffects {
+            chain: clip.effects.clone(),
+            pan_crop_at: clip.pan_crop_at,
+            automation: clip
+                .envelopes
+                .iter()
+                .filter(|e| e.kind.is_fx())
+                .cloned()
+                .collect(),
+        });
+        self.notify(tr("Effects copied."));
+    }
+
+    pub(crate) fn has_copied_clip_effects(&self) -> bool {
+        self.copied_clip_effects.is_some()
+    }
+
+    pub(crate) fn paste_clip_effects(&mut self, id: ClipId) {
+        let Some(copied) = &self.copied_clip_effects else {
+            return;
+        };
+        let Some(target) = self.project().clip(id).filter(|clip| !clip.locked) else {
+            return;
+        };
+        let chain = copied.chain.clone();
+        let pan_crop_at = copied.pan_crop_at;
+        let mut envelopes = target.envelopes.clone();
+        envelopes.retain(|e| !e.kind.is_fx());
+        envelopes.extend(copied.automation.iter().cloned());
+        self.modify(|project| {
+            if let Some(clip) = project.clip_mut(id) {
+                clip.effects = chain;
+                clip.pan_crop_at = pan_crop_at;
+                clip.envelopes = envelopes;
+            }
+        });
+        self.notify(tr("Effects pasted."));
     }
 
     /// Edit › Paste Event Attributes: copies effects, pan/crop, level, fades,
