@@ -1,8 +1,8 @@
-# BananaV's packages, made by hand (Actions › Packages › Run workflow, or
+# Noni's packages, made by hand (Actions › Packages › Run workflow, or
 # `gh workflow run package.yml --ref <branch>`), kept as the run's
 # artifacts — nothing is published:
 #
-# - Windows x64 and ARM64: BananaV.exe (the C runtime inside), a README,
+# - Windows x64 and ARM64: Noni.exe (the C runtime inside), a README,
 #   the license texts and the third-party notices
 #   (tools/third_party_notices.py), in a zip and in an installer
 #   (packaging/windows/bananav.iss, Inno Setup), which is tried out here;
@@ -46,7 +46,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: package
-      - name: BananaV
+      - name: Noni
         env:
           # No Visual C++ runtime to install.
           RUSTFLAGS: -C target-feature=+crt-static
@@ -55,9 +55,9 @@ jobs:
         shell: bash
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          name="BananaV-$version-${GITHUB_SHA::7}-windows-${{ matrix.arch }}"
+          name="Noni-$version-${GITHUB_SHA::7}-windows-${{ matrix.arch }}"
           mkdir -p "dist/$name"
-          cp target/release/bananav.exe "dist/$name/BananaV.exe"
+          cp target/release/bananav.exe "dist/$name/Noni.exe"
           cp packaging/windows/README.txt "dist/$name/"
           cp LICENSE "dist/$name/LICENSE.txt"
           cp crates/effects/fonts/OFL.txt "dist/$name/Arimo-OFL.txt"
@@ -80,25 +80,25 @@ jobs:
           & $iscc /Qp "/DAppVersion=$version" "/DArch=${{ matrix.arch }}" "/DFiles=$PWD\dist\$env:NAME" "/O$PWD\dist-setup" "/F$env:NAME-setup" packaging\windows\bananav.iss
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: The installer, tried out
-        # Installs without a question, starts BananaV for a while, opens
+        # Installs without a question, starts Noni for a while, opens
         # nothing else, and takes it all away again.
         shell: pwsh
         run: |
           $setup = Start-Process -Wait -PassThru "dist-setup\$env:NAME-setup.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=desktopicon,projects'
           if ($setup.ExitCode) { throw "the installer stopped with $($setup.ExitCode)" }
-          $app = "$env:LOCALAPPDATA\Programs\BananaV"
-          foreach ($file in "$app\BananaV.exe", "$app\bananav.ico", "$app\LICENSE.txt", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\BananaV.lnk", "$env:USERPROFILE\Desktop\BananaV.lnk") {
+          $app = "$env:LOCALAPPDATA\Programs\Noni"
+          foreach ($file in "$app\Noni.exe", "$app\noni.ico", "$app\LICENSE.txt", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Noni.lnk", "$env:USERPROFILE\Desktop\Noni.lnk") {
             if (-not (Test-Path $file)) { throw "no $file" }
           }
-          $command = (Get-ItemProperty 'HKCU:\Software\Classes\BananaV.Project\shell\open\command').'(default)'
-          if ($command -notlike '*BananaV.exe*') { throw "project files open with $command" }
-          $running = Start-Process -PassThru "$app\BananaV.exe"
+          $command = (Get-ItemProperty 'HKCU:\Software\Classes\Noni.Project\shell\open\command').'(default)'
+          if ($command -notlike '*Noni.exe*') { throw "project files open with $command" }
+          $running = Start-Process -PassThru "$app\Noni.exe"
           Start-Sleep 20
-          if ($running.HasExited) { Write-Warning "BananaV stopped with exit code $($running.ExitCode)" } else { $running | Stop-Process -Force; "BananaV was still running after 20 s" }
+          if ($running.HasExited) { Write-Warning "Noni stopped with exit code $($running.ExitCode)" } else { $running | Stop-Process -Force; "Noni was still running after 20 s" }
           Start-Process -Wait "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
-          foreach ($i in 1..30) { if (-not (Test-Path "$app\BananaV.exe")) { break }; Start-Sleep 1 }
-          if (Test-Path "$app\BananaV.exe") { throw "the uninstaller left BananaV.exe" }
-          if (Test-Path 'HKCU:\Software\Classes\BananaV.Project') { throw "the uninstaller left the project files' association" }
+          foreach ($i in 1..30) { if (-not (Test-Path "$app\Noni.exe")) { break }; Start-Sleep 1 }
+          if (Test-Path "$app\Noni.exe") { throw "the uninstaller left Noni.exe" }
+          if (Test-Path 'HKCU:\Software\Classes\Noni.Project') { throw "the uninstaller left the project files' association" }
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.NAME }}
@@ -151,14 +151,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: package
-      - name: BananaV
+      - name: Noni
         run: |
           export PKG_CONFIG_PATH="$PWD/ffmpeg-lgpl/lib/pkgconfig"
           cargo build --release -p bananav
       - name: AppImage
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          name="BananaV-$version-${GITHUB_SHA::7}-linux-${{ matrix.arch }}"
+          name="Noni-$version-${GITHUB_SHA::7}-linux-${{ matrix.arch }}"
           wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.tool }}.AppImage"
           chmod +x linuxdeploy-*.AppImage
           export LD_LIBRARY_PATH="$PWD/ffmpeg-lgpl/lib"
@@ -168,9 +168,9 @@ jobs:
           ./linuxdeploy-${{ matrix.tool }}.AppImage --appimage-extract-and-run \
             --appdir AppDir -e target/release/bananav \
             -l "$lib/libxkbcommon.so.0" -l "$lib/libxkbcommon-x11.so.0" \
-            -d packaging/linux/bananav.desktop -i packaging/icons/bananav.png --output appimage
+            -d packaging/linux/bananav.desktop -i packaging/icons/noni.png --output appimage
           mkdir -p "dist/$name"
-          mv BananaV*.AppImage "dist/$name/$name.AppImage"
+          mv Noni*.AppImage "dist/$name/$name.AppImage"
           cp packaging/linux/README.txt "dist/$name/"
           cp LICENSE "dist/$name/LICENSE.txt"
           cp ffmpeg-lgpl/share/licenses/ffmpeg/COPYING.LGPLv2.1 "dist/$name/FFmpeg-LGPL-2.1.txt"
@@ -184,7 +184,7 @@ jobs:
           # The system libraries the AppImage carries: each one's Debian
           # copyright file (their licenses and notices).
           notices="dist/$name/SYSTEM-LIBRARIES-NOTICES.txt"
-          printf 'BananaV - the system libraries inside the AppImage\n\nEach library, the Ubuntu 22.04 package it comes from and that package'"'"'s\ncopyright file (its licenses). FFmpeg'"'"'s libraries are BananaV'"'"'s own build\n(FFmpeg-LGPL-2.1.txt, FFmpeg-license.md).\n\n' > "$notices"
+          printf 'Noni - the system libraries inside the AppImage\n\nEach library, the Ubuntu 22.04 package it comes from and that package'"'"'s\ncopyright file (its licenses). FFmpeg'"'"'s libraries are Noni'"'"'s own build\n(FFmpeg-LGPL-2.1.txt, FFmpeg-license.md).\n\n' > "$notices"
           for f in AppDir/usr/lib/*.so*; do
             lib=$(basename "$f")
             pkg=$(dpkg -S "$lib" 2>/dev/null | head -1 | cut -d: -f1) || true
@@ -204,7 +204,7 @@ jobs:
         # Ubuntu's source package of the LAME the AppImage carries.
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          src="BananaV-$version-${GITHUB_SHA::7}-LGPL-sources"
+          src="Noni-$version-${GITHUB_SHA::7}-LGPL-sources"
           ffmpeg=$(sed -n 's/^ffmpeg_version=${FFMPEG_VERSION:-\(.*\)}$/\1/p' packaging/linux/build_ffmpeg.sh)
           mkdir -p "$src/lame"
           curl -fsSL -o "$src/FFmpeg-n$ffmpeg.tar.gz" "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n$ffmpeg.tar.gz"
@@ -212,7 +212,7 @@ jobs:
           sudo sed -i 's/^# deb-src/deb-src/' /etc/apt/sources.list
           sudo apt-get update -qq
           (cd "$src/lame" && apt-get source --download-only lame)
-          printf 'The sources of the LGPL libraries in BananaV %s'"'"'s Linux packages:\n- FFmpeg n%s (FFmpeg-n%s.tar.gz), built by build_ffmpeg.sh;\n- LAME, Ubuntu 22.04'"'"'s source package (lame/).\n' "$version" "$ffmpeg" "$ffmpeg" > "$src/README.txt"
+          printf 'The sources of the LGPL libraries in Noni %s'"'"'s Linux packages:\n- FFmpeg n%s (FFmpeg-n%s.tar.gz), built by build_ffmpeg.sh;\n- LAME, Ubuntu 22.04'"'"'s source package (lame/).\n' "$version" "$ffmpeg" "$ffmpeg" > "$src/README.txt"
           mkdir -p dist-src
           tar -czf "dist-src/$src.tar.gz" "$src"
           echo "SRC=$src" >> "$GITHUB_ENV"
@@ -232,9 +232,9 @@ jobs:
           timeout 20 xvfb-run -a "dist/$NAME/$NAME.AppImage" --appimage-extract-and-run
           code=$?
           if [ "$code" = 124 ]; then
-            echo "BananaV was still running after 20 s"
+            echo "Noni was still running after 20 s"
           else
-            echo "::warning::BananaV stopped with exit code $code on the virtual screen"
+            echo "::warning::Noni stopped with exit code $code on the virtual screen"
             exit 1
           fi
       - uses: actions/upload-artifact@v4

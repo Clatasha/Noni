@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=BananaV
+Name=Noni Video Editor
 Comment=Video editor
 Exec=bananav %f
-Icon=bananav
+Icon=noni
 Terminal=false
 Categories=AudioVideo;Video;AudioVideoEditing;
 MimeType=application/x-bvproj;

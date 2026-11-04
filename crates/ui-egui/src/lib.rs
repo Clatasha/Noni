@@ -153,10 +153,10 @@ pub fn plugin_scan_child() -> Option<i32> {
 }
 
 /// The program's icon, for the main window's title bar and taskbar button:
-/// the official one (`packaging/icons/bananav.png`, a 256 px render of
-/// `bananav-icon.svg`).
+/// the official one (`packaging/icons/noni.png`, a 256 px render of
+/// `noni.svg`).
 fn window_icon() -> Option<egui::IconData> {
-    let png = bv_png::decode(include_bytes!("../../../packaging/icons/bananav.png")).ok()?;
+    let png = bv_png::decode(include_bytes!("../../../packaging/icons/noni.png")).ok()?;
     Some(egui::IconData {
         rgba: png.to_rgba8(),
         width: png.width,
@@ -181,7 +181,7 @@ fn interface_graphics() -> eframe::egui_wgpu::WgpuSetup {
 
 pub fn run() -> eframe::Result {
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("BananaV")
+        .with_title("Noni Video Editor")
         // The title bar is BananaV's, with the menus in it, as VEGAS 23's
         // (`title_bar.rs`).
         .with_decorations(false)

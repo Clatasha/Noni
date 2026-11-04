@@ -1,4 +1,4 @@
-//! BananaV — video editor.
+//! Noni Video Editor.
 
 // No console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -10,7 +10,7 @@ fn main() {
         std::process::exit(code);
     }
     if let Err(e) = bv_ui_egui::run() {
-        eprintln!("BananaV: {e}");
+        eprintln!("Noni: {e}");
         std::process::exit(1);
     }
 }

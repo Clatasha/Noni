@@ -81,12 +81,12 @@ impl Dialogs {
         }
         self.rename_window(ctx, app);
         if self.about {
-            crate::floating::Window::new(tr("About BananaV"))
+            crate::floating::Window::new(tr("About Noni"))
                 .collapsible(false)
                 .resizable(false)
                 .open(&mut self.about)
                 .show(ctx, |ui| {
-                    ui.heading(RichText::new("BananaV 0.1").color(theme::banana()));
+                    ui.heading(RichText::new("Noni Video Editor").color(theme::banana()));
                     ui.label(tr("Video editor written in Rust."));
                     ui.label(tr("Compositing in linear light, 32-bit float."));
                     ui.label(tr("Time in ticks: 254,016,000,000 per second."));

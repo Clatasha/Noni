@@ -493,7 +493,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Exportação AAF - Usar unidade de quadro para o áudio",
     ),
     ("About", "Sobre"),
-    ("About BananaV", "Sobre o BananaV"),
+    ("About Noni", "Sobre o Noni"),
     (
         "Above 0 punches out of the center, below 0 pinches toward it.",
         "Acima de 0 infla a partir do centro, abaixo de 0 aperta em direção a ele.",

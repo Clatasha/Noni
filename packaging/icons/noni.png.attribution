@@ -1,0 +1,8 @@
+asset:        noni.png
+title:        Noni window and Linux package icon
+author:       Clatasha (original concept), Noni contributors (vector redraw)
+source:       original work
+license:      GPL-3.0-or-later
+license-file: ../../LICENSE
+added:        2026-11-04 by Clatasha
+notes:        256 px render of noni.svg.

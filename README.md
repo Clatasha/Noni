@@ -1,12 +1,14 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/bananav-logo-transparent.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/brand/bananav-icon.svg">
-    <img src="docs/brand/bananav-icon.svg" alt="BananaV's logo: a banana and the bar of a V" width="168">
-  </picture>
+  <img src="packaging/icons/noni.svg" alt="Noni fruit logo" width="168">
 </p>
 
-<h1 align="center">BananaV</h1>
+<h1 align="center">Noni Video Editor</h1>
+
+Noni is Clatasha's personal video editor, based on [BananaV](https://github.com/acasoq-web/BananaV).
+
+## Upstream documentation
+
+The information below describes the original BananaV project.
 
 <p align="center">
   <strong>A free and open-source video editor for Windows and Linux, written in Rust.</strong>

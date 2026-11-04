@@ -2443,8 +2443,8 @@ impl BananaApp {
             .map_or(tr("Untitled").to_string(), |s| {
                 s.to_string_lossy().to_string()
             });
-        let mut title = format!("{name}{} — BananaV", if self.is_dirty() { "*" } else { "" });
-        // While rendering, its progress first ("3% - Untitled — BananaV").
+        let mut title = format!("{name}{} — Noni Video Editor", if self.is_dirty() { "*" } else { "" });
+        // While rendering, its progress first ("3% - Untitled — Noni Video Editor").
         if let Some(p) = self.engine.render_progress()
             && !p.finished
         {
@@ -4348,7 +4348,7 @@ impl BananaApp {
         crate::title_bar::resize_edges(ui, window);
     }
 
-    /// The window's title ("Untitled* — BananaV"), which the title bar
+    /// The window's title ("Untitled* — Noni Video Editor"), which the title bar
     /// shows.
     pub(crate) fn window_title(&self) -> &str {
         &self.title

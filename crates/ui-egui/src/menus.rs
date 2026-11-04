@@ -928,7 +928,7 @@ pub fn toolbar(ui: &mut Ui, app: &mut BananaApp) {
             );
             ui.add_space(26.0);
             ui.label(
-                egui::RichText::new("BananaV")
+                egui::RichText::new("Noni")
                     .strong()
                     .color(crate::theme::banana()),
             );
