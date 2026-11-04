@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="packaging/icons/noni.svg" alt="Noni fruit logo" width="168">
+  <img src="packaging/icons/noni.png" alt="Noni fruit logo" width="168">
 </p>
 
 <h1 align="center">Noni Video Editor</h1>

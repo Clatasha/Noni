@@ -14,7 +14,7 @@ logo as marks are covered by [TRADEMARKS.md](TRADEMARKS.md) (a draft).
 
 | Asset | Author | Source | License |
 |---|---|---|---|
-| `packaging/icons/noni.svg`, `noni.png`, `noni.ico` and `crates/ui-egui/src/icons/logo.rs` | Clatasha (original concept), Noni contributors (vector redraw) | Noni fruit mark and derived app icons | GPL-3.0-or-later |
+| `packaging/icons/noni.svg`, `noni.png`, `noni.ico` and `noni-mark.png` | Clatasha (original illustration) | Noni fruit mark and derived app icons | GPL-3.0-or-later |
 | `packaging/icons/bananav-icon.svg` | @acasoq-web, BananaV's owner | Original work: the application icon, the logo on a dark rounded square | GPL-3.0-or-later; the mark: TRADEMARKS.md |
 | `packaging/icons/bananav-logo.svg` | @acasoq-web, BananaV's owner | Original work: the logo on its dark square | GPL-3.0-or-later; the mark: TRADEMARKS.md |
 | `packaging/icons/bananav-logo-transparent.svg` | @acasoq-web, BananaV's owner | Original work: the logo on a transparent background | GPL-3.0-or-later; the mark: TRADEMARKS.md |
