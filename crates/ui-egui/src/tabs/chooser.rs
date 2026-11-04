@@ -66,6 +66,7 @@ pub(crate) struct ChooserState {
 #[derive(Debug, Default)]
 pub(crate) struct Choosers {
     pub generators: ChooserState,
+    pub text: ChooserState,
     pub transitions: ChooserState,
     pub effects: ChooserState,
     pub compositors: ChooserState,

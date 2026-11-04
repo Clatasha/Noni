@@ -437,14 +437,27 @@ fn paint_preset(
     }
 }
 
-pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
-    let mut state = std::mem::take(&mut app.choosers.generators);
+pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
+    let (id, icon, mut state) = if text_only {
+        ("text-library", Icon::Text, std::mem::take(&mut app.choosers.text))
+    } else {
+        (
+            "generators",
+            Icon::Generator,
+            std::mem::take(&mut app.choosers.generators),
+        )
+    };
     let categories = categories();
-    let ofx = third_party();
-    let own = KINDS.iter().map(|&k| Plugin {
+    let (kinds, categories) = if text_only {
+        (&[Kind::TitlesAndText, Kind::CreditRoll][..], &categories[1..2])
+    } else {
+        (&KINDS[..], &categories[..])
+    };
+    let ofx = if text_only { Vec::new() } else { third_party() };
+    let own = kinds.iter().map(|&k| Plugin {
         key: k.key(),
         name: k.name().to_string(),
-        category: k.category(),
+        category: if text_only { 0 } else { k.category() },
         ready: k.ready(),
         about: [
             if k == Kind::TestTone || k.plugin().is_some() {
@@ -478,21 +491,21 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     let plugins: Vec<Plugin> = own.chain(theirs).collect();
     let frame = chooser::frame(
         ui,
-        "generators",
+        id,
         &mut state,
         &mut app.settings.favorites,
-        &categories,
+        categories,
         &plugins,
-        Icon::Generator,
+        icon,
     );
     if frame.favorites_changed {
         let _ = app.settings.save();
     }
     if let Some(i) = frame.plugin {
-        let presets = match KINDS.get(i) {
+        let presets = match kinds.get(i) {
             Some(&k) => all_presets(app, k),
             None => ofx
-                .get(i - KINDS.len())
+                .get(i - kinds.len())
                 .map(|p| plugin_presets(app, &crate::ofx::plugin_fx(p)))
                 .unwrap_or_default(),
         };
@@ -506,7 +519,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         let cells = chooser::preset_grid(
             ui,
             frame.grid,
-            "generators",
+            id,
             &mut state,
             &names,
             tr("Add at the cursor and edit"),
@@ -540,7 +553,11 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             }
         }
     }
-    app.choosers.generators = state;
+    if text_only {
+        app.choosers.text = state;
+    } else {
+        app.choosers.generators = state;
+    }
 }
 
 #[cfg(test)]

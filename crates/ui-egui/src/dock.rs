@@ -25,6 +25,7 @@ pub enum Tab {
     Explorer,
     ProjectMedia,
     Generators,
+    Text,
     Transitions,
     VideoFx,
     ColorGrading,
@@ -48,10 +49,11 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 18] = [
+    pub const ALL: [Tab; 19] = [
         Tab::Explorer,
         Tab::ProjectMedia,
         Tab::Generators,
+        Tab::Text,
         Tab::Transitions,
         Tab::VideoFx,
         Tab::ColorGrading,
@@ -74,6 +76,7 @@ impl Tab {
             Tab::Explorer => tr("Explorer"),
             Tab::ProjectMedia => tr("Project Media"),
             Tab::Generators => tr("Media Generators"),
+            Tab::Text => tr("Text"),
             Tab::Transitions => tr("Transitions"),
             Tab::VideoFx => tr("Video FX"),
             Tab::ColorGrading => tr("Color Grading"),
@@ -120,11 +123,12 @@ pub fn default_layout() -> DockState<Tab> {
 
 const LIBRARY_CATEGORIES: &[(Tab, Icon)] = &[
     (Tab::ProjectMedia, Icon::FilmStrip),
-    (Tab::Explorer, Icon::Folder),
     (Tab::MixingConsole, Icon::Speaker),
-    (Tab::Generators, Icon::Generator),
-    (Tab::VideoFx, Icon::Fx),
+    (Tab::Text, Icon::Text),
+    (Tab::VideoFx, Icon::Sparkle),
     (Tab::Transitions, Icon::Transition),
+    (Tab::Generators, Icon::Generator),
+    (Tab::Explorer, Icon::Folder),
     (Tab::ColorGrading, Icon::ColorGrading),
 ];
 
@@ -141,8 +145,15 @@ fn library_categories(ui: &mut Ui, active: Tab) -> Option<Tab> {
                     } else {
                         theme::text()
                     };
+                    let label = match tab {
+                        Tab::ProjectMedia => tr("Media"),
+                        Tab::MixingConsole => tr("Audio"),
+                        Tab::VideoFx => tr("Effects"),
+                        Tab::ColorGrading => tr("Color"),
+                        _ => tab.title(),
+                    };
                     let text = ui.painter().layout_no_wrap(
-                        tab.title().to_owned(),
+                        label.to_owned(),
                         crate::egui::FontId::proportional(11.0),
                         color,
                     );
@@ -592,6 +603,7 @@ impl TabViewer for Viewer<'_> {
             Tab::Explorer
                 | Tab::ProjectMedia
                 | Tab::Generators
+                | Tab::Text
                 | Tab::Transitions
                 | Tab::VideoFx
                 | Tab::Compositors
@@ -641,7 +653,8 @@ impl TabViewer for Viewer<'_> {
         match tab {
             Tab::Explorer => tabs::explorer::ui(ui, app),
             Tab::ProjectMedia => tabs::media::ui(ui, app),
-            Tab::Generators => tabs::generators::ui(ui, app),
+            Tab::Generators => tabs::generators::ui(ui, app, false),
+            Tab::Text => tabs::generators::ui(ui, app, true),
             Tab::Transitions => tabs::transitions::ui(ui, app),
             Tab::VideoFx => tabs::effects::ui(ui, app),
             Tab::ColorGrading => tabs::color::ui(ui, app),
