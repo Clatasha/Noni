@@ -966,6 +966,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Another number places the portals elsewhere.",
         "Outro número coloca os portais em outros lugares.",
     ),
+    ("Animation", "Animação"),
     ("Anti alias", "Antisserrilhado"),
     ("Anti-DTMF talk-off", "Anti-DTMF (talk-off)"),
     ("Anti-DTMF Talkoff", "Anti-DTMF (talk-off)"),
@@ -5204,6 +5205,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Imported", "Importado"),
     ("In", "Para dentro"),
+    ("In animation", "Animação de entrada"),
     ("In color", "Colorido"),
     ("In use: {}", "Em uso: {}"),
     (
@@ -6919,6 +6921,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Original resolution", "Resolução original"),
     ("Other metadata", "Outros metadados"),
     ("Out", "Para fora"),
+    ("Out animation", "Animação de saída"),
     ("Out: {}, in: {}", "Saída: {}, entrada: {}"),
     ("Outer", "Por fora"),
     (
@@ -7779,6 +7782,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Replace", "Substituir"),
     ("Replace Media File", "Substituir arquivo de mídia"),
+    ("Replace Media…", "Substituir mídia…"),
     ("Replace Plug-In", "Substituir plug-in"),
     (
         "Replaces the whole chain with the plug-in or filter package picked",
@@ -10498,6 +10502,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "The rendered file could not be read: {}",
         "Não foi possível ler o arquivo renderizado: {}",
     ),
+    ("The replacement is too short for this clip's trim.", "A mídia substituta é curta demais para o recorte deste clipe."),
+    ("The replacement needs a compatible media stream.", "A mídia substituta precisa ter um fluxo compatível."),
     ("The right edge bent.", "A borda direita curvada."),
     (
         "The right edge squeezed (above 0) or spread.",

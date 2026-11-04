@@ -10,7 +10,9 @@
 use bv_core::{FrameRate, ImageRgbaF32, Tick};
 
 use crate::fx::{Effect, FadeCurve, PluginFx, Transition};
-use crate::model::{Clip, ClipId, MediaId, MediaInfo, Project, RenderQuality, Track, TrackId};
+use crate::model::{
+    AnimationPreset, Clip, ClipId, MediaId, MediaInfo, Project, RenderQuality, Track, TrackId,
+};
 
 /// What an effect belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -1010,6 +1012,7 @@ fn event_layer<'a>(
     width: u32,
     height: u32,
 ) -> EventLayer<'a> {
+    let (slide, opacity) = clip_animation(clip, t);
     let source = project.media(clip.media).and_then(|info| {
         let time = media_time(clip, info, t)?;
         let par = info.video.map_or(1.0, |v| v.pixel_aspect.ratio())
@@ -1020,12 +1023,13 @@ fn event_layer<'a>(
             clip.pan_crop.keep_aspect,
             clip.pan_crop.fill,
         );
-        let placement = place.at(clip, t, [f64::from(width), f64::from(height)]);
+        let mut placement = place.at(clip, t, [f64::from(width), f64::from(height)]);
         // The size the media shows at, in its own pixels: the reader may
         // give less.
         let min_size = info
             .video
             .map_or((u32::MAX, u32::MAX), |_| placement.size_needed());
+        placement.translate_y(slide * f64::from(height));
         Some(MediaLayer {
             info,
             clip,
@@ -1051,9 +1055,48 @@ fn event_layer<'a>(
     EventLayer {
         clip: clip.id,
         source,
-        level: clip.level.clamp(0.0, 1.0),
+        level: clip.level.clamp(0.0, 1.0) * opacity,
         fade: None,
     }
+}
+
+/// The vertical offset in frame heights and the opacity multiplier.
+fn clip_animation(clip: &Clip, time: Tick) -> (f64, f32) {
+    let duration = clip.duration.as_seconds_f64().max(0.0);
+    let length = |animation: crate::ClipAnimation| {
+        if animation.preset == AnimationPreset::None {
+            0.0
+        } else {
+            animation.duration.as_seconds_f64().clamp(0.0, duration)
+        }
+    };
+    let enter = length(clip.animation_in);
+    let exit = length(clip.animation_out);
+    let scale = if enter + exit > duration {
+        duration / (enter + exit)
+    } else {
+        1.0
+    };
+    let local = (time - clip.start).as_seconds_f64();
+    let mut slide = 0.0;
+    let mut opacity = 1.0;
+    for (animation, length, elapsed, direction) in [
+        (clip.animation_in, enter * scale, local, 1.0),
+        (clip.animation_out, exit * scale, duration - local, -1.0),
+    ] {
+        if length <= 0.0 || elapsed >= length {
+            continue;
+        }
+        let p = (elapsed / length).clamp(0.0, 1.0);
+        let eased = p * p * (3.0 - 2.0 * p);
+        match animation.preset {
+            AnimationPreset::None => {}
+            AnimationPreset::Fade => opacity *= eased as f32,
+            AnimationPreset::SlideUp => slide += direction * (1.0 - eased),
+            AnimationPreset::SlideDown => slide -= direction * (1.0 - eased),
+        }
+    }
+    (slide, opacity)
 }
 
 /// Frame Blend (the event's Resample mode, else the project's): when an

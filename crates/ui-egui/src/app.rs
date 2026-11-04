@@ -1919,6 +1919,83 @@ impl BananaApp {
         });
     }
 
+    /// Replace only the clicked event, keeping its timeline settings and active take.
+    pub(crate) fn replace_timeline_media(&mut self, id: ClipId) {
+        let Some(clip) = self.project().clip(id).filter(|c| !c.locked).cloned() else {
+            return;
+        };
+        let Some(kind) = self.project().clip_track(id).map(|track| track.kind) else {
+            return;
+        };
+        let dialog = rfd::FileDialog::new().set_title(tr("Replace Media…"));
+        let Some(path) = crate::media_files::media_filters(dialog).pick_file() else {
+            return;
+        };
+        let source = path.to_string_lossy();
+        if bv_engine::is_project(&source) && self.nests_open_project(&path) {
+            let err = bv_engine::MediaError::NestedInItself;
+            self.report_error(crate::media_files::error_text(&err));
+            return;
+        }
+        let existing = self.project().media.iter().find(|m| {
+            matches!(&m.source, bv_timeline::MediaSource::File { path } if path.as_str() == source.as_ref())
+                && m.sequence.is_none()
+                && m.layer.is_none()
+        });
+        let existing_id = existing.map(|m| m.id);
+        let mut media = match existing {
+            Some(info) if info.id == clip.media => return,
+            Some(info) => info.clone(),
+            None => match Engine::probe_file(&source) {
+                Ok(info) => info,
+                Err(err) => {
+                    self.report_error(crate::media_files::error_text(&err));
+                    return;
+                }
+            },
+        };
+        let compatible = match kind {
+            TrackKind::Video => media.video.is_some(),
+            TrackKind::Audio => media.audio_stream(clip.audio_stream).is_some(),
+        };
+        if !compatible {
+            self.report_error(tr("The replacement needs a compatible media stream."));
+            return;
+        }
+        let first = clip.source_time(clip.start);
+        let last = clip.source_time(clip.end());
+        if !media.still
+            && (first.min(last) < Tick::ZERO
+                || first.max(last) > media.duration
+                || (clip.freeze.is_some() && first >= media.duration))
+        {
+            self.report_error(tr("The replacement is too short for this clip's trim."));
+            return;
+        }
+        if existing_id.is_none()
+            && let Some(profile) =
+                crate::media_properties::profile_for(&self.settings.video_profiles, &media)
+        {
+            profile.apply(&mut media);
+        }
+        let media_id = self.modify(|project| {
+            let media_id = existing_id.unwrap_or_else(|| project.add_media(media));
+            if let Some(clip) = project.clip_mut(id) {
+                clip.media = media_id;
+                let active = clip.active_take();
+                if let Some(take) = clip.takes.get_mut(active) {
+                    take.media = media_id;
+                    take.none = false;
+                }
+            }
+            media_id
+        });
+        if existing_id.is_none() {
+            self.copy_if_removable(&path);
+            self.proxy_for_new_media(media_id);
+        }
+    }
+
     /// Importa arquivos; devolve os ids das mídias importadas.
     pub(crate) fn import_paths(&mut self, paths: &[PathBuf]) -> Vec<MediaId> {
         let mut errors = Vec::new();

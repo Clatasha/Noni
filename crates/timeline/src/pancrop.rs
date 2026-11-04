@@ -974,6 +974,22 @@ fn parallelogram(corners: &Corners, key: &PanCropKey, s: &PlaceIn, par: f64) -> 
 }
 
 impl Placement {
+    /// Move the placed picture in output pixels, including its crop bounds.
+    pub(crate) fn translate_y(&mut self, dy: f64) {
+        self.to_media[2] -= self.to_media[1] * dy;
+        self.to_media[5] -= self.to_media[4] * dy;
+        if let Some(to_box) = &mut self.to_box {
+            to_box[2] -= to_box[1] * dy;
+            to_box[5] -= to_box[4] * dy;
+        }
+        self.clip[1] += dy;
+        self.clip[3] += dy;
+        if let Some((_, frame)) = &mut self.rect {
+            frame[1] += dy;
+            frame[3] += dy;
+        }
+    }
+
     /// The same place on a frame of `size` pixels instead of `from`.
     pub fn on_frame(&self, from: [f64; 2], size: [f64; 2]) -> Placement {
         let (x, y) = (from[0] / size[0], from[1] / size[1]);

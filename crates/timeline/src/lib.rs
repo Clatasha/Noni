@@ -75,7 +75,8 @@ pub use fx::{
 pub use history::{Gesture, History};
 pub use input_busses::{InputBus, InputBusId, InputMonitor, MAX_INPUT_BUSSES};
 pub use model::{
-    AlphaChannel, AudioCd, AudioQuality, AudioStreamInfo, AutomationMode, ChannelMap, Clip, ClipId,
+    AlphaChannel, AnimationPreset, AudioCd, AudioQuality, AudioStreamInfo, AutomationMode, ChannelMap,
+    Clip, ClipAnimation, ClipId,
     CompositeMode, CompositingGamma, DeinterlaceMethod, Generator, GroupId, ImageSequence, Marker,
     MarkerId, MasterBus, MediaId, MediaInfo, MediaMarker, MediaReel, MediaRotation, MediaSource,
     NewEvents, OutputRotation, PanMode, PixelAspect, PixelFormat, Project, ProjectSettings,

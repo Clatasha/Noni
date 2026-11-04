@@ -4,8 +4,8 @@
 use crate::i18n::tr;
 use bv_core::{Tick, timecode};
 use bv_timeline::{
-    Clip, ClipId, Effect, EffectKind, FadeCurve, ParamKind, Project, TrackKind, Transform,
-    Transition,
+    AnimationPreset, Clip, ClipAnimation, ClipId, Effect, EffectKind, FadeCurve, ParamKind,
+    Project, TrackKind, Transform, Transition,
 };
 
 use crate::app::BananaApp;
@@ -198,6 +198,12 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                     ui.end_row();
                 }
             });
+            if is_video {
+                ui.separator();
+                ui.label(RichText::new(tr("Animation")).strong());
+                animation_row(ui, tr("In animation"), &mut c.animation_in, c.duration);
+                animation_row(ui, tr("Out animation"), &mut c.animation_out, c.duration);
+            }
             // An OFX plug-in's transition: its settings, as it describes them.
             if is_video && let Some(fx) = c.transition_fx.clone() {
                 ui.add_space(4.0);
@@ -273,6 +279,41 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             let _ = p.set_clip_box_at(id, at, now, new);
         });
     }
+}
+
+fn animation_row(ui: &mut egui::Ui, label: &str, animation: &mut ClipAnimation, duration: Tick) {
+    let name = |preset| match preset {
+        AnimationPreset::None => tr("None"),
+        AnimationPreset::Fade => tr("Fade"),
+        AnimationPreset::SlideUp => tr("Slide Up"),
+        AnimationPreset::SlideDown => tr("Slide Down"),
+    };
+    ui.label(label);
+    ui.horizontal_wrapped(|ui| {
+        let previous = animation.preset;
+        egui::ComboBox::from_id_salt(label)
+            .selected_text(name(animation.preset))
+            .show_ui(ui, |ui| {
+                for preset in [
+                    AnimationPreset::None,
+                    AnimationPreset::Fade,
+                    AnimationPreset::SlideUp,
+                    AnimationPreset::SlideDown,
+                ] {
+                    ui.selectable_value(&mut animation.preset, preset, name(preset));
+                }
+            });
+        if animation.preset != AnimationPreset::None {
+            let max = duration.as_seconds_f64().clamp(0.0, 10.0) as f32;
+            if previous == AnimationPreset::None && animation.duration <= Tick::ZERO {
+                animation.duration = Tick::from_seconds_f64(f64::from(max.min(0.5)));
+            }
+            let mut seconds = animation.duration.as_seconds_f64() as f32;
+            if ui.add(crate::fmt::slider(&mut seconds, 0.0..=max, 2, " s")).changed() {
+                animation.duration = Tick::from_seconds_f64(f64::from(seconds));
+            }
+        }
+    });
 }
 
 /// The event's transition: one of BananaV's, or an OFX plug-in's.

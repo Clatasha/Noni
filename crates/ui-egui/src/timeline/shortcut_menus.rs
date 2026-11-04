@@ -216,6 +216,9 @@ pub(super) fn event_menu(ui: &mut Ui, app: &mut BananaApp, clip: ClipId) {
     let media = p.media(c.media).cloned();
     let video = kind == TrackKind::Video;
     ui.set_min_width(280.0);
+    if icon_item(ui, tr("Replace Media…"), Some(Icon::Swap), "", !c.locked) {
+        app.replace_timeline_media(clip);
+    }
     if item(ui, tr("Open in Trimmer")) {
         app.trimmer.open(c.media);
         app.show_tab(Tab::Trimmer, false);

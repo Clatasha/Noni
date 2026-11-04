@@ -542,6 +542,28 @@ impl NewEvents {
     }
 }
 
+/// An animation preset for one edge of a video clip.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnimationPreset {
+    #[default]
+    None,
+    Fade,
+    SlideUp,
+    SlideDown,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClipAnimation {
+    pub preset: AnimationPreset,
+    pub duration: Tick,
+}
+
+impl ClipAnimation {
+    fn is_off(&self) -> bool {
+        self.preset == AnimationPreset::None
+    }
+}
+
 /// Um trecho de mídia posicionado numa trilha (o "evento" do VEGAS).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
@@ -566,6 +588,10 @@ pub struct Clip {
     pub fade_in_curve: FadeCurve,
     #[serde(default)]
     pub fade_out_curve: FadeCurve,
+    #[serde(default, skip_serializing_if = "ClipAnimation::is_off")]
+    pub animation_in: ClipAnimation,
+    #[serde(default, skip_serializing_if = "ClipAnimation::is_off")]
+    pub animation_out: ClipAnimation,
     /// Transição usada na entrada (fade-in e crossfade com o clipe anterior).
     #[serde(default)]
     pub transition: Transition,
@@ -734,6 +760,8 @@ impl Clip {
             fade_out: Tick::ZERO,
             fade_in_curve: FadeCurve::default(),
             fade_out_curve: FadeCurve::default(),
+            animation_in: ClipAnimation::default(),
+            animation_out: ClipAnimation::default(),
             transition: Transition::default(),
             transition_fx: None,
             transition_bypass: false,
