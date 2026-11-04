@@ -6,6 +6,7 @@
 //! click; `resize_edges` sizes the window from its edges.
 
 use crate::app::BananaApp;
+use crate::commands::Cmd;
 use crate::egui::{
     self, Align2, Color32, CursorIcon, FontId, Rect, Sense, Shape, Stroke, StrokeKind, UiBuilder,
     pos2, vec2,
@@ -53,10 +54,26 @@ pub(crate) fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     }
 
     let buttons_left = bar.right() - 3.0 * BUTTON_W;
+    let export_label = tr("Export");
+    let export_width = ui
+        .painter()
+        .layout_no_wrap(
+            export_label.to_owned(),
+            FontId::proportional(13.0),
+            Color32::WHITE,
+        )
+        .size()
+        .x
+        .max(52.0)
+        + 24.0;
+    let export = Rect::from_center_size(
+        pos2(buttons_left - 10.0 - export_width / 2.0, bar.center().y),
+        vec2(export_width, 23.0),
+    );
     let row = ui.spacing().interact_size.y;
     let menus = Rect::from_min_max(
         pos2(icon.right() + 9.0, bar.center().y - row / 2.0),
-        pos2(buttons_left, bar.center().y + row / 2.0),
+        pos2(export.left() - 8.0, bar.center().y + row / 2.0),
     );
     let menus_end = ui
         .scope_builder(UiBuilder::new().max_rect(menus), |ui| {
@@ -65,7 +82,7 @@ pub(crate) fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         .inner;
 
     // The window's title in the middle, or as near it as the menus let it.
-    let (start, end) = (menus_end + 16.0, buttons_left - 16.0);
+    let (start, end) = (menus_end + 16.0, export.left() - 16.0);
     if end - start > 40.0 {
         let font = FontId::proportional(12.0);
         let title = app.window_title().to_string();
@@ -84,6 +101,23 @@ pub(crate) fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             theme::text_dim(),
             end - left,
         );
+    }
+
+    let render = Cmd::Render;
+    let enabled = render.enabled(app);
+    let button = egui::Button::new(
+        egui::RichText::new(export_label)
+            .size(13.0)
+            .strong()
+            .color(Color32::WHITE),
+    )
+    .fill(Color32::from_rgb(24, 100, 214));
+    if ui
+        .add_enabled_ui(enabled, |ui| ui.put(export, button))
+        .inner
+        .clicked()
+    {
+        render.run(app);
     }
 
     for (i, button) in [Button::Minimize, Button::Maximize, Button::Close]
