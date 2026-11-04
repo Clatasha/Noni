@@ -16,6 +16,7 @@ use crate::app::actions::LayoutPreset;
 use crate::egui::{
     Color32, CornerRadius, Id, Margin, Rect, Sense, Stroke, StrokeKind, Ui, WidgetText, vec2,
 };
+use crate::icons::{self, Icon};
 use crate::tabs;
 use crate::theme;
 
@@ -107,24 +108,70 @@ impl Tab {
 /// 944 points).
 pub const DOCK_SHARE: f32 = 0.633;
 
-/// Default layout, as VEGAS's: the docking area above the timeline — the
-/// browsers on the left half (the Explorer open), the Video Preview and
-/// the Trimmer beside them, the Master Bus at the right edge.
+/// Default editing workspace: library, player and inspector above the timeline.
 pub fn default_layout() -> DockState<Tab> {
-    let mut dock = DockState::new(vec![
-        Tab::Explorer,
-        Tab::ProjectMedia,
-        Tab::Generators,
-        Tab::Transitions,
-        Tab::VideoFx,
-        Tab::ColorGrading,
-    ]);
+    let mut dock = DockState::new(LIBRARY_CATEGORIES.iter().map(|&(tab, _)| tab).collect());
     let surface = dock.main_surface_mut();
-    let [top, _] = surface.split_below(NodeIndex::root(), DOCK_SHARE, vec![Tab::Timeline]);
-    let [_, right] = surface.split_right(top, 0.489, vec![Tab::Preview, Tab::Trimmer]);
-    surface.split_right(right, 0.865, vec![Tab::Master]);
-    focus(&mut dock, &[Tab::Explorer, Tab::Preview]);
+    let [top, _] = surface.split_below(NodeIndex::root(), 0.53, vec![Tab::Timeline]);
+    let [_, player] = surface.split_right(top, 0.36, vec![Tab::Preview, Tab::Trimmer]);
+    surface.split_right(player, 0.57, vec![Tab::Properties, Tab::Master]);
     dock
+}
+
+const LIBRARY_CATEGORIES: &[(Tab, Icon)] = &[
+    (Tab::ProjectMedia, Icon::FilmStrip),
+    (Tab::Explorer, Icon::Folder),
+    (Tab::MixingConsole, Icon::Speaker),
+    (Tab::Generators, Icon::Generator),
+    (Tab::VideoFx, Icon::Fx),
+    (Tab::Transitions, Icon::Transition),
+    (Tab::ColorGrading, Icon::ColorGrading),
+];
+
+fn library_categories(ui: &mut Ui, active: Tab) -> Option<Tab> {
+    let mut picked = None;
+    crate::egui::ScrollArea::horizontal()
+        .id_salt("library-categories")
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                for &(tab, icon) in LIBRARY_CATEGORIES {
+                    let color = if tab == active {
+                        theme::banana()
+                    } else {
+                        theme::text()
+                    };
+                    let text = ui.painter().layout_no_wrap(
+                        tab.title().to_owned(),
+                        crate::egui::FontId::proportional(11.0),
+                        color,
+                    );
+                    let (rect, response) = ui.allocate_exact_size(
+                        vec2((text.size().x + 12.0).max(40.0), 39.0),
+                        Sense::click(),
+                    );
+                    let painter = ui.painter();
+                    if response.hovered() || tab == active {
+                        painter.rect_filled(rect, 4.0, theme::hover());
+                    }
+                    icons::paint(
+                        painter,
+                        Rect::from_center_size(
+                            rect.center_top() + vec2(0.0, 11.0),
+                            vec2(16.0, 16.0),
+                        ),
+                        icon,
+                        color,
+                    );
+                    let x = rect.center().x - text.size().x / 2.0;
+                    painter.galley(crate::egui::pos2(x, rect.top() + 23.0), text, color);
+                    if response.clicked() && tab != active {
+                        picked = Some(tab);
+                    }
+                }
+            });
+        });
+    picked
 }
 
 /// A side of the timeline where windows dock: VEGAS's docking areas.
@@ -181,6 +228,7 @@ pub enum DockRequest {
     /// Every one (F11).
     All,
     Maximize(Tab),
+    LibraryCategory(Tab),
     Restore,
 }
 
@@ -292,6 +340,13 @@ pub fn restore(dock: &mut DockState<Tab>, m: &Maximized) {
 
 /// Does what `req` asks of `dock`.
 fn apply(dock: &mut DockState<Tab>, app: &mut BananaApp, req: DockRequest) {
+    if let DockRequest::LibraryCategory(tab) = req {
+        if dock.find_tab(&tab).is_none() {
+            open_tab(dock, tab);
+        }
+        focus(dock, &[tab]);
+        return;
+    }
     // A maximized window is restored first: the areas count as they were.
     if let Some(m) = app.dock_maximized.take() {
         restore(dock, &m);
@@ -303,7 +358,7 @@ fn apply(dock: &mut DockState<Tab>, app: &mut BananaApp, req: DockRequest) {
         DockRequest::Area(a) => toggle_area(dock, &mut app.docks_hidden, a),
         DockRequest::All => toggle_all(dock, &mut app.docks_hidden),
         DockRequest::Maximize(tab) => app.dock_maximized = maximize(dock, tab),
-        DockRequest::Restore => {}
+        DockRequest::Restore | DockRequest::LibraryCategory(_) => {}
     }
 }
 
@@ -577,6 +632,11 @@ impl TabViewer for Viewer<'_> {
                 Tab::MixingConsole => Context::MixingConsole,
                 _ => Context::TrackView,
             };
+        }
+        if LIBRARY_CATEGORIES.iter().any(|&(category, _)| category == *tab)
+            && let Some(category) = library_categories(ui, *tab)
+        {
+            app.dock_request = Some(DockRequest::LibraryCategory(category));
         }
         match tab {
             Tab::Explorer => tabs::explorer::ui(ui, app),

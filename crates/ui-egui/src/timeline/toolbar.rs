@@ -1,4 +1,4 @@
-//! The timeline's bottom bar (the customizable toolbar of transport and
+//! The timeline's editing bar (the customizable toolbar of transport and
 //! editing buttons), the playback rate and the scroll bars.
 
 use crate::i18n::tr;
@@ -12,9 +12,9 @@ use crate::theme;
 pub(crate) fn ui(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp, l: &Layout) {
     let painter = ui.painter();
     painter.rect_filled(l.toolbar, 0.0, theme::panel());
-    // Apart from the scroll bar above, as VEGAS's.
+    // Separate the editing bar from the time ruler.
     painter.line_segment(
-        [l.toolbar.left_top(), l.toolbar.right_top()],
+        [l.toolbar.left_bottom(), l.toolbar.right_bottom()],
         Stroke::new(1.0, theme::panel_dark()),
     );
     // Right-click on the toolbar: customize it, like VEGAS.
@@ -33,14 +33,19 @@ pub(crate) fn ui(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp
         egui::UiBuilder::new().max_rect(room.shrink2(vec2(6.0, 3.0))),
         |ui| {
             ui.set_clip_rect(room.intersect(ui.clip_rect()));
-            ui.horizontal_centered(|ui| {
-                ui.spacing_mut().item_spacing.x = 1.0;
-                crate::toolbar_buttons::paint(
-                    ui,
-                    app,
-                    crate::toolbar_buttons::ToolbarKind::Timeline,
-                );
-            });
+            egui::ScrollArea::horizontal()
+                .id_salt("timeline-edit-tools")
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .show(ui, |ui| {
+                    ui.horizontal_centered(|ui| {
+                        ui.spacing_mut().item_spacing.x = 1.0;
+                        crate::toolbar_buttons::paint(
+                            ui,
+                            app,
+                            crate::toolbar_buttons::ToolbarKind::Timeline,
+                        );
+                    });
+                });
         },
     );
 }

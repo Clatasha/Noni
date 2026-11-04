@@ -1,5 +1,5 @@
 //! The timeline: time bars (loop, ruler, markers), track headers, lanes
-//! with the events, scrolling and the bottom toolbar.
+//! with the events, scrolling and the editing toolbar.
 
 mod bars;
 mod marker_bars;
@@ -44,6 +44,7 @@ const MARKER_H: f32 = 16.0;
 const TOP_H: f32 = LOOP_H + RULER_H + MARKER_H;
 const SCROLL_H: f32 = 16.0;
 const TOOLBAR_H: f32 = 34.0;
+const RATE_H: f32 = 24.0;
 const VSCROLL_W: f32 = 12.0;
 /// The dark splitter between the track list and the timeline, top to
 /// bottom, as VEGAS's: dragged, the list's width.
@@ -851,11 +852,10 @@ impl TimelineView {
     }
 
     fn layout(&self, rect: Rect, project: &Project) -> Layout {
-        let top = rect.top();
+        let top = rect.top() + TOOLBAR_H;
         let left = rect.left();
         let right = rect.right();
-        let bottom_tool = rect.bottom() - TOOLBAR_H;
-        let scroll_top = bottom_tool - SCROLL_H;
+        let scroll_top = rect.bottom() - SCROLL_H.max(RATE_H);
         let list_right = left + self.header_w;
         let lanes_left = list_right + SPLIT_W;
         let cd_h = if project.cd_tracks.is_empty() {
@@ -869,7 +869,7 @@ impl TimelineView {
             marker_bars::BAR_H
         };
         let top_h = TOP_H + cd_h + command_h;
-        let tc_box = Rect::from_min_max(rect.min, pos2(list_right, top + top_h));
+        let tc_box = Rect::from_min_max(pos2(left, top), pos2(list_right, top + top_h));
         let loop_bar =
             Rect::from_min_max(pos2(lanes_left, top), pos2(right - VSCROLL_W, top + LOOP_H));
         let ruler = Rect::from_min_max(
@@ -901,11 +901,10 @@ impl TimelineView {
             pos2(right - VSCROLL_W, top + top_h),
             pos2(right, scroll_top),
         );
-        // As VEGAS 23's: the track list goes down to the bottom, the Rate
-        // there as tall as the scroll bar and the toolbar beside it.
+        // The rate control and horizontal scrollbar share the bottom edge.
         let rate = Rect::from_min_max(pos2(left, scroll_top), pos2(list_right, rect.bottom()));
-        let hscroll = Rect::from_min_max(pos2(lanes_left, scroll_top), pos2(right, bottom_tool));
-        let toolbar = Rect::from_min_max(pos2(lanes_left, bottom_tool), rect.max);
+        let hscroll = Rect::from_min_max(pos2(lanes_left, scroll_top), pos2(right, scroll_top + SCROLL_H));
+        let toolbar = Rect::from_min_max(rect.min, pos2(right, top));
         // View › Video Bus Track and Audio Bus Tracks: at the bottom, below
         // a splitter, as tall as it was dragged (the tracks keep some
         // room); the video bus first.
