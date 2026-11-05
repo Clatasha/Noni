@@ -15,6 +15,8 @@
 name: Packages
 
 on:
+  push:
+    branches: [noni-windows-smoke]
   workflow_dispatch:
     inputs:
       platforms:
@@ -30,15 +32,13 @@ env:
 jobs:
   windows:
     name: Windows ${{ matrix.arch }}
-    if: inputs.platforms != 'linux'
+    if: github.event_name == 'push' || inputs.platforms != 'linux'
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x64
             runner: windows-latest
-          - arch: arm64
-            runner: windows-11-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
@@ -112,7 +112,7 @@ jobs:
 
   linux:
     name: Linux ${{ matrix.arch }}
-    if: inputs.platforms != 'windows'
+    if: github.event_name == 'workflow_dispatch' && inputs.platforms != 'windows'
     strategy:
       fail-fast: false
       matrix:
