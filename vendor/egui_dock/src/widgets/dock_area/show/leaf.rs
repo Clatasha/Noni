@@ -80,10 +80,11 @@ impl<Tab> DockArea<'_, Tab> {
             .tabs
             .get(leaf.active.0)
             .is_some_and(|tab| tab_viewer.fixed(tab));
-        let tab_bar_hidden = fixed || (self.hidable_tab_bars && leaf.tab_bar_hidden);
+        let no_tab_bar = fixed || tab_viewer.hide_leaf_tab_bar(&leaf.tabs);
+        let tab_bar_hidden = no_tab_bar || (self.hidable_tab_bars && leaf.tab_bar_hidden);
         let style = fade_style.map(|(style, _)| style);
 
-        let tabbar_rect = if fixed {
+        let tabbar_rect = if no_tab_bar {
             Rect::from_min_size(ui.cursor().min, vec2(ui.available_width(), 0.0))
         } else if !tab_bar_hidden {
             self.tab_bar(ui, state, path, tab_viewer, style, collapsed)
@@ -109,7 +110,7 @@ impl<Tab> DockArea<'_, Tab> {
             collapsed,
         );
 
-        if tab_bar_hidden && !fixed {
+        if tab_bar_hidden && !no_tab_bar {
             self.hidden_tab_bar_controls(ui, state, path, tabbar_rect, style);
         }
 
