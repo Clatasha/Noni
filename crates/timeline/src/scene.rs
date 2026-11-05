@@ -1061,7 +1061,7 @@ fn event_layer<'a>(
 }
 
 /// The vertical offset in frame heights and the opacity multiplier.
-fn clip_animation(clip: &Clip, time: Tick) -> (f64, f32) {
+pub fn clip_animation(clip: &Clip, time: Tick) -> (f64, f32) {
     let duration = clip.duration.as_seconds_f64().max(0.0);
     let length = |animation: crate::ClipAnimation| {
         if animation.preset == AnimationPreset::None {

@@ -1602,6 +1602,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Cancel Warning", "Aviso de cancelamento"),
     ("Canceled", "Cancelado"),
     ("Canceled.", "Cancelado."),
+    ("Canvas Ratio", "Proporção do quadro"),
     ("Captions", "Legendas"),
     ("Catalog…", "Catálogo…"),
     (

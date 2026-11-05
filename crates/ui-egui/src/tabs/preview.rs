@@ -4,6 +4,9 @@
 //! status line (the project's, the preview's and the display's sizes and
 //! the frame shown).
 
+#[path = "preview_canvas.rs"]
+mod canvas;
+
 use crate::i18n::{tr, trc};
 use bv_core::Tick;
 use bv_engine::{Channel, PreviewLook};
@@ -942,6 +945,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             if icon_button(ui, Icon::Settings, tr("Project Properties")).clicked() {
                 app.open_project_settings();
             }
+            canvas::ratio_menu(ui, app);
             let external = app.external.is_some();
             if icon_toggle(
                 ui,
@@ -1350,8 +1354,10 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         } else if app.motion.open {
             // Motion Tracking's region, while its window is open.
             crate::motion_tracking::overlay(ui, app, frame_rect, image_area);
-        } else {
+        } else if app.ofx.has_preview_overlay() {
             crate::ofx::overlay_ui(ui, app, &nav, frame_rect, image_area);
+        } else if multicam.is_none() && !app.project().settings.output_360 {
+            canvas::clip_handles(ui, app, &nav, frame_rect, image_area);
         }
     }
 

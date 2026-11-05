@@ -437,6 +437,10 @@ impl OfxUi {
         }
     }
 
+    pub(crate) fn has_preview_overlay(&self) -> bool {
+        self.overlay.is_some()
+    }
+
     /// Whether a plug-in's overlay took the last press on the preview (a
     /// double click there is the overlay's).
     pub fn overlay_took_press(&self) -> bool {
