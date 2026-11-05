@@ -852,7 +852,7 @@ impl TimelineView {
     }
 
     fn layout(&self, rect: Rect, project: &Project) -> Layout {
-        let top = rect.top() + TOOLBAR_H;
+        let top = rect.top() + TOOLBAR_H + 8.0;
         let left = rect.left();
         let right = rect.right();
         let scroll_top = rect.bottom() - SCROLL_H.max(RATE_H);
@@ -904,7 +904,8 @@ impl TimelineView {
         // The rate control and horizontal scrollbar share the bottom edge.
         let rate = Rect::from_min_max(pos2(left, scroll_top), pos2(list_right, rect.bottom()));
         let hscroll = Rect::from_min_max(pos2(lanes_left, scroll_top), pos2(right, scroll_top + SCROLL_H));
-        let toolbar = Rect::from_min_max(rect.min, pos2(right, top));
+        let toolbar =
+            Rect::from_min_max(pos2(left + 4.0, rect.top() + 4.0), pos2(right - 4.0, top - 4.0));
         // View › Video Bus Track and Audio Bus Tracks: at the bottom, below
         // a splitter, as tall as it was dragged (the tracks keep some
         // room); the video bus first.

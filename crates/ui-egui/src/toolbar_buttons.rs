@@ -243,51 +243,44 @@ impl ToolbarKind {
     }
 }
 
-/// VEGAS's default timeline toolbar.
+/// Default Noni timeline toolbar. The controls from Record onward sit on the right.
 pub const DEFAULT: &[TbButton] = &[
-    B::Record,
-    B::LoopPlayback,
-    B::PlayFromStart,
-    B::Play,
-    B::Pause,
-    B::Stop,
-    B::GoToStart,
-    B::GoToEnd,
-    B::PreviousFrame,
-    B::NextFrame,
-    B::Separator,
     B::NormalTool,
     B::EnvelopeTool,
     B::SelectionTool,
     B::ZoomTool,
     B::Separator,
-    B::Delete,
+    B::Undo,
+    B::Redo,
+    B::Separator,
+    B::Split,
     B::Trim,
     B::TrimStart,
     B::TrimEnd,
-    B::Split,
+    B::Delete,
     B::SmartSplit,
     B::LockEvent,
     B::Separator,
     B::InsertMarker,
     B::InsertRegion,
-    B::Separator,
-    B::EnableSnapping,
-    B::AutomaticCrossfades,
-    B::AutoRipple,
-    B::LockEnvelopesToEvents,
-    B::IgnoreEventGrouping,
-    B::Separator,
     B::ColorGrading,
     B::Separator,
     B::OpenParentTimeline,
     B::OpenNestedTimeline,
     B::CreateNestedTimeline,
+    B::Record,
+    B::EnableSnapping,
+    B::AutomaticCrossfades,
+    B::AutoRipple,
+    B::LockEnvelopesToEvents,
+    B::IgnoreEventGrouping,
 ];
 
 /// Every button, in the order of the "Available toolbar buttons" list
 /// (VEGAS's extras first, then the default ones when they are removed).
 pub const ALL: &[TbButton] = &[
+    B::Undo,
+    B::Redo,
     B::NewAudioTrack,
     B::ShowVolumeEnvelopes,
     B::ShowPanEnvelopes,
@@ -757,7 +750,12 @@ pub fn set_current(app: &mut BananaApp, kind: ToolbarKind, buttons: Vec<TbButton
 
 /// Draws a toolbar's buttons and runs the one clicked.
 pub fn paint(ui: &mut crate::egui::Ui, app: &mut BananaApp, kind: ToolbarKind) {
-    for b in current(app, kind) {
+    let buttons = current(app, kind);
+    paint_buttons(ui, app, &buttons);
+}
+
+pub(crate) fn paint_buttons(ui: &mut crate::egui::Ui, app: &mut BananaApp, buttons: &[TbButton]) {
+    for &b in buttons {
         let Some(icon) = b.icon() else {
             crate::widgets::toolbar_separator(ui);
             continue;
@@ -796,6 +794,6 @@ mod tests {
         for b in DEFAULT.iter().filter(|b| **b != B::Separator) {
             assert!(seen.contains(b), "{b:?} missing from ALL");
         }
-        assert_eq!(DEFAULT.iter().filter(|b| **b != B::Separator).count(), 32);
+        assert_eq!(DEFAULT.iter().filter(|b| **b != B::Separator).count(), 25);
     }
 }

@@ -516,6 +516,11 @@ impl TabViewer for Viewer<'_> {
         tab.tab_label().into()
     }
 
+    fn hide_leaf_tab_bar(&self, tabs: &[Tab]) -> bool {
+        tabs.len() == LIBRARY_CATEGORIES.len()
+            && LIBRARY_CATEGORIES.iter().all(|(tab, _)| tabs.contains(tab))
+    }
+
     fn leaf_buttons_width(&self) -> f32 {
         18.0
     }

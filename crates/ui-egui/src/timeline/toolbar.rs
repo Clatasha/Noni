@@ -8,10 +8,11 @@ use super::{Layout, MAX_TICKS_PER_PX, MIN_TICKS_PER_PX, TimelineView};
 use crate::app::BananaApp;
 use crate::egui::{self, Align2, FontId, Rect, Sense, Stroke, pos2, vec2};
 use crate::theme;
+use crate::toolbar_buttons::{self, TbButton, ToolbarKind};
 
 pub(crate) fn ui(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp, l: &Layout) {
     let painter = ui.painter();
-    painter.rect_filled(l.toolbar, 0.0, theme::panel());
+    painter.rect_filled(l.toolbar, 5.0, theme::panel());
     // Separate the editing bar from the time ruler.
     painter.line_segment(
         [l.toolbar.left_bottom(), l.toolbar.right_bottom()],
@@ -25,29 +26,94 @@ pub(crate) fn ui(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp
             ui.close();
         }
     });
-    let boxes = time_boxes(view, ui, app, l);
-    // The buttons of Options › Customize Timeline Toolbar, those past the
-    // time boxes cut off.
-    let room = Rect::from_min_max(l.toolbar.min, pos2(boxes - 12.0, l.toolbar.bottom()));
+    let zoom = Rect::from_min_max(
+        pos2(l.toolbar.right() - 78.0, l.toolbar.top()),
+        pos2(l.toolbar.right() - 4.0, l.toolbar.bottom()),
+    );
+    zoom_buttons(view, ui, app, zoom);
+    let clocks = time_boxes(view, ui, app, l, zoom.left() - 8.0);
+    let buttons = toolbar_buttons::current(app, ToolbarKind::Timeline);
+    let (editing, controls) = if app.settings.timeline_toolbar.is_none() {
+        let split = buttons
+            .iter()
+            .position(|button| *button == TbButton::Record)
+            .unwrap_or(buttons.len());
+        buttons.split_at(split)
+    } else {
+        (&buttons[..], &[][..])
+    };
+    let controls_right = clocks - 8.0;
+    let controls_left = controls_right - controls.len() as f32 * 24.0;
+    let edit_room = Rect::from_min_max(
+        l.toolbar.min,
+        pos2(controls_left - 8.0, l.toolbar.bottom()),
+    );
+    paint_group(ui, app, edit_room, "timeline-edit-tools", editing);
+
+    if !controls.is_empty() {
+        let control_room = Rect::from_min_max(
+            pos2(controls_left, l.toolbar.top()),
+            pos2(controls_right, l.toolbar.bottom()),
+        );
+        paint_group(ui, app, control_room, "timeline-controls", controls);
+    }
+}
+
+fn paint_group(
+    ui: &mut egui::Ui,
+    app: &mut BananaApp,
+    room: Rect,
+    id: &str,
+    buttons: &[TbButton],
+) {
+    if room.width() <= 12.0 {
+        return;
+    }
     ui.scope_builder(
-        egui::UiBuilder::new().max_rect(room.shrink2(vec2(6.0, 3.0))),
+        egui::UiBuilder::new().max_rect(room.shrink2(vec2(3.0, 3.0))),
         |ui| {
             ui.set_clip_rect(room.intersect(ui.clip_rect()));
             egui::ScrollArea::horizontal()
-                .id_salt("timeline-edit-tools")
+                .id_salt(id)
                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                 .show(ui, |ui| {
                     ui.horizontal_centered(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
-                        crate::toolbar_buttons::paint(
-                            ui,
-                            app,
-                            crate::toolbar_buttons::ToolbarKind::Timeline,
-                        );
+                        toolbar_buttons::paint_buttons(ui, app, buttons);
                     });
                 });
         },
     );
+}
+
+fn zoom_buttons(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp, rect: Rect) {
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+        ui.horizontal_centered(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.spacing_mut().interact_size = vec2(22.0, 20.0);
+            if ui
+                .small_button("−")
+                .on_hover_text(tr("Zoom Out (↓)"))
+                .clicked()
+            {
+                view.zoom_around(1.5, app.display_time());
+            }
+            if ui
+                .small_button("+")
+                .on_hover_text(tr("Zoom In (↑)"))
+                .clicked()
+            {
+                view.zoom_around(1.0 / 1.5, app.display_time());
+            }
+            if ui
+                .small_button("⇔")
+                .on_hover_text(tr("Fit to Project"))
+                .clicked()
+            {
+                view.fit(app.project().duration());
+            }
+        });
+    });
 }
 
 /// One of the time boxes at the toolbar's right.
@@ -71,7 +137,13 @@ const BOX_SPACE: f32 = 16.0;
 /// cursor is, the end's icon alone and the selection's length dimmed. A
 /// double-click types into a lit one — a time in the ruler's format, or +
 /// or − and a length from what it shows. Returns their left edge.
-fn time_boxes(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp, l: &Layout) -> f32 {
+fn time_boxes(
+    view: &mut TimelineView,
+    ui: &mut egui::Ui,
+    app: &mut BananaApp,
+    l: &Layout,
+    right: f32,
+) -> f32 {
     let now = app.display_time();
     let selection = app
         .project()
@@ -114,7 +186,7 @@ fn time_boxes(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp, l
             f32::max,
         );
     let slot = BOX_ICON + BOX_GAP + widest.ceil();
-    let first = l.toolbar.right() - 6.0 - 3.0 * slot - 2.0 * BOX_SPACE;
+    let first = right - 6.0 - 3.0 * slot - 2.0 * BOX_SPACE;
     let cy = l.toolbar.center().y;
     for (i, (kind, text, lit)) in boxes.into_iter().enumerate() {
         let x = first + i as f32 * (slot + BOX_SPACE);
@@ -476,10 +548,6 @@ pub(crate) fn scrollbars(
 ) {
     let painter = ui.painter().clone();
     // Horizontal.
-    let bar = Rect::from_min_max(
-        l.hscroll.min,
-        pos2(l.hscroll.right() - 60.0, l.hscroll.bottom()),
-    );
     painter.rect_filled(l.hscroll, 0.0, theme::panel());
     // VEGAS's: its middle scrolls, its ends zoom, and however long the
     // project its thumb never disappears.
@@ -489,7 +557,7 @@ pub(crate) fn scrollbars(
         .max(Tick(1));
     if let Some((start, len)) = crate::widgets::zoom_scrollbar(
         ui,
-        bar.shrink2(vec2(0.0, 1.0)),
+        l.hscroll.shrink2(vec2(0.0, 1.0)),
         ui.id().with("rolagem-h"),
         (view.view_start.0 as f64, visible.0 as f64),
         total.0 as f64,
@@ -498,35 +566,6 @@ pub(crate) fn scrollbars(
         view.view_start = Tick(start as i64).max(Tick::ZERO);
         view.ticks_per_px = len / lanes;
     }
-    // Botões de zoom.
-    let zr = Rect::from_min_max(pos2(bar.right() + 2.0, l.hscroll.top()), l.hscroll.max);
-    ui.scope_builder(egui::UiBuilder::new().max_rect(zr), |ui| {
-        ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            ui.spacing_mut().interact_size = vec2(18.0, 14.0);
-            if ui
-                .small_button("−")
-                .on_hover_text(tr("Zoom Out (↓)"))
-                .clicked()
-            {
-                view.zoom_around(1.5, app.display_time());
-            }
-            if ui
-                .small_button("+")
-                .on_hover_text(tr("Zoom In (↑)"))
-                .clicked()
-            {
-                view.zoom_around(1.0 / 1.5, app.display_time());
-            }
-            if ui
-                .small_button("⇔")
-                .on_hover_text(tr("Fit to Project"))
-                .clicked()
-            {
-                view.fit(app.project().duration());
-            }
-        });
-    });
     // Vertical.
     painter.rect_filled(l.vscroll, 0.0, theme::panel());
     let content = l.content_height.max(1.0);

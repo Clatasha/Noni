@@ -114,6 +114,11 @@ pub trait TabViewer {
         false
     }
 
+    /// Hide a pane's standard tab bar when its content supplies navigation.
+    fn hide_leaf_tab_bar(&self, _tabs: &[Self::Tab]) -> bool {
+        false
+    }
+
     /// BananaV: the room kept at the right end of every tab bar for
     /// [`Self::leaf_buttons`] (0, as published: none).
     fn leaf_buttons_width(&self) -> f32 {
