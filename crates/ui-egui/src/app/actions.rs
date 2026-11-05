@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use bv_core::{Tick, TimeRange};
 use bv_timeline::{ChannelMap, ClipId, RippleScope, TrackId, TrackKind};
 
-use super::{BananaApp, CopiedClipEffects, Pending, Tool};
+use super::{BananaApp, Pending, Tool};
 use crate::dock::{self, Tab};
 
 /// Built-in window layouts (View › Window Layouts).
@@ -206,20 +206,35 @@ impl BananaApp {
         self.ask_generated_copies(mark);
     }
 
+    pub(crate) fn has_copyable_clip_effects(&self, clip: &bv_timeline::Clip) -> bool {
+        use bv_timeline::{AnimationPreset, Transition};
+        !clip.effects.is_empty()
+            || clip.transition != Transition::default()
+            || clip.transition_fx.is_some()
+            || self.copyable_transition_length(clip) > Tick::ZERO
+            || clip.fade_out > Tick::ZERO
+            || clip.animation_in.preset != AnimationPreset::None
+            || clip.animation_out.preset != AnimationPreset::None
+    }
+
+    fn copyable_transition_length(&self, clip: &bv_timeline::Clip) -> Tick {
+        let project = self.project();
+        project.clip_track(clip.id).map_or(clip.fade_in, |track| {
+            track.effective_fades(clip, project.auto_crossfade).0
+        })
+    }
+
     pub(crate) fn copy_clip_effects(&mut self, id: ClipId) {
-        let Some(clip) = self.project().clip(id).filter(|clip| !clip.effects.is_empty()) else {
+        let Some(clip) = self
+            .project()
+            .clip(id)
+            .filter(|clip| self.has_copyable_clip_effects(clip))
+        else {
             return;
         };
-        self.copied_clip_effects = Some(CopiedClipEffects {
-            chain: clip.effects.clone(),
-            pan_crop_at: clip.pan_crop_at,
-            automation: clip
-                .envelopes
-                .iter()
-                .filter(|e| e.kind.is_fx())
-                .cloned()
-                .collect(),
-        });
+        let mut copied = clip.clone();
+        copied.fade_in = self.copyable_transition_length(clip);
+        self.copied_clip_effects = Some(copied);
         self.notify(tr("Effects copied."));
     }
 
@@ -228,22 +243,51 @@ impl BananaApp {
     }
 
     pub(crate) fn paste_clip_effects(&mut self, id: ClipId) {
-        let Some(copied) = &self.copied_clip_effects else {
+        use bv_timeline::{AnimationPreset, EnvelopeKind, Transition};
+        let Some(copied) = self.copied_clip_effects.clone() else {
             return;
         };
-        let Some(target) = self.project().clip(id).filter(|clip| !clip.locked) else {
+        if !self.project().clip(id).is_some_and(|clip| !clip.locked) {
             return;
-        };
-        let chain = copied.chain.clone();
-        let pan_crop_at = copied.pan_crop_at;
-        let mut envelopes = target.envelopes.clone();
-        envelopes.retain(|e| !e.kind.is_fx());
-        envelopes.extend(copied.automation.iter().cloned());
+        }
         self.modify(|project| {
-            if let Some(clip) = project.clip_mut(id) {
-                clip.effects = chain;
-                clip.pan_crop_at = pan_crop_at;
-                clip.envelopes = envelopes;
+            let Some(clip) = project.clip_mut(id) else {
+                return;
+            };
+            if !copied.effects.is_empty() {
+                clip.effects = copied.effects;
+                clip.pan_crop_at = copied.pan_crop_at;
+                clip.envelopes.retain(|e| !e.kind.is_fx());
+                clip.envelopes
+                    .extend(copied.envelopes.iter().filter(|e| e.kind.is_fx()).cloned());
+            }
+            if copied.fade_in > Tick::ZERO
+                || copied.transition != Transition::default()
+                || copied.transition_fx.is_some()
+            {
+                clip.transition = copied.transition;
+                clip.transition_fx = copied.transition_fx;
+                clip.transition_bypass = copied.transition_bypass;
+                clip.fade_in = copied.fade_in.min(clip.duration);
+                clip.fade_in_curve = copied.fade_in_curve;
+                clip.envelopes
+                    .retain(|e| e.kind != EnvelopeKind::TransitionProgress);
+                clip.envelopes.extend(
+                    copied
+                        .envelopes
+                        .into_iter()
+                        .filter(|e| e.kind == EnvelopeKind::TransitionProgress),
+                );
+            }
+            if copied.fade_out > Tick::ZERO {
+                clip.fade_out = copied.fade_out.min(clip.duration);
+                clip.fade_out_curve = copied.fade_out_curve;
+            }
+            if copied.animation_in.preset != AnimationPreset::None {
+                clip.animation_in = copied.animation_in;
+            }
+            if copied.animation_out.preset != AnimationPreset::None {
+                clip.animation_out = copied.animation_out;
             }
         });
         self.notify(tr("Effects pasted."));

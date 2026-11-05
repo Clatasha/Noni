@@ -286,7 +286,7 @@ pub(super) fn event_menu(ui: &mut Ui, app: &mut BananaApp, clip: ClipId) {
             tr("Copy Effects"),
             Some(Icon::Copy),
             "",
-            !c.effects.is_empty(),
+            app.has_copyable_clip_effects(&c),
         ) {
             app.copy_clip_effects(clip);
         }
