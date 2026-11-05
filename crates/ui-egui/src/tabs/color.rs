@@ -1510,7 +1510,7 @@ fn lut_column(ui: &mut egui::Ui, app: &mut BananaApp, cx: &Cx, k: usize, rect: R
             let r = if *enabled {
                 r
             } else {
-                r.on_disabled_hover_text(tr("Coming soon to BananaV"))
+                r.on_disabled_hover_text(tr("Coming soon to Noni"))
             };
             if r.clicked() {
                 chosen = Some(f.clone());

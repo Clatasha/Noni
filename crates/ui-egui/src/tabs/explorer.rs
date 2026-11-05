@@ -141,7 +141,7 @@ fn type_text(e: &Entry) -> String {
         Some(FileKind::Video) => tr("Video").into(),
         Some(FileKind::Audio) => tr("Audio").into(),
         Some(FileKind::Image) => tr("Image").into(),
-        Some(FileKind::Project) => tr("BananaV project").into(),
+        Some(FileKind::Project) => tr("Noni project").into(),
         Some(FileKind::VegProject) => tr("VEG Project").into(),
         Some(FileKind::Timeline)
             if e.path
@@ -1142,7 +1142,7 @@ fn contents_ui(
                 let resp = if supported {
                     resp
                 } else {
-                    resp.on_hover_text(tr("Format not supported by BananaV yet"))
+                    resp.on_hover_text(tr("Format not supported by Noni yet"))
                 };
                 let path = e.path.clone();
                 let is_dir = e.is_dir;

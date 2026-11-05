@@ -183,7 +183,7 @@ pub(crate) fn soon(ui: &mut Ui, label: &str, shortcut: &str) {
             .atom_ui(ui)
     })
     .response
-    .on_disabled_hover_text(tr("Coming soon to BananaV"));
+    .on_disabled_hover_text(tr("Coming soon to Noni"));
 }
 
 /// A greyed-out toggle item for a feature that is not available yet (the
@@ -201,7 +201,7 @@ pub(crate) fn soon_toggle(ui: &mut Ui, label: &str, shortcut: &str) {
         crate::widgets::paint_check_box(ui, r, false, false, false);
     }
     resp.response
-        .on_disabled_hover_text(tr("Coming soon to BananaV"));
+        .on_disabled_hover_text(tr("Coming soon to Noni"));
 }
 
 /// A submenu whose label lines up with the items (empty icon column).
@@ -882,13 +882,13 @@ fn help_menu(ui: &mut Ui, app: &mut BananaApp) {
     cmd(ui, app, Cmd::HelpContents);
     soon(ui, tr("What's This?"), "Shift+F1");
     cmd(ui, app, Cmd::KeyboardShortcuts);
-    soon(ui, tr("Download the BananaV User Manual"), "");
+    soon(ui, tr("Download the Noni User Manual"), "");
     ui.separator();
     soon(ui, tr("Check for Software Updates…"), "");
     soon(ui, tr("Deactivate Software on This Computer…"), "");
     ui.separator();
-    soon(ui, tr("BananaV Home Page"), "");
-    soon(ui, tr("BananaV Community…"), "");
+    soon(ui, tr("Noni Home Page"), "");
+    soon(ui, tr("Noni Community…"), "");
     cmd(ui, app, Cmd::About);
     ui.separator();
     let id = Id::new("menu-demo");

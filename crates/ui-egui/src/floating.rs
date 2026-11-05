@@ -80,7 +80,7 @@ pub(crate) fn main_title() -> String {
         .map(|t| t.clone())
         .ok()
         .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| "BananaV".into())
+        .unwrap_or_else(|| "Noni".into())
 }
 
 /// Margin between the native window's border and the dialog's content.

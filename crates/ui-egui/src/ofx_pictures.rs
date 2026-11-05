@@ -50,7 +50,7 @@ impl Kind {
             ),
             Kind::Trimmer => tr("The Trimmer shows no picture."),
             Kind::File => tr("The picture could not be read."),
-            Kind::Clipboard | Kind::Screen => tr("Coming soon to BananaV"),
+            Kind::Clipboard | Kind::Screen => tr("Coming soon to Noni"),
         }
     }
 }

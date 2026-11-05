@@ -82,7 +82,7 @@ impl BananaApp {
             .map_or(String::new(), |s| s.to_string_lossy().to_string());
         let mut dialog = rfd::FileDialog::new()
             .set_title(tr("Save Nested Timeline"))
-            .add_filter(tr("BananaV Project"), &["bvproj"])
+            .add_filter(tr("Noni Project"), &["bvproj"])
             .set_file_name(format!("{stem}_{}.bvproj", tr("Untitled Timeline")));
         if let Some(dir) = parent.parent() {
             dialog = dialog.set_directory(dir);

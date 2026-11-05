@@ -391,7 +391,7 @@ impl MediaPropertiesDialog {
 
     /// The Media tab (an event's Properties show it too).
     pub(crate) fn media_tab(&mut self, ui: &mut Ui, app: &BananaApp, m: &MediaInfo) {
-        let soon = tr("Coming soon to BananaV");
+        let soon = tr("Coming soon to Noni");
         let path = match &m.source {
             MediaSource::File { path } => path.clone(),
             MediaSource::Generated(_) => crate::i18n::media_name(m),

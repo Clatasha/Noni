@@ -440,7 +440,7 @@ pub(crate) fn master_strip(ui: &mut egui::Ui, app: &mut BananaApp) {
         if letter(ui, "M", muted, true, tr("Mute the master")).clicked() {
             app.modify(|p| p.master.muted = !muted);
         }
-        letter(ui, "S", false, false, tr("Coming soon to BananaV"));
+        letter(ui, "S", false, false, tr("Coming soon to Noni"));
     });
     // 5.1: the Surround Master's channel faders (trims), locked together
     // unless Lock Fader is off.
@@ -539,7 +539,7 @@ pub(crate) fn master_strip(ui: &mut egui::Ui, app: &mut BananaApp) {
                 }
             } else {
                 icon_button_ex(ui, Icon::Lock, tr("Lock Fader"), false, false)
-                    .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                    .on_disabled_hover_text(tr("Coming soon to Noni"));
             }
         },
     );

@@ -408,7 +408,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         ready: true,
         about: [
             trf!(
-                "{}: BananaV, 32-bit floating point, GPU accelerated",
+                "{}: Noni, 32-bit floating point, GPU accelerated",
                 k.name()
             ),
             trf!("Description: {}", k.about()),
@@ -422,7 +422,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         ready: true,
         about: [
             trf!(
-                "{}: BananaV, 32-bit floating point",
+                "{}: Noni, 32-bit floating point",
                 crate::ofx::plugin_name(p)
             ),
             trf!("Description: {}", tr(&p.description)),

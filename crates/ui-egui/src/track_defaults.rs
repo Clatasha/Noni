@@ -144,7 +144,7 @@ impl BananaApp {
                     ui.add_enabled_ui(enabled, |ui| {
                         let resp = crate::widgets::checkbox(ui, &mut d.checks[i], item.label());
                         if !item.available() {
-                            resp.on_disabled_hover_text(tr("Coming soon to BananaV"));
+                            resp.on_disabled_hover_text(tr("Coming soon to Noni"));
                         }
                     });
                 }
@@ -153,7 +153,7 @@ impl BananaApp {
                 if d.restore {
                     ui.label(
                         RichText::new(tr(
-                            "OK gives new audio and video tracks BananaV's own defaults again.",
+                            "OK gives new audio and video tracks Noni's own defaults again.",
                         ))
                         .color(theme::text_dim()),
                     );

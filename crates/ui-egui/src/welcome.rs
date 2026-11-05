@@ -177,31 +177,31 @@ impl Channel {
     fn places(self) -> Vec<(&'static str, &'static str, &'static str)> {
         match self {
             Channel::Website => vec![(
-                tr("BananaV's website"),
+                tr("Upstream website"),
                 tr("News, downloads and help."),
                 "https://bananav-editor.github.io/",
             )],
             Channel::GitHub => vec![(
-                tr("BananaV on GitHub"),
+                tr("Noni on GitHub"),
                 tr(
                     "Each version's downloads and what changed in it, and where to tell us about a problem.",
                 ),
-                "https://github.com/acasoq-web/BananaV",
+                "https://github.com/Clatasha/Noni",
             )],
             Channel::Discord => vec![(
                 tr("Discord community"),
-                tr("Talk with other BananaV users and share your work."),
+                tr("Talk with the upstream community and share your work."),
                 "https://discord.gg/vtC7Yasz98",
             )],
             Channel::Donate => vec![
                 (
-                    tr("Support BananaV on Ko-fi"),
-                    tr("BananaV is free. Support it from any country with a donation on Ko-fi."),
+                    tr("Support the upstream project on Ko-fi"),
+                    tr("Support the upstream project from any country with a donation on Ko-fi."),
                     "https://ko-fi.com/bananav",
                 ),
                 (
                     tr("Donate with PIX"),
-                    tr("For donors in Brazil: a donation through PIX helps BananaV go on."),
+                    tr("For donors in Brazil: support the upstream project through PIX."),
                     "https://pixgg.com/Acaso",
                 ),
             ],
@@ -246,7 +246,7 @@ impl Welcome {
         }
         let mut open = true;
         let mut action = None;
-        crate::floating::Window::new(tr("Welcome to BananaV"))
+        crate::floating::Window::new(tr("Welcome to Noni"))
             .id(egui::Id::new("boas-vindas"))
             .collapsible(false)
             .resizable(false)
@@ -626,7 +626,7 @@ fn language_page(ui: &mut egui::Ui, app: &mut BananaApp, content: Rect) {
             ui.add_space(2.0);
             ui.label(
                 RichText::new(tr(
-                    "Choose the language of BananaV's interface. You can change it later in Options › Preferences › Language.",
+                    "Choose the language of Noni's interface. You can change it later in Options › Preferences › Language.",
                 ))
                 .color(theme::text_dim()),
             );
@@ -726,7 +726,7 @@ fn tile(
 
 /// BananaV's logo and its name, centered on `center`.
 fn paint_logo(painter: &egui::Painter, center: Pos2, icon: f32, text: f32, color: Color32) {
-    let galley = painter.layout_no_wrap("BananaV".to_string(), FontId::proportional(text), color);
+    let galley = painter.layout_no_wrap("Noni".to_string(), FontId::proportional(text), color);
     let width = icon + 8.0 + galley.size().x;
     let left = center.x - width / 2.0;
     icons::paint_logo(
@@ -851,7 +851,7 @@ fn paint_banner(painter: &egui::Painter, r: Rect) {
     painter.text(
         logo + vec2(98.0, -6.0),
         Align2::LEFT_CENTER,
-        "BananaV",
+        "Noni",
         FontId::proportional(44.0),
         Color32::WHITE,
     );

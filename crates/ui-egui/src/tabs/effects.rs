@@ -277,7 +277,7 @@ fn plugins(ofx: &[std::sync::Arc<bv_ofx::PluginInfo>], packages: &[Package]) -> 
             ready: true,
             about: [
                 trf!(
-                    "{}: BananaV, 32-bit floating point, GPU accelerated, group {}",
+                    "{}: Noni, 32-bit floating point, GPU accelerated, group {}",
                     name,
                     cats[category_of(k)].name
                 ),
@@ -294,7 +294,7 @@ fn plugins(ofx: &[std::sync::Arc<bv_ofx::PluginInfo>], packages: &[Package]) -> 
                 key: format!("ofx:{}", p.identifier),
                 about: [
                     trf!(
-                        "{}: BananaV, 32-bit floating point, group {}",
+                        "{}: Noni, 32-bit floating point, group {}",
                         name,
                         cats[category].name
                     ),

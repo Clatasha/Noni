@@ -28,7 +28,7 @@ impl FolderProblem {
             FolderProblem::blocked(dir)
         } else {
             FolderProblem {
-                text: trf!("BananaV cannot save files in {}: {}", dir.display(), e),
+                text: trf!("Noni cannot save files in {}: {}", dir.display(), e),
                 protected: false,
             }
         }
@@ -39,7 +39,7 @@ impl FolderProblem {
     pub fn blocked(dir: &Path) -> FolderProblem {
         FolderProblem {
             text: trf!(
-                "Windows Security's Controlled folder access does not let BananaV save files in {}.",
+                "Windows Security's Controlled folder access does not let Noni save files in {}.",
                 dir.display()
             ),
             protected: true,
@@ -55,7 +55,7 @@ impl FolderProblem {
     fn how(&self) -> Option<&'static str> {
         self.protected.then(|| {
             tr(
-                "To save there, allow BananaV in Windows Security › Virus & threat protection › Manage ransomware protection › Allow an app through Controlled folder access, or choose another folder.",
+                "To save there, allow Noni in Windows Security › Virus & threat protection › Manage ransomware protection › Allow an app through Controlled folder access, or choose another folder.",
             )
         })
     }

@@ -660,7 +660,7 @@ pub(crate) fn archive_dialog(ctx: &egui::Context, app: &mut BananaApp) {
                                 .map_or_else(String::new, |n| n.to_string_lossy().to_string());
                             if let Some(p) = rfd::FileDialog::new()
                                 .set_title(tr("Archive"))
-                                .add_filter(tr("BananaV Project"), &["bvproj"])
+                                .add_filter(tr("Noni Project"), &["bvproj"])
                                 .set_file_name(name)
                                 .save_file()
                             {
@@ -685,7 +685,7 @@ pub(crate) fn archive_dialog(ctx: &egui::Context, app: &mut BananaApp) {
                         false,
                         egui::Checkbox::new(&mut false, tr("Include RAW companion files")),
                     )
-                    .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                    .on_disabled_hover_text(tr("Coming soon to Noni"));
                     ui.add_enabled(
                         o.media,
                         egui::Checkbox::new(&mut o.exclude_unused, tr("Exclude unused media")),

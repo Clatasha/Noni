@@ -962,11 +962,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Animated: edits the keyframe at the cursor.",
         "Animado: edita o quadro-chave no cursor.",
     ),
+    ("Animation", "Animação"),
     (
         "Another number places the portals elsewhere.",
         "Outro número coloca os portais em outros lugares.",
     ),
-    ("Animation", "Animação"),
     ("Anti alias", "Antisserrilhado"),
     ("Anti-DTMF talk-off", "Anti-DTMF (talk-off)"),
     ("Anti-DTMF Talkoff", "Anti-DTMF (talk-off)"),
@@ -976,8 +976,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Apple Log to Linear", "Apple Log para linear"),
     ("Apple Log to REC.709", "Apple Log para REC.709"),
     (
-        "Apple ProRes in QuickTime: an editing codec of constant quality. BananaV's own encoder.",
-        "Apple ProRes em QuickTime: um codec de edição de qualidade constante. Codificador próprio do BananaV.",
+        "Apple ProRes in QuickTime: an editing codec of constant quality. Noni's own encoder.",
+        "Apple ProRes em QuickTime: um codec de edição de qualidade constante. Codificador próprio do Noni.",
     ),
     ("Apply", "Aplicar"),
     (
@@ -1213,56 +1213,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Balance (-6 dB center)", "Balanço (centro em -6 dB)"),
     ("Balance (0 dB center)", "Balanço (centro em 0 dB)"),
     ("Balanced", "Equilibrada"),
-    (
-        "BananaV always renders the sound before burning.",
-        "O BananaV sempre renderiza o som antes de gravar.",
-    ),
-    (
-        "BananaV cannot save files in {}: {}",
-        "O BananaV não consegue salvar arquivos em {}: {}",
-    ),
-    ("BananaV Community…", "Comunidade BananaV…"),
-    (
-        "BananaV did not close normally last time. Open the copy of {} it saved automatically?",
-        "O BananaV não foi fechado normalmente da última vez. Abrir a cópia de {} que ele salvou automaticamente?",
-    ),
-    (
-        "BananaV finished rendering: the computer shuts down in one minute.",
-        "O BananaV terminou a renderização: o computador será desligado em um minuto.",
-    ),
-    ("BananaV Help", "Ajuda do BananaV"),
-    ("BananaV Home Page", "Página inicial do BananaV"),
-    (
-        "BananaV is free. Support it from any country with a donation on Ko-fi.",
-        "O BananaV é gratuito. Apoie-o de qualquer país com uma doação no Ko-fi.",
-    ),
-    (
-        "BananaV is not the program that opens BananaV projects (.bvproj). Make it the one?",
-        "O BananaV não é o programa que abre os projetos do BananaV (.bvproj). Torná-lo o programa que os abre?",
-    ),
-    (
-        "BananaV now opens its project files (.bvproj).",
-        "Agora o BananaV abre os seus arquivos de projeto (.bvproj).",
-    ),
-    ("BananaV on GitHub", "BananaV no GitHub"),
-    ("BananaV Preferences", "Preferências do BananaV"),
-    ("BananaV Preferences.json", "Preferências BananaV.json"),
-    ("BananaV Project", "Projeto BananaV"),
-    ("BananaV project", "Projeto do BananaV"),
-    (
-        "BananaV Project File (*.bvproj)…",
-        "Arquivo de projeto BananaV (*.bvproj)…",
-    ),
-    ("BananaV's website", "Site do BananaV"),
-    (
-        "BananaV's windows always follow the scale of the display each one is on.",
-        "As janelas do BananaV sempre seguem a escala da tela em que cada uma está.",
-    ),
-    (
-        "BananaV's windows always wait for the display's refresh: no tearing.",
-        "As janelas do BananaV sempre esperam a atualização da tela: sem rasgos na imagem.",
-    ),
-    ("BananaV, version {}.{}", "BananaV, versão {}.{}"),
     ("Band", "Banda"),
     ("Band 1", "Banda 1"),
     ("Band 2", "Banda 2"),
@@ -1692,6 +1642,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Change cursor and selected event color when in Auto Ripple mode",
         "Mudar a cor do cursor e dos eventos selecionados no modo Ondulação automática",
     ),
+    ("Changes speaker and headphone volume only.", "Altera apenas o volume dos alto-falantes e fones de ouvido."),
     (
         "Changes the colors' saturation by how saturated they are: a range of saturations, and the colors below and above it.",
         "Muda a saturação das cores conforme o quanto elas são saturadas: uma faixa de saturações, e as cores abaixo e acima dela.",
@@ -1708,7 +1659,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Changes the red, green and blue channels through curves.",
         "Muda os canais vermelho, verde e azul por curvas.",
     ),
-    ("Changes speaker and headphone volume only.", "Altera apenas o volume dos alto-falantes e fones de ouvido."),
     ("Channel", "Canal"),
     ("Channel 1", "Canal 1"),
     ("Channel <", "Canal <"),
@@ -1779,8 +1729,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Choose its MIDI ports", "Escolha as portas MIDI dele"),
     (
-        "Choose the language of BananaV's interface. You can change it later in Options › Preferences › Language.",
-        "Escolha o idioma da interface do BananaV. Você pode mudá-lo depois em Opções › Preferências › Idioma.",
+        "Choose the language of Noni's interface. You can change it later in Options › Preferences › Language.",
+        "Escolha o idioma da interface do Noni. Você pode mudá-lo depois em Opções › Preferências › Idioma.",
     ),
     (
         "Choose the MIDI input for timecode in Options › Preferences › Sync.",
@@ -2087,7 +2037,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Column 3", "Coluna 3"),
     ("Combine", "Combinar"),
     ("Combined", "Combinado"),
-    ("Coming soon to BananaV", "Em breve no BananaV"),
+    ("Coming soon to Noni", "Em breve no Noni"),
     ("Command", "Comando"),
     ("Command Marker", "Marcador de comando"),
     ("Command markers: {}", "Marcadores de comando: {}"),
@@ -2278,8 +2228,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Could not import: {}", "Não foi possível importar: {}"),
     (
-        "Could not make BananaV open its project files: {}",
-        "Não foi possível fazer o BananaV abrir os seus arquivos de projeto: {}",
+        "Could not make Noni open its project files: {}",
+        "Não foi possível fazer o Noni abrir os seus arquivos de projeto: {}",
     ),
     (
         "Could not make the proxy of {}: {}",
@@ -2960,8 +2910,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Down", "Para baixo"),
     (
-        "Download the BananaV User Manual",
-        "Fazer o download do manual do usuário do BananaV",
+        "Download the Noni User Manual",
+        "Fazer o download do manual do usuário do Noni",
     ),
     ("Downmix / Split Screen", "Downmix / Tela dividida"),
     ("Downmix Output", "Downmix da saída"),
@@ -3348,8 +3298,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("ends with", "termina com"),
     ("Engineer:", "Engenheiro:"),
     (
-        "English is BananaV's main language; other languages are translations of it. Texts not translated yet show in English.",
-        "O inglês é o idioma principal do BananaV; os outros idiomas são traduções dele. Textos ainda não traduzidos aparecem em inglês.",
+        "English is Noni's main language; other languages are translations of it. Texts not translated yet show in English.",
+        "O inglês é o idioma principal do Noni; os outros idiomas são traduções dele. Textos ainda não traduzidos aparecem em inglês.",
     ),
     (
         "Enhances detail (unsharp mask).",
@@ -3464,13 +3414,13 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Explorer", "Explorador"),
     ("Explorer…", "Explorador…"),
     ("Export", "Exportar"),
-    ("Export BananaV Project", "Exportar projeto BananaV"),
     ("Export Chapters", "Exportar capítulos"),
     ("Export Closed Captioning", "Exportar legendas ocultas"),
     ("Export EDL", "Exportar EDL"),
     ("Export Final Cut Pro X", "Exportar Final Cut Pro X"),
     ("Export LUT", "Exportar LUT"),
     ("Export LUT…", "Exportar LUT…"),
+    ("Export Noni Project", "Exportar projeto Noni"),
     ("Export OpenTimelineIO", "Exportar OpenTimelineIO"),
     ("Export Preferences", "Exportar preferências"),
     ("Export Preferences…", "Exportar preferências…"),
@@ -3782,8 +3732,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Font", "Fonte"),
     (
-        "For donors in Brazil: a donation through PIX helps BananaV go on.",
-        "Para quem está no Brasil: uma doação por PIX ajuda o BananaV a continuar.",
+        "For donors in Brazil: support the upstream project through PIX.",
+        "Para doadores no Brasil: apoie o projeto original via PIX.",
     ),
     ("Foreground", "Primeiro plano"),
     (
@@ -3803,8 +3753,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Foreground Scaled", "Primeiro plano reduzido"),
     ("Format", "Formato"),
     (
-        "Format not supported by BananaV yet",
-        "Formato ainda não suportado pelo BananaV",
+        "Format not supported by Noni yet",
+        "Formato ainda não suportado pelo Noni",
     ),
     ("Format:", "Formato:"),
     ("Format: {}", "Formato: {}"),
@@ -5532,11 +5482,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Distribuir em trilhas pelo timecode da mídia",
     ),
     ("Layer Dimensionality", "Dimensionalidade da camada"),
+    ("Layout ({})", "Layout ({})"),
     (
         "Layout \"{}\" saved (Alt+D, {}).",
         "Layout \"{}\" salvo (Alt+D, {}).",
     ),
-    ("Layout ({})", "Layout ({})"),
     ("Layout {}", "Layout {}"),
     ("Leading region", "Região à frente"),
     ("Learn", "Aprender"),
@@ -5740,8 +5690,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Loop position", "Posição do laço"),
     ("Loop radius", "Raio do laço"),
     (
-        "Lossless compressed audio. BananaV's own encoder.",
-        "Áudio comprimido sem perdas. Codificador próprio do BananaV.",
+        "Lossless compressed audio. Noni's own encoder.",
+        "Áudio comprimido sem perdas. Codificador próprio do Noni.",
     ),
     ("Loud Neighbours", "Vizinhos barulhentos"),
     ("Loudness", "Loudness"),
@@ -5886,6 +5836,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Make Compositing Child", "Tornar filha da composição"),
     ("Make Compositing Parent", "Tornar pai da composição"),
+    (
+        "Make Noni the default app for .bvproj project files?",
+        "Definir o Noni como aplicativo padrão para arquivos .bvproj?",
+    ),
     (
         "Make spacebar and F12 Play/Stop instead of Play/Pause",
         "Barra de espaço e F12 fazem Reproduzir/Parar em vez de Reproduzir/Pausar",
@@ -6693,6 +6647,47 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "None of these media has a timecode.",
         "Nenhuma dessas mídias tem timecode.",
     ),
+    (
+        "Noni always renders the sound before burning.",
+        "O Noni sempre renderiza o som antes de gravar.",
+    ),
+    (
+        "Noni cannot save files in {}: {}",
+        "O Noni não consegue salvar arquivos em {}: {}",
+    ),
+    ("Noni Community…", "Comunidade Noni…"),
+    (
+        "Noni did not close normally last time. Open the copy of {} it saved automatically?",
+        "O Noni não foi fechado normalmente da última vez. Abrir a cópia de {} que ele salvou automaticamente?",
+    ),
+    (
+        "Noni finished rendering: the computer shuts down in one minute.",
+        "O Noni terminou a renderização: o computador será desligado em um minuto.",
+    ),
+    ("Noni Help", "Ajuda do Noni"),
+    ("Noni Home Page", "Página inicial do Noni"),
+    (
+        "Noni now opens its project files (.bvproj).",
+        "Agora o Noni abre os seus arquivos de projeto (.bvproj).",
+    ),
+    ("Noni on GitHub", "Noni no GitHub"),
+    ("Noni Preferences", "Preferências do Noni"),
+    ("Noni Preferences.json", "Preferências Noni.json"),
+    ("Noni Project", "Projeto Noni"),
+    ("Noni project", "Projeto do Noni"),
+    (
+        "Noni Project File (*.bvproj)…",
+        "Arquivo de projeto Noni (*.bvproj)…",
+    ),
+    (
+        "Noni's windows always follow the scale of the display each one is on.",
+        "As janelas do Noni sempre seguem a escala da tela em que cada uma está.",
+    ),
+    (
+        "Noni's windows always wait for the display's refresh: no tearing.",
+        "As janelas do Noni sempre esperam a atualização da tela: sem rasgos na imagem.",
+    ),
+    ("Noni, version {}.{}", "Noni, versão {}.{}"),
     ("Nordic PPM", "PPM nórdico"),
     ("Normal", "Normal"),
     ("Normal Edit Tool", "Ferramenta de edição normal"),
@@ -6713,8 +6708,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("North and South Pole", "Pólo Norte e Sul"),
     ("Not Active", "Inativo"),
     (
-        "Not available in BananaV yet",
-        "Ainda não disponível no BananaV",
+        "Not available in Noni yet",
+        "Ainda não disponível no Noni",
     ),
     ("Not supported ({})", "Não suportado ({})"),
     (
@@ -6777,8 +6772,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Ogg Vorbis audio.", "Áudio Ogg Vorbis."),
     ("OK", "OK"),
     (
-        "OK gives new audio and video tracks BananaV's own defaults again.",
-        "OK devolve às novas trilhas de áudio e vídeo os padrões do próprio BananaV.",
+        "OK gives new audio and video tracks Noni's own defaults again.",
+        "OK devolve às novas trilhas de áudio e vídeo os padrões do próprio Noni.",
     ),
     ("Old Film", "Filme antigo"),
     ("Old Newspaper", "Jornal antigo"),
@@ -8456,10 +8451,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Show All Waveforms", "Mostrar todas as formas de onda"),
     ("Show as a wheel", "Mostrar como roda"),
     ("Show as sliders", "Mostrar como controles deslizantes"),
-    (
-        "Show BananaV's controls for a plug-in's parameters instead of opening its own window.",
-        "Mostra os controles do BananaV para os parâmetros de um plug-in em vez de abrir a janela dele.",
-    ),
     ("Show Channels", "Mostrar canais"),
     ("Show commands containing:", "Exibir comandos contendo:"),
     (
@@ -8486,6 +8477,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Show mask only", "Mostrar só a máscara"),
     ("Show mask only.", "Mostrar só a máscara."),
     ("Show Motion Vectors", "Mostrar vetores de movimento"),
+    (
+        "Show Noni's controls for a plug-in's parameters instead of opening its own window.",
+        "Mostra os controles do Noni para os parâmetros de um plug-in em vez de abrir a janela dele.",
+    ),
     (
         "Show OFX Effect Envelopes (Beta)",
         "Mostrar envelopes de efeitos OFX (Beta)",
@@ -9239,7 +9234,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Sunday", "domingo"),
     ("Sunset", "Pôr do sol"),
     ("Supersampling", "Superamostragem"),
-    ("Support BananaV on Ko-fi", "Apoie o BananaV no Ko-fi"),
+    (
+        "Support the upstream project from any country with a donation on Ko-fi.",
+        "Apoie o projeto original de qualquer país com uma doação no Ko-fi.",
+    ),
+    ("Support the upstream project on Ko-fi", "Apoie o projeto original no Ko-fi"),
     ("Suppression", "Supressão"),
     ("Surround / Ext Monitor", "Surround / Monitor externo"),
     ("Surround Master", "Surround mestre"),
@@ -9413,8 +9412,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Pega a imagem de destino da imagem no cursor, como ela é antes deste efeito.",
     ),
     (
-        "Talk with other BananaV users and share your work.",
-        "Converse com outros usuários do BananaV e compartilhe seus trabalhos.",
+        "Talk with the upstream community and share your work.",
+        "Converse com a comunidade do projeto original e compartilhe seu trabalho.",
     ),
     (
         "Talkback Drum Treatment",
@@ -10388,8 +10387,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "O plug-in {} não pôde ser carregado: {}",
     ),
     (
-        "The plug-in {} stopped working and was turned off until BananaV restarts.",
-        "O plug-in {} parou de funcionar e foi desligado até o BananaV ser reiniciado.",
+        "The plug-in {} stopped working and was turned off until Noni restarts.",
+        "O plug-in {} parou de funcionar e foi desligado até o Noni ser reiniciado.",
     ),
     (
         "The plug-ins marked with a star",
@@ -11066,8 +11065,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Para ativar a compensação de movimento, use o painel de Rastreamento de movimento para gerar os dados de movimento.",
     ),
     (
-        "To save there, allow BananaV in Windows Security › Virus & threat protection › Manage ransomware protection › Allow an app through Controlled folder access, or choose another folder.",
-        "Para salvar lá, permita o BananaV em Segurança do Windows › Proteção contra vírus e ameaças › Gerenciar proteção contra ransomware › Permitir um aplicativo por meio do Acesso controlado a pastas, ou escolha outra pasta.",
+        "To save there, allow Noni in Windows Security › Virus & threat protection › Manage ransomware protection › Allow an app through Controlled folder access, or choose another folder.",
+        "Para salvar lá, permita o Noni em Segurança do Windows › Proteção contra vírus e ameaças › Gerenciar proteção contra ransomware › Permitir um aplicativo por meio do Acesso controlado a pastas, ou escolha outra pasta.",
     ),
     (
         "To stabilize the video, click the Stabilize / Analyze Motion button. Do not attempt to preview the media or play your project while stabilization is in process.",
@@ -11470,6 +11469,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Upper-Right Glow", "Brilho superior direito"),
     ("Upside Down", "De cabeça para baixo"),
+    ("Upstream website", "Site do projeto original"),
     (
         "Use All Streams and Channels",
         "Usar todos os fluxos e canais",
@@ -11868,7 +11868,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Wednesday", "quarta-feira"),
     ("Weird 1", "Estranho 1"),
     ("Welcome Screen", "Tela de boas-vindas"),
-    ("Welcome to BananaV", "Boas-vindas ao BananaV"),
+    ("Welcome to Noni", "Boas-vindas ao Noni"),
     ("Wet / Dry", "Molhado / seco"),
     ("Wet out", "Saída com efeito"),
     ("Wet slew", "Variação limitada"),
@@ -12165,8 +12165,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Windows Media Video 9 com Windows Media Audio, codificado pelo Windows.",
     ),
     (
-        "Windows Security's Controlled folder access does not let BananaV save files in {}.",
-        "O Acesso controlado a pastas da Segurança do Windows não deixa o BananaV salvar arquivos em {}.",
+        "Windows Security's Controlled folder access does not let Noni save files in {}.",
+        "O Acesso controlado a pastas da Segurança do Windows não deixa o Noni salvar arquivos em {}.",
     ),
     (
         "Windows' decoders use the card's video engine (NVIDIA, AMD or Intel) for H.264, HEVC, VP9 and AV1, and the processor for the rest.",
@@ -12302,10 +12302,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Zoom:", "Zoom:"),
     ("{0}, {1} {2}, {3} {4}", "{0}, {2} de {1} de {3} {4}"),
     ("{0}, {1} {2}, {3}, {4}", "{0}, {2} de {1} de {3}, {4}"),
-    (
-        "{}\nDouble-click: add to the selected events",
-        "{}\nDuplo clique: adiciona aos eventos selecionados",
-    ),
     ("{} % to the bottom color", "{} % para a cor inferior"),
     ("{} % to the top color", "{} % para a cor superior"),
     ("{} (default)", "{} (padrão)"),
@@ -12398,24 +12394,24 @@ Duplo clique: adiciona aos eventos selecionados",
         "{}, … (press the second key)",
         "{}, … (pressione a segunda tecla)",
     ),
-    (
-        "{}: BananaV, 32-bit floating point",
-        "{}: BananaV, ponto flutuante de 32 bits",
-    ),
-    (
-        "{}: BananaV, 32-bit floating point, GPU accelerated",
-        "{}: BananaV, ponto flutuante de 32 bits, acelerado pela placa de vídeo",
-    ),
-    (
-        "{}: BananaV, 32-bit floating point, GPU accelerated, group {}",
-        "{}: BananaV, ponto flutuante de 32 bits, acelerado pela placa de vídeo, grupo {}",
-    ),
-    (
-        "{}: BananaV, 32-bit floating point, group {}",
-        "{}: BananaV, ponto flutuante de 32 bits, grupo {}",
-    ),
     ("{}: Mask {}", "{}: máscara {}"),
     ("{}: no video to match.", "{}: não há vídeo para igualar."),
+    (
+        "{}: Noni, 32-bit floating point",
+        "{}: Noni, ponto flutuante de 32 bits",
+    ),
+    (
+        "{}: Noni, 32-bit floating point, GPU accelerated",
+        "{}: Noni, ponto flutuante de 32 bits, acelerado pela placa de vídeo",
+    ),
+    (
+        "{}: Noni, 32-bit floating point, GPU accelerated, group {}",
+        "{}: Noni, ponto flutuante de 32 bits, acelerado pela placa de vídeo, grupo {}",
+    ),
+    (
+        "{}: Noni, 32-bit floating point, group {}",
+        "{}: Noni, ponto flutuante de 32 bits, grupo {}",
+    ),
     (
         "{}: OFX plug-in {}, group {}",
         "{}: plug-in OFX {}, grupo {}",
@@ -12423,6 +12419,10 @@ Duplo clique: adiciona aos eventos selecionados",
     (
         "{}: {} dB (double-click: 0 dB)",
         "{}: {} dB (clique duplo: 0 dB)",
+    ),
+    (
+        "{}\nDouble-click: add to the selected events",
+        "{}\nDuplo clique: adiciona aos eventos selecionados",
     ),
     ("• {} (bypassed)", "• {} (desativado)"),
 ];
@@ -12463,40 +12463,11 @@ pub(super) const CONTEXT: &[(&str, &str, &str)] = &[
 /// Texts that change with a count: (English one, English other, [one, other]).
 pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
     (
-        "{} media file changed on disk was read again.",
-        "{} media files changed on disk were read again.",
+        "({} picture found in a row)",
+        "({} pictures found in a row)",
         &[
-            "{} arquivo de mídia alterado no disco foi lido de novo.",
-            "{} arquivos de mídia alterados no disco foram lidos de novo.",
-        ],
-    ),
-    (
-        "{} file recorded.",
-        "{} files recorded.",
-        &["{} arquivo gravado.", "{} arquivos gravados."],
-    ),
-    (
-        "Move these {} item to the Recycle Bin?",
-        "Move these {} items to the Recycle Bin?",
-        &[
-            "Mandar este {} item para a Lixeira?",
-            "Mandar estes {} itens para a Lixeira?",
-        ],
-    ),
-    (
-        "{1} holds {0} event. Delete the track and its event?",
-        "{1} holds {0} events. Delete the track and its events?",
-        &[
-            "{1} tem {0} evento. Excluir a trilha e o evento?",
-            "{1} tem {0} eventos. Excluir a trilha e os eventos?",
-        ],
-    ),
-    (
-        "{1} is used by {0} event. Remove it from the project, and the event with it?",
-        "{1} is used by {0} events. Remove it from the project, and the events with it?",
-        &[
-            "{1} é usado por {0} evento. Removê-lo do projeto, junto com o evento?",
-            "{1} é usado por {0} eventos. Removê-lo do projeto, junto com os eventos?",
+            "({} imagem encontrada em sequência)",
+            "({} imagens encontradas em sequência)",
         ],
     ),
     (
@@ -12545,12 +12516,41 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
         ],
     ),
     (
+        "Exported to {} ({} media file was not found: it stays outside the bundle).",
+        "Exported to {} ({} media files were not found: they stay outside the bundle).",
+        &[
+            "Exportado para {} ({} arquivo de mídia não foi encontrado: ele fica fora do pacote).",
+            "Exportado para {} ({} arquivos de mídia não foram encontrados: eles ficam fora do pacote).",
+        ],
+    ),
+    (
+        "Image sequence of {} picture imported.",
+        "Image sequence of {} pictures imported.",
+        &[
+            "Sequência de {} imagem importada.",
+            "Sequência de {} imagens importada.",
+        ],
+    ),
+    (
+        "Move these {} item to the Recycle Bin?",
+        "Move these {} items to the Recycle Bin?",
+        &[
+            "Mandar este {} item para a Lixeira?",
+            "Mandar estes {} itens para a Lixeira?",
+        ],
+    ),
+    (
         "Part removed ({} event cut).",
         "Part removed ({} events cut).",
         &[
             "Trecho removido ({} evento cortado).",
             "Trecho removido ({} eventos cortados).",
         ],
+    ),
+    (
+        "Prerendering {} part…",
+        "Prerendering {} parts…",
+        &["Pré-renderizando {} parte…", "Pré-renderizando {} partes…"],
     ),
     (
         "Project and {} media file saved to {}",
@@ -12561,9 +12561,54 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
         ],
     ),
     (
+        "Project opened: {} event.",
+        "Project opened: {} events.",
+        &["Projeto aberto: {} evento.", "Projeto aberto: {} eventos."],
+    ),
+    (
+        "Remove these {} media file from the project and move it to the Recycle Bin?",
+        "Remove these {} media files from the project and move them to the Recycle Bin?",
+        &[
+            "Remover esta {} mídia do projeto e mandar o arquivo para a Lixeira?",
+            "Remover estas {} mídias do projeto e mandar os arquivos para a Lixeira?",
+        ],
+    ),
+    (
         "Slideshow: {} image.",
         "Slideshow: {} images.",
         &["Apresentação: {} imagem.", "Apresentação: {} imagens."],
+    ),
+    (
+        "The tracks selected hold {0} event. Delete the tracks and their event?",
+        "The tracks selected hold {0} events. Delete the tracks and their events?",
+        &[
+            "As trilhas selecionadas têm {0} evento. Excluir as trilhas e o evento?",
+            "As trilhas selecionadas têm {0} eventos. Excluir as trilhas e os eventos?",
+        ],
+    ),
+    (
+        "Timeline opened: {} event.",
+        "Timeline opened: {} events.",
+        &[
+            "Linha do tempo aberta: {} evento.",
+            "Linha do tempo aberta: {} eventos.",
+        ],
+    ),
+    (
+        "{1} holds {0} event. Delete the track and its event?",
+        "{1} holds {0} events. Delete the track and its events?",
+        &[
+            "{1} tem {0} evento. Excluir a trilha e o evento?",
+            "{1} tem {0} eventos. Excluir a trilha e os eventos?",
+        ],
+    ),
+    (
+        "{1} is used by {0} event. Remove it from the project, and the event with it?",
+        "{1} is used by {0} events. Remove it from the project, and the events with it?",
+        &[
+            "{1} é usado por {0} evento. Removê-lo do projeto, junto com o evento?",
+            "{1} é usado por {0} eventos. Removê-lo do projeto, junto com os eventos?",
+        ],
     ),
     (
         "{1}: filter package of {0} plug-in",
@@ -12578,12 +12623,18 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
         "{} added to {} events.",
         &["{} adicionado a {} evento.", "{} adicionado a {} eventos."],
     ),
-    ("{} channel", "{} channels", &["{} canal", "{} canais"]),
-    ("{} Column", "{} Columns", &["{} coluna", "{} colunas"]),
     (
         "{} and {} more",
         "{} and {} more",
         &["{} e mais {}", "{} e mais {}"],
+    ),
+    (
+        "{} audio effect was left out.",
+        "{} audio effects were left out.",
+        &[
+            "{} efeito de áudio ficou de fora.",
+            "{} efeitos de áudio ficaram de fora.",
+        ],
     ),
     (
         "{} beat marker added.",
@@ -12608,6 +12659,7 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
         "{} CD tracks laid out.",
         &["{} faixa de CD criada.", "{} faixas de CD criadas."],
     ),
+    ("{} channel", "{} channels", &["{} canal", "{} canais"]),
     (
         "{} channel mapped (a template with more renders the rest silent).",
         "{} channels mapped (a template with more renders the rest silent).",
@@ -12621,212 +12673,22 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
         "{} clips copied.",
         &["{} clipe copiado.", "{} clipes copiados."],
     ),
-    ("{} file", "{} files", &["{} arquivo", "{} arquivos"]),
+    ("{} Column", "{} Columns", &["{} coluna", "{} colunas"]),
     (
-        "{} file ({}) is copied into {}.",
-        "{} files ({}) are copied into {}.",
+        "{} effect has no plug-in in Noni.",
+        "{} effects have no plug-in in Noni.",
         &[
-            "{} arquivo ({}) é copiado para {}.",
-            "{} arquivos ({}) são copiados para {}.",
+            "{} efeito não tem plug-in no Noni.",
+            "{} efeitos não têm plug-in no Noni.",
         ],
     ),
     (
-        "{} Hz, {} channel",
-        "{} Hz, {} channels",
-        &["{} Hz, {} canal", "{} Hz, {} canais"],
-    ),
-    (
-        "{} image selected.",
-        "{} images selected.",
-        &["{} imagem selecionada.", "{} imagens selecionadas."],
-    ),
-    ("{} marker", "{} markers", &["{} marcador", "{} marcadores"]),
-    ("{} media", "{} media", &["{} mídia", "{} mídias"]),
-    (
-        "{} media file imported from {}.",
-        "{} media files imported from {}.",
-        &["{} mídia importada de {}.", "{} mídias importadas de {}."],
-    ),
-    (
-        "{} media file imported.",
-        "{} media files imported.",
-        &["{} mídia importada.", "{} mídias importadas."],
-    ),
-    (
-        "{} media file was not found.",
-        "{} media files were not found.",
+        "{} envelope was left out.",
+        "{} envelopes were left out.",
         &[
-            "{} arquivo de mídia não foi encontrado.",
-            "{} arquivos de mídia não foram encontrados.",
+            "{} envelope ficou de fora.",
+            "{} envelopes ficaram de fora.",
         ],
-    ),
-    (
-        "{} media file was not found: the archive points where it was.",
-        "{} media files were not found: the archive points where they were.",
-        &[
-            "{} arquivo de mídia não foi encontrado: o arquivo do projeto aponta para onde ele estava.",
-            "{} arquivos de mídia não foram encontrados: o arquivo do projeto aponta para onde eles estavam.",
-        ],
-    ),
-    (
-        "{} scenes: clip split at {} point.",
-        "{} scenes: clip split at {} points.",
-        &[
-            "{} cenas: clipe dividido em {} ponto.",
-            "{} cenas: clipe dividido em {} pontos.",
-        ],
-    ),
-    (
-        "{} storyboard cell",
-        "{} storyboard cells",
-        &["{} célula de roteiro", "{} células de roteiro"],
-    ),
-    (
-        "{} transition at an event's end was left out.",
-        "{} transitions at events' ends were left out.",
-        &[
-            "{} transição no fim de um evento ficou de fora.",
-            "{} transições no fim de eventos ficaram de fora.",
-        ],
-    ),
-    (
-        "{} unused media file removed from the project.",
-        "{} unused media files removed from the project.",
-        &[
-            "{} mídia sem uso removida do projeto.",
-            "{} mídias sem uso removidas do projeto.",
-        ],
-    ),
-    (
-        "{} unused media file removed.",
-        "{} unused media files removed.",
-        &["{} mídia sem uso removida.", "{} mídias sem uso removidas."],
-    ),
-    (
-        "{} video and audio pair grouped.",
-        "{} video and audio pairs grouped.",
-        &[
-            "{} par de vídeo e áudio agrupado.",
-            "{} pares de vídeo e áudio agrupados.",
-        ],
-    ),
-    (
-        "({} picture found in a row)",
-        "({} pictures found in a row)",
-        &[
-            "({} imagem encontrada em sequência)",
-            "({} imagens encontradas em sequência)",
-        ],
-    ),
-    (
-        "Image sequence of {} picture imported.",
-        "Image sequence of {} pictures imported.",
-        &[
-            "Sequência de {} imagem importada.",
-            "Sequência de {} imagens importada.",
-        ],
-    ),
-    (
-        "{} picture, {} long. Missing ones show black.",
-        "{} pictures, {} long. Missing ones show black.",
-        &[
-            "{} imagem, duração {}. As que faltarem aparecem pretas.",
-            "{} imagens, duração {}. As que faltarem aparecem pretas.",
-        ],
-    ),
-    (
-        "Prerendering {} part…",
-        "Prerendering {} parts…",
-        &["Pré-renderizando {} parte…", "Pré-renderizando {} partes…"],
-    ),
-    (
-        "{} part prerendered.",
-        "{} parts prerendered.",
-        &["{} parte pré-renderizada.", "{} partes pré-renderizadas."],
-    ),
-    (
-        "{} prerendered file deleted.",
-        "{} prerendered files deleted.",
-        &[
-            "{} arquivo pré-renderizado excluído.",
-            "{} arquivos pré-renderizados excluídos.",
-        ],
-    ),
-    (
-        "{} recording added.",
-        "{} recordings added.",
-        &["{} gravação adicionada.", "{} gravações adicionadas."],
-    ),
-    (
-        "{} frame at {} fps",
-        "{} frames at {} fps",
-        &["{} quadro a {} fps", "{} quadros a {} fps"],
-    ),
-    (
-        "{} file imported into Project Media.",
-        "{} files imported into Project Media.",
-        &[
-            "{} arquivo importado para a Mídia do projeto.",
-            "{} arquivos importados para a Mídia do projeto.",
-        ],
-    ),
-    (
-        "{} title on the disc.",
-        "{} titles on the disc.",
-        &["{} título no disco.", "{} títulos no disco."],
-    ),
-    (
-        "{} plug-in file could not be used",
-        "{} plug-in files could not be used",
-        &[
-            "{} arquivo de plug-in não pôde ser usado",
-            "{} arquivos de plug-in não puderam ser usados",
-        ],
-    ),
-    (
-        "Timeline opened: {} event.",
-        "Timeline opened: {} events.",
-        &[
-            "Linha do tempo aberta: {} evento.",
-            "Linha do tempo aberta: {} eventos.",
-        ],
-    ),
-    (
-        "{} media file was not found: {}.",
-        "{} media files were not found: {}.",
-        &[
-            "{} arquivo de mídia não foi encontrado: {}.",
-            "{} arquivos de mídia não foram encontrados: {}.",
-        ],
-    ),
-    (
-        "{} item could not be brought in.",
-        "{} items could not be brought in.",
-        &[
-            "{} item não pôde ser trazido.",
-            "{} itens não puderam ser trazidos.",
-        ],
-    ),
-    (
-        "Exported to {} ({} media file was not found: it stays outside the bundle).",
-        "Exported to {} ({} media files were not found: they stay outside the bundle).",
-        &[
-            "Exportado para {} ({} arquivo de mídia não foi encontrado: ele fica fora do pacote).",
-            "Exportado para {} ({} arquivos de mídia não foram encontrados: eles ficam fora do pacote).",
-        ],
-    ),
-    (
-        "{} Titles & Text event took this look.",
-        "{} Titles & Text events took this look.",
-        &[
-            "{} evento de Títulos e Texto ficou com esta aparência.",
-            "{} eventos de Títulos e Texto ficaram com esta aparência.",
-        ],
-    ),
-    (
-        "{} subtitle inserted.",
-        "{} subtitles inserted.",
-        &["{} legenda inserida.", "{} legendas inseridas."],
     ),
     (
         "{} event lined up with the target.",
@@ -12834,6 +12696,14 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
         &[
             "{} evento alinhado com o alvo.",
             "{} eventos alinhados com o alvo.",
+        ],
+    ),
+    (
+        "{} event of generated media was left out.",
+        "{} events of generated media were left out.",
+        &[
+            "{} evento de mídia gerada ficou de fora.",
+            "{} eventos de mídia gerada ficaram de fora.",
         ],
     ),
     (
@@ -12884,20 +12754,106 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
             "O som de {} eventos não corresponde ao do alvo.",
         ],
     ),
+    ("{} file", "{} files", &["{} arquivo", "{} arquivos"]),
     (
-        "{} video file swapped.",
-        "{} video files swapped.",
+        "{} file ({}) is copied into {}.",
+        "{} files ({}) are copied into {}.",
         &[
-            "{} arquivo de vídeo trocado.",
-            "{} arquivos de vídeo trocados.",
+            "{} arquivo ({}) é copiado para {}.",
+            "{} arquivos ({}) são copiados para {}.",
         ],
     ),
     (
-        "Remove these {} media file from the project and move it to the Recycle Bin?",
-        "Remove these {} media files from the project and move them to the Recycle Bin?",
+        "{} file imported into Project Media.",
+        "{} files imported into Project Media.",
         &[
-            "Remover esta {} mídia do projeto e mandar o arquivo para a Lixeira?",
-            "Remover estas {} mídias do projeto e mandar os arquivos para a Lixeira?",
+            "{} arquivo importado para a Mídia do projeto.",
+            "{} arquivos importados para a Mídia do projeto.",
+        ],
+    ),
+    (
+        "{} file recorded.",
+        "{} files recorded.",
+        &["{} arquivo gravado.", "{} arquivos gravados."],
+    ),
+    (
+        "{} frame at {} fps",
+        "{} frames at {} fps",
+        &["{} quadro a {} fps", "{} quadros a {} fps"],
+    ),
+    (
+        "{} has no date or time stamp.",
+        "{} have no date or time stamp.",
+        &[
+            "{} não tem data ou hora gravada.",
+            "{} não têm data ou hora gravada.",
+        ],
+    ),
+    (
+        "{} has no timecode.",
+        "{} have no timecode.",
+        &["{} não tem timecode.", "{} não têm timecode."],
+    ),
+    (
+        "{} Hz, {} channel",
+        "{} Hz, {} channels",
+        &["{} Hz, {} canal", "{} Hz, {} canais"],
+    ),
+    (
+        "{} image selected.",
+        "{} images selected.",
+        &["{} imagem selecionada.", "{} imagens selecionadas."],
+    ),
+    (
+        "{} item could not be brought in.",
+        "{} items could not be brought in.",
+        &[
+            "{} item não pôde ser trazido.",
+            "{} itens não puderam ser trazidos.",
+        ],
+    ),
+    ("{} marker", "{} markers", &["{} marcador", "{} marcadores"]),
+    ("{} media", "{} media", &["{} mídia", "{} mídias"]),
+    (
+        "{} media file changed on disk was read again.",
+        "{} media files changed on disk were read again.",
+        &[
+            "{} arquivo de mídia alterado no disco foi lido de novo.",
+            "{} arquivos de mídia alterados no disco foram lidos de novo.",
+        ],
+    ),
+    (
+        "{} media file imported from {}.",
+        "{} media files imported from {}.",
+        &["{} mídia importada de {}.", "{} mídias importadas de {}."],
+    ),
+    (
+        "{} media file imported.",
+        "{} media files imported.",
+        &["{} mídia importada.", "{} mídias importadas."],
+    ),
+    (
+        "{} media file was not found.",
+        "{} media files were not found.",
+        &[
+            "{} arquivo de mídia não foi encontrado.",
+            "{} arquivos de mídia não foram encontrados.",
+        ],
+    ),
+    (
+        "{} media file was not found: the archive points where it was.",
+        "{} media files were not found: the archive points where they were.",
+        &[
+            "{} arquivo de mídia não foi encontrado: o arquivo do projeto aponta para onde ele estava.",
+            "{} arquivos de mídia não foram encontrados: o arquivo do projeto aponta para onde eles estavam.",
+        ],
+    ),
+    (
+        "{} media file was not found: {}.",
+        "{} media files were not found: {}.",
+        &[
+            "{} arquivo de mídia não foi encontrado: {}.",
+            "{} arquivos de mídia não foram encontrados: {}.",
         ],
     ),
     (
@@ -12909,25 +12865,38 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
         ],
     ),
     (
-        "{} has no timecode.",
-        "{} have no timecode.",
-        &["{} não tem timecode.", "{} não têm timecode."],
+        "{} part prerendered.",
+        "{} parts prerendered.",
+        &["{} parte pré-renderizada.", "{} partes pré-renderizadas."],
     ),
     (
-        "{} has no date or time stamp.",
-        "{} have no date or time stamp.",
+        "{} picture, {} long. Missing ones show black.",
+        "{} pictures, {} long. Missing ones show black.",
         &[
-            "{} não tem data ou hora gravada.",
-            "{} não têm data ou hora gravada.",
+            "{} imagem, duração {}. As que faltarem aparecem pretas.",
+            "{} imagens, duração {}. As que faltarem aparecem pretas.",
         ],
     ),
     (
-        "{} subclip added to Project Media.",
-        "{} subclips added to Project Media.",
+        "{} plug-in file could not be used",
+        "{} plug-in files could not be used",
         &[
-            "{} subclipe adicionado à Mídia do projeto.",
-            "{} subclipes adicionados à Mídia do projeto.",
+            "{} arquivo de plug-in não pôde ser usado",
+            "{} arquivos de plug-in não puderam ser usados",
         ],
+    ),
+    (
+        "{} prerendered file deleted.",
+        "{} prerendered files deleted.",
+        &[
+            "{} arquivo pré-renderizado excluído.",
+            "{} arquivos pré-renderizados excluídos.",
+        ],
+    ),
+    (
+        "{} recording added.",
+        "{} recordings added.",
+        &["{} gravação adicionada.", "{} gravações adicionadas."],
     ),
     (
         "{} scene added to the timeline.",
@@ -12938,48 +12907,79 @@ pub(super) const PLURALS: &[(&str, &str, &[&str])] = &[
         ],
     ),
     (
-        "The tracks selected hold {0} event. Delete the tracks and their event?",
-        "The tracks selected hold {0} events. Delete the tracks and their events?",
+        "{} scenes: clip split at {} point.",
+        "{} scenes: clip split at {} points.",
         &[
-            "As trilhas selecionadas têm {0} evento. Excluir as trilhas e o evento?",
-            "As trilhas selecionadas têm {0} eventos. Excluir as trilhas e os eventos?",
+            "{} cenas: clipe dividido em {} ponto.",
+            "{} cenas: clipe dividido em {} pontos.",
         ],
     ),
     (
-        "Project opened: {} event.",
-        "Project opened: {} events.",
-        &["Projeto aberto: {} evento.", "Projeto aberto: {} eventos."],
+        "{} storyboard cell",
+        "{} storyboard cells",
+        &["{} célula de roteiro", "{} células de roteiro"],
     ),
     (
-        "{} audio effect was left out.",
-        "{} audio effects were left out.",
+        "{} subclip added to Project Media.",
+        "{} subclips added to Project Media.",
         &[
-            "{} efeito de áudio ficou de fora.",
-            "{} efeitos de áudio ficaram de fora.",
+            "{} subclipe adicionado à Mídia do projeto.",
+            "{} subclipes adicionados à Mídia do projeto.",
         ],
     ),
     (
-        "{} effect has no plug-in in BananaV.",
-        "{} effects have no plug-in in BananaV.",
+        "{} subtitle inserted.",
+        "{} subtitles inserted.",
+        &["{} legenda inserida.", "{} legendas inseridas."],
+    ),
+    (
+        "{} title on the disc.",
+        "{} titles on the disc.",
+        &["{} título no disco.", "{} títulos no disco."],
+    ),
+    (
+        "{} Titles & Text event took this look.",
+        "{} Titles & Text events took this look.",
         &[
-            "{} efeito não tem plug-in no BananaV.",
-            "{} efeitos não têm plug-in no BananaV.",
+            "{} evento de Títulos e Texto ficou com esta aparência.",
+            "{} eventos de Títulos e Texto ficaram com esta aparência.",
         ],
     ),
     (
-        "{} envelope was left out.",
-        "{} envelopes were left out.",
+        "{} transition at an event's end was left out.",
+        "{} transitions at events' ends were left out.",
         &[
-            "{} envelope ficou de fora.",
-            "{} envelopes ficaram de fora.",
+            "{} transição no fim de um evento ficou de fora.",
+            "{} transições no fim de eventos ficaram de fora.",
         ],
     ),
     (
-        "{} event of generated media was left out.",
-        "{} events of generated media were left out.",
+        "{} unused media file removed from the project.",
+        "{} unused media files removed from the project.",
         &[
-            "{} evento de mídia gerada ficou de fora.",
-            "{} eventos de mídia gerada ficaram de fora.",
+            "{} mídia sem uso removida do projeto.",
+            "{} mídias sem uso removidas do projeto.",
+        ],
+    ),
+    (
+        "{} unused media file removed.",
+        "{} unused media files removed.",
+        &["{} mídia sem uso removida.", "{} mídias sem uso removidas."],
+    ),
+    (
+        "{} video and audio pair grouped.",
+        "{} video and audio pairs grouped.",
+        &[
+            "{} par de vídeo e áudio agrupado.",
+            "{} pares de vídeo e áudio agrupados.",
+        ],
+    ),
+    (
+        "{} video file swapped.",
+        "{} video files swapped.",
+        &[
+            "{} arquivo de vídeo trocado.",
+            "{} arquivos de vídeo trocados.",
         ],
     ),
 ];

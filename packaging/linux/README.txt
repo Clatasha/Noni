@@ -1,10 +1,9 @@
-BananaV — video editor (Linux)
-==============================
+Noni Video Editor (Linux)
+=========================
 
-- Website: https://bananav-editor.github.io/
-- Help and community: https://discord.gg/vtC7Yasz98
+- Project: https://github.com/Clatasha/Noni
 
-Make the AppImage executable (chmod +x BananaV-*.AppImage) and run it.
+Make the AppImage executable (chmod +x Noni-*.AppImage) and run it.
 Nothing to install.
 
 Requirements
@@ -12,7 +11,7 @@ Requirements
   Debian 12, Fedora 36 and later): the x64 package on Intel and AMD
   processors, the ARM64 package on ARM ones.
 - A graphics card with Vulkan or OpenGL (Mesa or NVIDIA's driver).
-- An X11 or Wayland desktop. Under Wayland BananaV's windows go through
+- An X11 or Wayland desktop. Under Wayland Noni's windows go through
   XWayland, so that dialogs can be placed and the eyedropper and the
   numeric keypad work; BANANAV_WAYLAND=1 gives Wayland's own windows.
 - Sound through ALSA (PipeWire and PulseAudio offer it).
@@ -28,25 +27,26 @@ Settings
   it to Brazilian Portuguese.
 
 License
-- BananaV is free software: you can redistribute it and/or modify it
+- Noni is free software: you can redistribute it and/or modify it
   under the terms of the GNU General Public License as published by the
   Free Software Foundation, either version 3 of the License, or (at your
   option) any later version (LICENSE.txt, beside this file). It comes
   with ABSOLUTELY NO WARRANTY.
-- Its source code is at https://github.com/acasoq-web/BananaV.
+- Its source code is at https://github.com/Clatasha/Noni.
+- Noni is based on BananaV (https://github.com/acasoq-web/BananaV).
 - The open-source libraries it is built with, and their licenses, are in
   THIRD-PARTY-NOTICES.txt; the system libraries the AppImage carries, and
   theirs, in SYSTEM-LIBRARIES-NOTICES.txt, beside this file.
 
 FFmpeg
-- BananaV reads and writes media with FFmpeg's libraries, included here
+- Noni reads and writes media with FFmpeg's libraries, included here
   under the GNU Lesser General Public License 2.1 or later
   (https://ffmpeg.org; FFmpeg-LGPL-2.1.txt and FFmpeg-license.md, beside
   this file). They were built from FFmpeg's sources by
   packaging/linux/build_ffmpeg.sh. FFmpeg's sources, that script and the
   sources of LAME (libmp3lame, also under the LGPL), which the AppImage
   carries too, are published beside this package, in the same release, as
-  BananaV-<version>-LGPL-sources.tar.gz.
+  Noni-<version>-LGPL-sources.tar.gz.
 
 Fonts
 - The Timecode effect writes with the glyphs of Arimo Bold, Copyright

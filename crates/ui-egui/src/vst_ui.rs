@@ -393,7 +393,7 @@ pub(crate) fn page(
             let r = if bv_platform::PLUGIN_WINDOWS {
                 r
             } else {
-                r.on_disabled_hover_text(tr("Coming soon to BananaV"))
+                r.on_disabled_hover_text(tr("Coming soon to Noni"))
             };
             if r.clicked() {
                 if open {

@@ -1585,7 +1585,7 @@ impl SettingsDialog {
                     let mut off = false;
                     ui.add_enabled_ui(false, |ui| crate::widgets::checkbox(ui, &mut off, label))
                         .inner
-                        .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                        .on_disabled_hover_text(tr("Coming soon to Noni"));
                 };
                 soon(ui, tr("Enable ST.2084 HDR Scope"));
                 ui.indent("hdr-scope", |ui| soon(ui, tr("10 bit scale")));

@@ -251,7 +251,7 @@ impl BurnTaoDialog {
                                     ui.selectable_value(&mut self.action, a, a.name())
                                 })
                                 .response
-                                .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                                .on_disabled_hover_text(tr("Coming soon to Noni"));
                             }
                         });
                     ui.end_row();
@@ -344,7 +344,7 @@ impl BurnDaoDialog {
                     tr("Test only (do not burn CDs)"),
                 ] {
                     ui.add_enabled(false, egui::RadioButton::new(false, test))
-                        .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                        .on_disabled_hover_text(tr("Coming soon to Noni"));
                 }
                 ui.add_space(6.0);
                 // BananaV always renders the sound first.
@@ -356,7 +356,7 @@ impl BurnDaoDialog {
                         tr("Render temporary image before burning"),
                     ),
                 )
-                .on_disabled_hover_text(tr("BananaV always renders the sound before burning."));
+                .on_disabled_hover_text(tr("Noni always renders the sound before burning."));
                 ui.checkbox(
                     &mut s.auto_erase,
                     tr("Automatically erase rewritable discs"),

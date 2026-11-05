@@ -509,8 +509,8 @@ pub(crate) fn open(app: &mut BananaApp, path: &Path) {
             imported.effects_left,
             trn!(
                 imported.effects_left,
-                "{} effect has no plug-in in BananaV.",
-                "{} effects have no plug-in in BananaV.",
+                "{} effect has no plug-in in Noni.",
+                "{} effects have no plug-in in Noni.",
                 imported.effects_left
             ),
         ),

@@ -1009,7 +1009,7 @@ impl ProjectPropertiesDialog {
     /// Source media adjustment, prerendering and the prerendered files
     /// folder.
     fn prerender(&mut self, ui: &mut Ui) {
-        let soon = tr("Coming soon to BananaV");
+        let soon = tr("Coming soon to Noni");
         widgets::checkbox(
             ui,
             &mut self.draft.settings.adjust_source,
@@ -1361,7 +1361,7 @@ impl ProjectPropertiesDialog {
 /// equirectangular (the Video Preview's 360° View looks around in them,
 /// renders are marked as 360° video).
 fn advanced(ui: &mut Ui, s: &mut ProjectSettings) {
-    let soon = tr("Coming soon to BananaV");
+    let soon = tr("Coming soon to Noni");
     ui.spacing_mut().item_spacing.y = 6.0;
     ui.label(tr("Master Display:"));
     ui.horizontal(|ui| {

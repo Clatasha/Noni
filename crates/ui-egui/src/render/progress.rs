@@ -501,7 +501,7 @@ impl ProgressWindow {
                 if self.shutdown {
                     bv_platform::shutdown_in(
                         60,
-                        tr("BananaV finished rendering: the computer shuts down in one minute."),
+                        tr("Noni finished rendering: the computer shuts down in one minute."),
                     );
                 }
             }

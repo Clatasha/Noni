@@ -372,7 +372,7 @@ impl KeyboardDialog {
                             );
                         }
                         let resp = if soon {
-                            resp.on_hover_text(tr("Not available in BananaV yet"))
+                            resp.on_hover_text(tr("Not available in Noni yet"))
                         } else if let Action::Cmd(cmd) = c.action {
                             resp.on_hover_text(cmd.label(app))
                         } else {

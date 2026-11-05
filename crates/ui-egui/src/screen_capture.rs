@@ -38,7 +38,7 @@ pub(crate) fn capture_folder(s: &CaptureSettings) -> PathBuf {
         bv_platform::user_dir(bv_platform::UserDir::Videos)
             .or_else(bv_platform::home_dir)
             .unwrap_or_else(std::env::temp_dir)
-            .join("BananaV Captures")
+            .join("Noni Captures")
     })
 }
 
@@ -893,7 +893,7 @@ fn settings_dialog(ctx: &egui::Context, app: &mut BananaApp) {
             ui.add_space(6.0);
             ui.label(RichText::new(tr("Installed Version")).strong());
             ui.label(
-                RichText::new(format!("BananaV {}", env!("CARGO_PKG_VERSION")))
+                RichText::new(format!("Noni {}", env!("CARGO_PKG_VERSION")))
                     .color(theme::text_disabled()),
             );
         });

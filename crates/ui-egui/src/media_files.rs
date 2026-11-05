@@ -68,7 +68,7 @@ pub(crate) fn media_filters(d: rfd::FileDialog) -> rfd::FileDialog {
     let mut all = all_media();
     all.push("bvproj");
     kinds(d.add_filter(tr("All Media Files"), &all))
-        .add_filter(tr("BananaV Project"), &["bvproj"])
+        .add_filter(tr("Noni Project"), &["bvproj"])
         .add_filter(tr("All Files"), &["*"])
 }
 
@@ -79,7 +79,7 @@ pub(crate) fn open_filters(d: rfd::FileDialog) -> rfd::FileDialog {
     all.extend(all_media());
     let d = d
         .add_filter(tr("All Project and Media Files"), &all)
-        .add_filter(tr("BananaV Project"), &["bvproj"])
+        .add_filter(tr("Noni Project"), &["bvproj"])
         .add_filter(tr("VEG Project (*.veg)"), &["veg"])
         .add_filter("OpenTimelineIO (*.otio, *.otioz)", &["otio", "otioz"])
         .add_filter("Final Cut Pro 7/DaVinci Resolve (*.xml)", &["xml"])

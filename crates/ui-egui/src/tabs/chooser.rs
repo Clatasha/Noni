@@ -457,7 +457,7 @@ fn strip_ui(
             (0, _) => tr("All plug-ins; the magnifier searches them"),
             (1, _) => tr("The plug-ins marked with a star"),
             (_, true) => "",
-            (_, false) => tr("Coming soon to BananaV"),
+            (_, false) => tr("Coming soon to Noni"),
         };
         if !tip.is_empty() {
             resp.on_hover_text(tip);
@@ -496,7 +496,7 @@ fn strip_ui(
                     state.category = i;
                     ui.close();
                 }
-                item.on_disabled_hover_text(tr("Coming soon to BananaV"));
+                item.on_disabled_hover_text(tr("Coming soon to Noni"));
             }
         });
     }
@@ -527,7 +527,7 @@ fn strip_ui(
         Icon::Views,
         theme::text_disabled(),
     );
-    resp.on_hover_text(tr("Coming soon to BananaV"));
+    resp.on_hover_text(tr("Coming soon to Noni"));
     (refresh, explore)
 }
 
@@ -638,7 +638,7 @@ fn list_ui(
                         dragged = Some(i);
                     }
                     if !p.ready {
-                        resp.on_hover_text(tr("Coming soon to BananaV"));
+                        resp.on_hover_text(tr("Coming soon to Noni"));
                     }
                 }
             });

@@ -695,7 +695,7 @@ impl TbButton {
     /// Tooltip: the name and the keys that run it ("Play (Space)").
     pub fn tooltip(self, app: &BananaApp) -> String {
         if !self.available() {
-            return format!("{} — {}", self.label(), tr("Coming soon to BananaV"));
+            return format!("{} — {}", self.label(), tr("Coming soon to Noni"));
         }
         // Transport keys that live outside the keyboard map.
         let fixed: &[&str] = match self {

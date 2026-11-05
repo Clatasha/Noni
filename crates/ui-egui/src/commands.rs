@@ -698,7 +698,7 @@ impl Cmd {
             ImportClosedCaptioning => tr("Closed Captioning…"),
             ImportFcpxml => "Final Cut Pro X (*.fcpxml)…",
             ImportBwf => tr("Broadcast Wave Format…"),
-            ExportProject => tr("BananaV Project File (*.bvproj)…"),
+            ExportProject => tr("Noni Project File (*.bvproj)…"),
             ExportArchive => tr("Project Archive…"),
             CopyMediaWithProject => tr("Copy Media with Project"),
             ExportXml => "Final Cut Pro 7/DaVinci Resolve (*.xml)…",

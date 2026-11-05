@@ -1,12 +1,11 @@
-BananaV — video editor (Windows)
-================================
+Noni Video Editor (Windows)
+=========================
 
-- Website: https://bananav-editor.github.io/
-- Help and community: https://discord.gg/vtC7Yasz98
+- Project: https://github.com/Clatasha/Noni
 
-The installer (BananaV-...-setup.exe) puts BananaV in your Start menu, with
+The installer (Noni-...-setup.exe) puts Noni in your Start menu, with
 no administrator password, and Settings > Apps uninstalls it. The zip needs
-no installation: unpack it anywhere and run BananaV.exe. The builds are not
+no installation: unpack it anywhere and run Noni.exe. The builds are not
 signed yet, so Windows may warn about an unknown publisher the first time
 ("More info", then "Run anyway").
 
@@ -25,12 +24,13 @@ Settings
   it to Brazilian Portuguese.
 
 License
-- BananaV is free software: you can redistribute it and/or modify it
+- Noni is free software: you can redistribute it and/or modify it
   under the terms of the GNU General Public License as published by the
   Free Software Foundation, either version 3 of the License, or (at your
   option) any later version (LICENSE.txt, beside this file). It comes
   with ABSOLUTELY NO WARRANTY.
-- Its source code is at https://github.com/acasoq-web/BananaV.
+- Its source code is at https://github.com/Clatasha/Noni.
+- Noni is based on BananaV (https://github.com/acasoq-web/BananaV).
 - The open-source libraries it is built with, and their licenses, are in
   THIRD-PARTY-NOTICES.txt, beside this file.
 

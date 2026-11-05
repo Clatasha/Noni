@@ -42,7 +42,7 @@ fn plugins(list: &[std::sync::Arc<bv_ofx::PluginInfo>]) -> Vec<Plugin> {
                 key: format!("ofx:{}", p.identifier),
                 about: [
                     trf!(
-                        "{}: BananaV, 32-bit floating point, group {}",
+                        "{}: Noni, 32-bit floating point, group {}",
                         name,
                         tr("Creative")
                     ),

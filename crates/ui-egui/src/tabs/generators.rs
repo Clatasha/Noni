@@ -461,10 +461,10 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
         ready: k.ready(),
         about: [
             if k == Kind::TestTone || k.plugin().is_some() {
-                trf!("{}: BananaV, 32-bit floating point", k.name())
+                trf!("{}: Noni, 32-bit floating point", k.name())
             } else {
                 trf!(
-                    "{}: BananaV, 32-bit floating point, GPU accelerated",
+                    "{}: Noni, 32-bit floating point, GPU accelerated",
                     k.name()
                 )
             },

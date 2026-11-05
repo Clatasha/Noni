@@ -1005,7 +1005,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                 app.preview.view_360 = !app.preview.view_360;
             }
             icon_button_ex(ui, Icon::Hdr, tr("HDR Preview"), false, false)
-                .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                .on_disabled_hover_text(tr("Coming soon to Noni"));
         }
         let height = bar.min_rect().height().max(row.height());
         ui.advance_cursor_after_rect(Rect::from_min_size(row.min, vec2(row.width(), height)));

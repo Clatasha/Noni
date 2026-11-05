@@ -258,7 +258,7 @@ pub(crate) fn general_text(
         }
         // ProRes and AC-3: BananaV's own decoders on the system's packets.
         if d.readers.contains(&FileReader::Own) && reader != FileReader::Own {
-            out.line(1, &trf!("Decoder: {}", "BananaV"));
+            out.line(1, &trf!("Decoder: {}", "Noni"));
         }
     }
     out.0
@@ -333,11 +333,11 @@ fn reader_module(reader: FileReader, d: &FileDescription) -> Module {
                 name: exe
                     .as_deref()
                     .and_then(|p| p.file_name())
-                    .map_or_else(|| "BananaV".into(), |n| n.to_string_lossy().into()),
+                    .map_or_else(|| "Noni".into(), |n| n.to_string_lossy().into()),
                 path: exe,
                 format,
                 version: Some(env!("CARGO_PKG_VERSION").to_string()),
-                company: Some("BananaV".into()),
+                company: Some("Noni".into()),
             }
         }
         FileReader::SystemPictures if cfg!(windows) => system("WindowsCodecs.dll"),

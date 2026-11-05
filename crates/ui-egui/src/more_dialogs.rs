@@ -112,8 +112,8 @@ impl Preferences {
 pub fn export_preferences(app: &mut BananaApp) {
     let Some(path) = rfd::FileDialog::new()
         .set_title(tr("Export Preferences"))
-        .add_filter(tr("BananaV Preferences"), &["json"])
-        .set_file_name(tr("BananaV Preferences.json"))
+        .add_filter(tr("Noni Preferences"), &["json"])
+        .set_file_name(tr("Noni Preferences.json"))
         .save_file()
     else {
         return;
@@ -128,7 +128,7 @@ pub fn export_preferences(app: &mut BananaApp) {
 pub fn import_preferences(app: &mut BananaApp) {
     let Some(path) = rfd::FileDialog::new()
         .set_title(tr("Import Preferences"))
-        .add_filter(tr("BananaV Preferences"), &["json"])
+        .add_filter(tr("Noni Preferences"), &["json"])
         .pick_file()
     else {
         return;
@@ -550,7 +550,7 @@ impl MoreDialogs {
             return;
         };
         let mut open = true;
-        crate::floating::Window::new(tr("BananaV Help"))
+        crate::floating::Window::new(tr("Noni Help"))
             .default_size([620.0, 520.0])
             .open(&mut open)
             .show(ctx, |ui| {

@@ -1759,8 +1759,8 @@ fn automation_row(
     });
     menu.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
     if !enabled {
-        icon.on_hover_text(tr("Coming soon to BananaV"));
-        menu.on_hover_text(tr("Coming soon to BananaV"));
+        icon.on_hover_text(tr("Coming soon to Noni"));
+        menu.on_hover_text(tr("Coming soon to Noni"));
         return (false, None);
     }
     let icon = icon.on_hover_text(trf!("Automation Settings: {}", name));
@@ -2727,7 +2727,7 @@ fn master_strip(ui: &mut egui::Ui, app: &mut BananaApp, sizes: &Sizes, view: &Co
                 false,
                 theme::banana(),
                 false,
-                tr("Coming soon to BananaV"),
+                tr("Coming soon to Noni"),
             );
             // Its effects: the Plug-In Chooser while it has none; their
             // order before or after its volume.
@@ -2783,7 +2783,7 @@ fn master_strip(ui: &mut egui::Ui, app: &mut BananaApp, sizes: &Sizes, view: &Co
                     Icon::Lock,
                     false,
                     false,
-                    tr("Coming soon to BananaV"),
+                    tr("Coming soon to Noni"),
                 );
             }
             let (moved, _, r) = fader_at(

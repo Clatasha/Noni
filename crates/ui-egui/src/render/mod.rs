@@ -1479,7 +1479,7 @@ impl RenderDialog {
                                 templates::aspect(v.width, v.height)
                             )),
                         )
-                        .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                        .on_disabled_hover_text(tr("Coming soon to Noni"));
                     }
                 }
                 let has_loop = app.project().loop_region.is_some();
@@ -1592,7 +1592,7 @@ impl RenderDialog {
 
 fn unavailable_text(a: Availability) -> &'static str {
     match a {
-        Availability::Soon => tr("Coming soon to BananaV"),
+        Availability::Soon => tr("Coming soon to Noni"),
         Availability::NoEncoder => tr(
             "This computer has no encoder for this format (a Windows extension or driver is missing).",
         ),
@@ -1614,7 +1614,7 @@ fn format_help(f: FileFormat) -> &'static str {
             "AV1 video and AAC audio in MP4: the most efficient web codec, encoded by recent graphics cards.",
         ),
         ProRes => tr(
-            "Apple ProRes in QuickTime: an editing codec of constant quality. BananaV's own encoder.",
+            "Apple ProRes in QuickTime: an editing codec of constant quality. Noni's own encoder.",
         ),
         Wmv => tr("Windows Media Video 9 with Windows Media Audio, encoded by Windows."),
         Mpeg1 => tr("MPEG-1 for Video CD authoring."),
@@ -1625,7 +1625,7 @@ fn format_help(f: FileFormat) -> &'static str {
         Aac => tr("AAC audio in an MPEG-4 file (.m4a)."),
         Ac3 => tr("Dolby Digital (AC-3), for DVD and Blu-ray."),
         Aiff => tr("Uncompressed audio in Apple's AIFF."),
-        Flac => tr("Lossless compressed audio. BananaV's own encoder."),
+        Flac => tr("Lossless compressed audio. Noni's own encoder."),
         Mp3 => tr("MPEG Layer 3 audio, encoded by Windows."),
         OggVorbis => tr("Ogg Vorbis audio."),
         Wav => tr("Uncompressed audio in a Wave file (RF64 past 4 GB)."),

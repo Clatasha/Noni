@@ -147,11 +147,11 @@ impl BananaApp {
             Asked::Associate => match bv_platform::associate_project_files(
                 PROJECT_EXTENSION,
                 PROJECT_TYPE,
-                tr("BananaV Project"),
+                tr("Noni Project"),
             ) {
-                Ok(()) => self.notify(tr("BananaV now opens its project files (.bvproj).")),
+                Ok(()) => self.notify(tr("Noni now opens its project files (.bvproj).")),
                 Err(e) => {
-                    self.report_error(trf!("Could not make BananaV open its project files: {}", e))
+                    self.report_error(trf!("Could not make Noni open its project files: {}", e))
                 }
             },
             Asked::Recover { file, original } => self.recover(&file, original),
@@ -261,7 +261,7 @@ impl BananaApp {
         self.ask_user(Ask {
             title: tr("Project Files").into(),
             text: tr(
-                "BananaV is not the program that opens BananaV projects (.bvproj). Make it the one?",
+                "Make Noni the default app for .bvproj project files?",
             )
             .into(),
             what: Asked::Associate,
@@ -276,7 +276,7 @@ impl BananaApp {
 /// BananaV's project files.
 pub(crate) const PROJECT_EXTENSION: &str = "bvproj";
 /// The type Windows knows them by.
-const PROJECT_TYPE: &str = "BananaV.Project";
+const PROJECT_TYPE: &str = "Noni.Project";
 
 #[cfg(test)]
 mod tests {

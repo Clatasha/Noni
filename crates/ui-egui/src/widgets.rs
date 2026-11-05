@@ -847,14 +847,14 @@ pub fn tab_button(ui: &mut Ui, text: &str, on: bool, enabled: bool, min_width: f
         .min_size(vec2(min_width, 24.0))
         .selected(on);
     ui.add_enabled(enabled, button)
-        .on_disabled_hover_text(tr("Coming soon to BananaV"))
+        .on_disabled_hover_text(tr("Coming soon to Noni"))
 }
 
 /// An item of a drop-down list that BananaV cannot do yet: greyed out,
 /// with the "Coming soon" tip.
 pub fn soon_item(ui: &mut Ui, text: &str) {
     ui.add_enabled(false, egui::Button::selectable(false, text))
-        .on_disabled_hover_text(tr("Coming soon to BananaV"));
+        .on_disabled_hover_text(tr("Coming soon to Noni"));
 }
 
 /// A text box with a drop-down list, like a Windows editable combo box:

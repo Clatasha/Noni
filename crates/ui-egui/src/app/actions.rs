@@ -118,8 +118,8 @@ impl BananaApp {
     /// file open.
     pub(crate) fn export_project_copy(&mut self) {
         let Some(path) = rfd::FileDialog::new()
-            .set_title(tr("Export BananaV Project"))
-            .add_filter(tr("BananaV Project"), &["bvproj"])
+            .set_title(tr("Export Noni Project"))
+            .add_filter(tr("Noni Project"), &["bvproj"])
             .set_file_name(tr("Copy.bvproj"))
             .save_file()
         else {

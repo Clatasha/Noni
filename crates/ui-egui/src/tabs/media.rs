@@ -525,7 +525,7 @@ fn toolbar(ui: &mut Ui, app: &mut BananaApp) {
             app.open_screen_capture();
         }
         icon_button_ex(ui, Icon::Disc, tr("Extract Audio from CD"), false, false)
-            .on_disabled_hover_text(tr("Coming soon to BananaV"));
+            .on_disabled_hover_text(tr("Coming soon to Noni"));
         if icon_button_ex(
             ui,
             Icon::Delete,
@@ -796,7 +796,7 @@ fn bin_row(
     let resp = if ready {
         resp
     } else {
-        resp.on_hover_text(tr("Coming soon to BananaV"))
+        resp.on_hover_text(tr("Coming soon to Noni"))
     };
     RowResponse {
         toggled: open.is_some() && (resp.double_clicked() || (resp.clicked() && on_arrow)),

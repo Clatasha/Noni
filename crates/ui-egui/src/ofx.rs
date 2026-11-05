@@ -1288,7 +1288,7 @@ fn header(
                             ui.label(RichText::new(&name).strong());
                             let [major, minor] = info.version;
                             let who = if own {
-                                trf!("BananaV, version {}.{}", major, minor)
+                                trf!("Noni, version {}.{}", major, minor)
                             } else {
                                 trf!("OFX plug-in, version {}.{}", major, minor)
                             };
@@ -1586,7 +1586,7 @@ impl<'a> Rows<'a> {
                 let label = say(self.own, &info.label);
                 let r = ui.add_enabled(info.enabled && ready, egui::Button::new(label));
                 let r = if !ready {
-                    r.on_disabled_hover_text(tr("Coming soon to BananaV"))
+                    r.on_disabled_hover_text(tr("Coming soon to Noni"))
                 } else if info.hint.is_empty() {
                     r
                 } else {
@@ -2249,7 +2249,7 @@ impl<'a> Rows<'a> {
                     let r = if ready {
                         r
                     } else {
-                        r.on_disabled_hover_text(tr("Coming soon to BananaV"))
+                        r.on_disabled_hover_text(tr("Coming soon to Noni"))
                     };
                     pushed = r.clicked();
                 });

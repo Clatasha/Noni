@@ -118,7 +118,7 @@ impl BananaApp {
         self.ask_user(Ask {
             title: tr("Autosave").into(),
             text: trf!(
-                "BananaV did not close normally last time. Open the copy of {} it saved automatically?",
+                "Noni did not close normally last time. Open the copy of {} it saved automatically?",
                 name
             ),
             what: Asked::Recover { file, original },

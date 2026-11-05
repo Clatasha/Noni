@@ -455,14 +455,14 @@ fn soon_list(ui: &mut Ui, id: &str, value: &str, width: f32) {
             .response
     })
     .inner
-    .on_disabled_hover_text(tr("Coming soon to BananaV"));
+    .on_disabled_hover_text(tr("Coming soon to Noni"));
 }
 
 /// A greyed-out check box.
 fn soon_check(ui: &mut Ui, label: &str, on: bool) {
     ui.add_enabled_ui(false, |ui| crate::widgets::checkbox(ui, &mut { on }, label))
         .inner
-        .on_disabled_hover_text(tr("Coming soon to BananaV"));
+        .on_disabled_hover_text(tr("Coming soon to Noni"));
 }
 
 /// A color swatch named `name` (for screen readers); a click opens the
@@ -1169,7 +1169,7 @@ impl PreferencesDialog {
         crate::tabs::hint(
             ui,
             tr(
-                "English is BananaV's main language; other languages are translations of it. Texts not translated yet show in English.",
+                "English is Noni's main language; other languages are translations of it. Texts not translated yet show in English.",
             ),
         );
         crate::tabs::hint(
@@ -1198,7 +1198,7 @@ impl PreferencesDialog {
                             *name
                         };
                         ui.add_enabled(graphics, egui::Button::selectable(graphics, text))
-                            .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                            .on_disabled_hover_text(tr("Coming soon to Noni"));
                     }
                 });
         });
@@ -1274,7 +1274,7 @@ impl PreferencesDialog {
                     ui,
                     tr("Wait for vertical sync"),
                     true,
-                    tr("BananaV's windows always wait for the display's refresh: no tearing."),
+                    tr("Noni's windows always wait for the display's refresh: no tearing."),
                 );
                 crate::widgets::checkbox(
                     ui,
@@ -1507,7 +1507,7 @@ impl PreferencesDialog {
                     // ASIO drivers are to come.
                     for name in &devices.asio {
                         ui.add_enabled(false, egui::Button::selectable(false, name.as_str()))
-                            .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                            .on_disabled_hover_text(tr("Coming soon to Noni"));
                     }
                 });
         });
@@ -1677,7 +1677,7 @@ impl PreferencesDialog {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let all = ui.button(tr("Default All")).clicked();
                             ui.add_enabled(false, egui::Button::new(tr("Advanced…")))
-                                .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                                .on_disabled_hover_text(tr("Coming soon to Noni"));
                             all
                         })
                         .inner
@@ -2218,7 +2218,7 @@ impl PreferencesDialog {
                         .input(|i| i.pointer.hover_pos())
                         .is_some_and(|p| check.expand(3.0).contains(p))
                 {
-                    resp.on_hover_text(tr("Coming soon to BananaV"));
+                    resp.on_hover_text(tr("Coming soon to Noni"));
                 }
             }
         });
@@ -2239,7 +2239,7 @@ impl PreferencesDialog {
                             "",
                         )
                         .on_hover_text(tr(
-                            "Show BananaV's controls for a plug-in's parameters instead of opening its own window.",
+                            "Show Noni's controls for a plug-in's parameters instead of opening its own window.",
                         ));
                         ui.label(tr("Generic VST editor"));
                     });
@@ -2345,7 +2345,7 @@ impl PreferencesDialog {
                     false,
                     egui::TextEdit::singleline(&mut text).desired_width(EDIT_NUMBER - 14.0),
                 )
-                .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                .on_disabled_hover_text(tr("Coming soon to Noni"));
             },
         );
         field(
@@ -2669,7 +2669,7 @@ fn color_list(
 fn soon_swatch(ui: &mut Ui, ready: bool, rgba: [u8; 4], name: &str) -> egui::Response {
     ui.add_enabled_ui(ready, |ui| swatch(ui, rgba, name))
         .inner
-        .on_disabled_hover_text(tr("Coming soon to BananaV"))
+        .on_disabled_hover_text(tr("Coming soon to Noni"))
 }
 
 impl PreferencesDialog {
@@ -2864,7 +2864,7 @@ impl PreferencesDialog {
             ui,
             tr("Use Alternate High DPI Settings"),
             true,
-            tr("BananaV's windows always follow the scale of the display each one is on."),
+            tr("Noni's windows always follow the scale of the display each one is on."),
         );
         crate::widgets::checkbox(
             ui,
@@ -2918,7 +2918,7 @@ impl PreferencesDialog {
                             }
                             None => {
                                 ui.add_enabled(false, egui::Button::selectable(false, text))
-                                    .on_disabled_hover_text(tr("Coming soon to BananaV"));
+                                    .on_disabled_hover_text(tr("Coming soon to Noni"));
                             }
                         }
                     }

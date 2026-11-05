@@ -909,7 +909,7 @@ impl BananaApp {
                 |s| s.to_string_lossy().into_owned(),
             );
             self.report_error(trf!(
-                "The plug-in {} stopped working and was turned off until BananaV restarts.",
+                "The plug-in {} stopped working and was turned off until Noni restarts.",
                 name
             ));
             told.push(crash.binary);
@@ -2267,7 +2267,7 @@ impl BananaApp {
             _ => {
                 let Some(p) = rfd::FileDialog::new()
                     .set_title(tr("Save Project"))
-                    .add_filter(tr("BananaV Project"), &["bvproj"])
+                    .add_filter(tr("Noni Project"), &["bvproj"])
                     .set_file_name(tr("Untitled.bvproj"))
                     .save_file()
                 else {
