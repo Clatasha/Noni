@@ -22,11 +22,11 @@ const THUMB_SIDE: f32 = 80.0;
 // https://github.com/Clatasha/Clatasha-Studio/tree/main/assets/stickers
 const BACKGROUNDS: &[u8] = include_bytes!("../../assets/stickers/background-shapes.zip");
 const YOUTUBE: &[u8] = include_bytes!("../../assets/stickers/youtube.zip");
-// The editor's inline catalog, grouped by its original category. Artwork
-// bundled for Noni itself can go under noni/ in this archive.
+// The editor's inline catalog, grouped by its original category.
 const INLINE: &[u8] = include_bytes!("../../assets/stickers/studio-inline.zip");
+const DERSPAWN: &[u8] = include_bytes!("../../assets/stickers/derspawn-mascot.zip");
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 enum Pack {
     #[default]
     Arrows,
@@ -35,7 +35,7 @@ enum Pack {
     Mark,
     Backgrounds,
     YouTube,
-    Noni,
+    Derspawn,
     Custom,
 }
 
@@ -47,7 +47,7 @@ impl Pack {
         Self::Mark,
         Self::Backgrounds,
         Self::YouTube,
-        Self::Noni,
+        Self::Derspawn,
         Self::Custom,
     ];
 
@@ -59,7 +59,7 @@ impl Pack {
             Self::Mark => tr("Mark"),
             Self::Backgrounds => tr("Backgrounds"),
             Self::YouTube => tr("YouTube"),
-            Self::Noni => tr("Noni Originals"),
+            Self::Derspawn => tr("DERSPAWN Mascot"),
             Self::Custom => tr("My Stickers"),
         }
     }
@@ -72,7 +72,7 @@ impl Pack {
             Self::Mark => "Studio-1/Mark",
             Self::Backgrounds => "Studio-1/Backgrounds",
             Self::YouTube => "Studio-1/YouTube",
-            Self::Noni => "Noni-1",
+            Self::Derspawn => "DERSPAWN-1",
             Self::Custom => "Custom",
         }
     }
@@ -83,8 +83,7 @@ impl Pack {
             Self::Badges => "badges/",
             Self::Emoji => "emoji/",
             Self::Mark => "highlight/",
-            Self::Noni => "noni/",
-            Self::Backgrounds | Self::YouTube | Self::Custom => "",
+            Self::Backgrounds | Self::YouTube | Self::Derspawn | Self::Custom => "",
         }
     }
 
@@ -92,6 +91,7 @@ impl Pack {
         let data = match self {
             Self::Backgrounds => BACKGROUNDS,
             Self::YouTube => YOUTUBE,
+            Self::Derspawn => DERSPAWN,
             Self::Custom => return None,
             _ => INLINE,
         };
@@ -115,37 +115,99 @@ pub(crate) fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
 
 impl StickerPanel {
     fn ui(&mut self, ui: &mut egui::Ui, app: &mut BananaApp) {
-        ui.horizontal_wrapped(|ui| {
-            for pack in Pack::ALL {
-                if pack == Pack::Noni
-                    && self.names.entry(pack).or_insert_with(|| names(pack)).is_empty()
+        ui.add_space(6.0);
+        let full = ui.available_rect_before_wrap();
+        let sidebar_width = 154.0_f32.min(full.width() * 0.42);
+        let sidebar = Rect::from_min_size(full.min, vec2(sidebar_width, full.height()));
+        let grid = Rect::from_min_max(sidebar.right_top() + vec2(8.0, 0.0), full.max);
+        ui.painter().vline(
+            sidebar.right() + 3.0,
+            sidebar.y_range(),
+            egui::Stroke::new(1.0, theme::panel_dark()),
+        );
+        {
+            let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(sidebar));
+            ui.set_clip_rect(ui.clip_rect().intersect(sidebar));
+            egui::ScrollArea::vertical()
+                .id_salt("sticker-categories")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    for pack in Pack::ALL {
+                        let selected = self.pack == pack;
+                        let (rect, response) = ui.allocate_exact_size(
+                            vec2(ui.available_width(), 26.0),
+                            egui::Sense::click(),
+                        );
+                        let label = pack.title();
+                        response.widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::SelectableLabel,
+                                true,
+                                selected,
+                                label,
+                            )
+                        });
+                        let fill = if selected {
+                            theme::selection()
+                        } else if response.hovered() {
+                            theme::hover()
+                        } else {
+                            theme::panel_dark()
+                        };
+                        ui.painter().rect_filled(rect, 0.0, fill);
+                        crate::widgets::fit_text(
+                            ui.painter(),
+                            rect.left_center() + vec2(8.0, 0.0),
+                            egui::Align2::LEFT_CENTER,
+                            label,
+                            egui::FontId::proportional(13.0),
+                            if selected {
+                                Color32::WHITE
+                            } else {
+                                theme::text()
+                            },
+                            (rect.width() - 16.0).max(0.0),
+                        );
+                        if response.clicked() {
+                            self.pack = pack;
+                        }
+                    }
+                });
+        }
+        let grid_ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(grid));
+        grid_ui.set_clip_rect(grid_ui.clip_rect().intersect(grid));
+        self.grid(grid_ui, app);
+        ui.allocate_rect(full, egui::Sense::hover());
+    }
+
+    fn grid(&mut self, ui: &mut egui::Ui, app: &mut BananaApp) {
+        ui.allocate_ui_with_layout(
+            vec2(ui.available_width(), 24.0),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                let import = egui::Button::new(
+                    egui::RichText::new(tr("Import Stickers…"))
+                        .strong()
+                        .color(Color32::WHITE),
+                )
+                .fill(theme::ACTION_BLUE);
+                if ui.add(import).clicked()
+                    && let Some(paths) = rfd::FileDialog::new()
+                        .add_filter(tr("PNG Image"), &["png"])
+                        .pick_files()
                 {
-                    continue;
-                }
-                if ui.selectable_label(self.pack == pack, pack.title()).clicked() {
-                    self.pack = pack;
-                    ui.ctx().request_repaint();
-                }
-            }
-            if ui.button(tr("Import Stickers…")).clicked()
-                && let Some(paths) = rfd::FileDialog::new()
-                    .add_filter(tr("PNG Image"), &["png"])
-                    .pick_files()
-            {
-                for path in paths {
-                    if let Err(error) = import_custom(&path) {
-                        app.report_error(trf!("Could not import sticker: {}", error));
+                    for path in paths {
+                        if let Err(error) = import_custom(&path) {
+                            app.report_error(trf!("Could not import sticker: {}", error));
+                        }
                     }
                 }
-                self.names.remove(&Pack::Custom);
-                self.pack = Pack::Custom;
-                self.search.clear();
-            }
-        });
-        ui.add(
-            egui::TextEdit::singleline(&mut self.search)
-                .hint_text(tr("Search stickers"))
-                .desired_width(f32::INFINITY),
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.search)
+                        .hint_text(tr("Search stickers"))
+                        .desired_width(ui.available_width()),
+                );
+            },
         );
 
         let pack = self.pack;
@@ -266,7 +328,7 @@ fn title(pack: Pack, file: &str) -> String {
     let stem = file.strip_suffix(".png").unwrap_or(file);
     match pack {
         Pack::Backgrounds => trf!("Background Shape {}", stem.trim_start_matches('0')),
-        Pack::Noni | Pack::Custom => stem.to_owned(),
+        Pack::Derspawn | Pack::Custom => stem.to_owned(),
         _ => stem
             .split_once('-')
             .map_or(stem, |(_, title)| title)

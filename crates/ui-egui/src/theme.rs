@@ -48,6 +48,9 @@ impl Interface {
     }
 }
 
+/// Primary action buttons, including Export.
+pub(crate) const ACTION_BLUE: Color32 = Color32::from_rgb(24, 100, 214);
+
 /// The colors of an interface type.
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {

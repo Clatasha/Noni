@@ -17,7 +17,7 @@ mod glyphs;
 mod logo;
 mod path;
 
-pub use self::logo::paint as paint_logo;
+pub use self::logo::{paint as paint_logo, paint_mark as paint_logo_mark};
 
 use std::f32::consts::{FRAC_PI_2, PI};
 use std::sync::OnceLock;

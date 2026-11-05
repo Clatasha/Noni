@@ -2715,6 +2715,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Deprecated Features", "Recursos obsoletos"),
     ("Deprecated Features:", "Recursos obsoletos:"),
     ("Depth", "Profundidade"),
+    ("DERSPAWN Mascot", "Mascote DERSPAWN"),
     ("Desaturate", "Dessaturar"),
     (
         "Desaturate All but Reds",
@@ -6695,7 +6696,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Agora o Noni abre os seus arquivos de projeto (.noniproj).",
     ),
     ("Noni on GitHub", "Noni no GitHub"),
-    ("Noni Originals", "Originais Noni"),
     ("Noni Preferences", "Preferências do Noni"),
     ("Noni Preferences.json", "Preferências Noni.json"),
     ("Noni Project", "Projeto Noni"),

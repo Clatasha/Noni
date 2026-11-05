@@ -186,6 +186,11 @@ impl MediaDrag {
     }
 }
 
+enum MediaPlacement<'a> {
+    Track(Option<TrackId>),
+    Above(&'a mut [Option<TrackId>; 2]),
+}
+
 pub struct BananaApp {
     pub(crate) history: History<Project>,
     pub(crate) engine: Engine,
@@ -1721,6 +1726,39 @@ impl BananaApp {
         video: bool,
         audio: bool,
     ) {
+        self.place_media_at(
+            media,
+            at,
+            range,
+            MediaPlacement::Track(track),
+            (video, audio),
+        );
+    }
+
+    pub(crate) fn place_media_above(
+        &mut self,
+        media: MediaId,
+        at: Tick,
+        range: Option<TimeRange>,
+        tracks: &mut [Option<TrackId>; 2],
+    ) {
+        self.place_media_at(
+            media,
+            at,
+            range,
+            MediaPlacement::Above(tracks),
+            (true, true),
+        );
+    }
+
+    fn place_media_at(
+        &mut self,
+        media: MediaId,
+        at: Tick,
+        range: Option<TimeRange>,
+        placement: MediaPlacement<'_>,
+        (video, audio): (bool, bool),
+    ) {
         // A subclip: its parent's part, reversed when it says so (one undo).
         if let Some(sub) = self.project().subclip(media).cloned() {
             let part = match range {
@@ -1732,7 +1770,7 @@ impl BananaApp {
                 None => sub.range,
             };
             let edits = self.history.edits();
-            self.place_media_streams(sub.parent, at, Some(part), track, video, audio);
+            self.place_media_at(sub.parent, at, Some(part), placement, (video, audio));
             if sub.reverse && self.history.edits() != edits {
                 let ids: Vec<ClipId> = self.selection.iter().copied().collect();
                 self.history.amend(|p| {
@@ -1772,11 +1810,23 @@ impl BananaApp {
             self.settings.prefs.crop_video
                 && matches!(info.source, bv_timeline::MediaSource::File { .. })
         };
+        let (track, mut top_tracks) = match placement {
+            MediaPlacement::Track(track) => (track, None),
+            MediaPlacement::Above(tracks) => (None, Some(tracks)),
+        };
         let ids = self.edit(|p| {
             let dropped_kind = track.and_then(|t| p.track(t)).map(|t| t.kind);
-            // On the track it was given (an adjustment track's too, as
-            // VEGAS's), else on the first of its kind that is not one.
             let pick = |p: &mut Project, kind: TrackKind| -> TrackId {
+                if let Some(tracks) = top_tracks.as_deref() {
+                    let (slot, index) = match kind {
+                        TrackKind::Video => (0, 0),
+                        TrackKind::Audio => (
+                            1,
+                            usize::from(tracks[0].is_some() || (video && info.video.is_some())),
+                        ),
+                    };
+                    return tracks[slot].unwrap_or_else(|| p.insert_track_at(kind, index));
+                }
                 if dropped_kind == Some(kind)
                     && let Some(t) = track
                 {
@@ -1799,7 +1849,14 @@ impl BananaApp {
             if crop {
                 actions::fill_frame(p, &ids);
             }
-            Ok::<_, bv_timeline::EditError>(ids)
+            Ok::<_, bv_timeline::EditError>((ids, v, a))
+        });
+        let ids = ids.map(|(ids, video_track, audio_track)| {
+            if let Some(tracks) = top_tracks.take() {
+                tracks[0] = video_track.or(tracks[0]);
+                tracks[1] = audio_track.or(tracks[1]);
+            }
+            ids
         });
         // A stereo file as two mono events, panned hard left and right
         // (Options › Preferences › General: "Import stereo as dual mono").

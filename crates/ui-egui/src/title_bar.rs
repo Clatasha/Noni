@@ -111,7 +111,7 @@ pub(crate) fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             .strong()
             .color(Color32::WHITE),
     )
-    .fill(Color32::from_rgb(24, 100, 214));
+    .fill(theme::ACTION_BLUE);
     if ui
         .add_enabled_ui(enabled, |ui| ui.put(export, button))
         .inner

@@ -3839,17 +3839,24 @@ fn drop_media(
         Some(d) => d.pointer,
         None => pointer,
     };
-    let Some(pos) = pointer.filter(|p| l.lanes.contains(*p)) else {
+    let can_drop_above = !app.media_drag_secondary
+        && drag.is_media()
+        && !matches!(drag, MediaDrag::Generator(_) | MediaDrag::Cells(_));
+    let Some(pos) =
+        pointer.filter(|p| l.lanes.contains(*p) || (can_drop_above && l.top_drop.contains(*p)))
+    else {
         if app.media_drag.is_some() {
             view.snap_line = None;
         }
         return;
     };
+    let above = can_drop_above && l.top_drop.contains(pos);
     let released =
         ui.input(|i| i.pointer.any_released()) || app.os_drag.as_ref().is_some_and(|d| d.dropped);
-    if l.row_at(pos.y)
-        .and_then(|row| project.track(row.track))
-        .is_some_and(|track| track.locked)
+    if !above
+        && l.row_at(pos.y)
+            .and_then(|row| project.track(row.track))
+            .is_some_and(|track| track.locked)
     {
         view.snap_line = None;
         if released {
@@ -3989,12 +3996,15 @@ fn drop_media(
                 &[],
             )
             .max(Tick::ZERO);
-        let row = l.row_at(pos.y);
+        let row = (!above).then(|| l.row_at(pos.y)).flatten();
         let track = row.map(|r| r.track);
         // Same choice of tracks as `place_media`: the row under the mouse
         // for its kind (an adjustment track's too), otherwise the first
         // track of the other kind.
         let track_for = |kind: TrackKind| {
+            if above {
+                return None;
+            }
             row.filter(|r| r.kind == kind).map(|r| r.track).or_else(|| {
                 project
                     .tracks
@@ -4028,11 +4038,49 @@ fn drop_media(
                 }
             }
         }
-        view.drop = Some(Drop::Ghosts(ghosts));
+        view.drop = Some(if above {
+            Drop::Above(ghosts)
+        } else {
+            Drop::Ghosts(ghosts)
+        });
         if released {
             app.media_drag = None;
             view.snap_line = None;
             let secondary = std::mem::take(&mut app.media_drag_secondary);
+            if above {
+                app.os_drag = None;
+                let first_new = app.project().id_counter();
+                app.as_one_undo(|app| {
+                    let (ids, range) = match drag {
+                        MediaDrag::Media(id) => (vec![id], None),
+                        MediaDrag::Many(ids) => (ids, None),
+                        MediaDrag::MediaPart(id, range) => (vec![id], Some(range)),
+                        MediaDrag::File(path) => (app.import_paths(&[path]), None),
+                        MediaDrag::Files(paths) => (app.import_paths(&paths), None),
+                        MediaDrag::FilePart(path, range) => {
+                            (app.import_paths(&[path]), Some(range))
+                        }
+                        _ => return,
+                    };
+                    let lengths: Vec<_> = ids
+                        .iter()
+                        .map(|&id| {
+                            app.project()
+                                .media(id)
+                                .cloned()
+                                .or_else(|| app.project().subclip_info(id))
+                                .map_or(Tick::ZERO, |info| new_events.length(&info))
+                        })
+                        .collect();
+                    let mut tracks = [None, None];
+                    for (id, at) in ids.into_iter().zip(added_starts(t, &lengths, overlap)) {
+                        app.place_media_above(id, at, range, &mut tracks);
+                    }
+                });
+                app.ask_generated_copies(first_new);
+                view.scroll_y = 0.0;
+                return;
+            }
             match drag {
                 // Dragged with the right button: a menu asks how to add it.
                 MediaDrag::Media(_)
@@ -4202,6 +4250,7 @@ pub(crate) struct Ghost {
 #[derive(Clone, Debug)]
 pub(crate) enum Drop {
     Ghosts(Vec<Ghost>),
+    Above(Vec<Ghost>),
     OnClip(ClipId),
     /// Video effects over an adjustment track: its own when let go.
     OnTrack(TrackId),
@@ -5472,6 +5521,22 @@ pub(crate) fn paint(
         }
     }
 
+    // The insertion strip is separate from the ruler and existing tracks.
+    let strip_painter = ui.painter().with_clip_rect(l.top_drop);
+    strip_painter.rect_filled(l.top_drop, 0.0, theme::panel_dark());
+    if let Some(Drop::Above(ghosts)) = &view.drop {
+        strip_painter.rect_filled(l.top_drop, 0.0, theme::selection().gamma_multiply(0.28));
+        for ghost in ghosts {
+            let left = view.x_of(l, ghost.at);
+            let right = view.x_of(l, ghost.at + ghost.duration).max(left + 4.0);
+            let target = Rect::from_min_max(
+                pos2(left, l.top_drop.top() + 2.0),
+                pos2(right, l.top_drop.bottom() - 2.0),
+            );
+            strip_painter.rect_filled(target, 2.0, theme::selection());
+        }
+    }
+
     // Drop preview.
     if let Some(Drop::Ghosts(ghosts)) = &view.drop {
         paint_ghosts(&painter, &ctx, app, view, l, project, ghosts);
@@ -5631,6 +5696,51 @@ mod drop_tests {
             "placed where the preview was"
         );
         assert!(app.media_drag.is_none() && app.os_drag.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dropping_media_above_existing_tracks_inserts_new_tracks_on_release() {
+        let dir = std::env::temp_dir().join(format!("noni-drop-above-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let sound = dir.join("sound.wav");
+        wav(&sound);
+        let image = dir.join("image.png");
+        std::fs::write(
+            &image,
+            include_bytes!("../../../../packaging/icons/noni-mark.png"),
+        )
+        .expect("write PNG");
+
+        let ctx = egui::Context::default();
+        let mut app = BananaApp::new(ctx.clone());
+        app.load_demo();
+        frame(&ctx, &mut app, &[], &[]);
+        let original = app.project().clone();
+        let layout = app.timeline.layout(app.timeline.last_rect, app.project());
+        let target = layout.top_drop.center();
+        let files = [sound, image];
+
+        TEST_CURSOR.with(|cursor| cursor.set(Some((target.x as i32, target.y as i32))));
+        frame(&ctx, &mut app, &files, &[]);
+        let Some(Drop::Above(ghosts)) = &app.timeline.drop else {
+            panic!("missing preview for the top insertion strip");
+        };
+        let at = ghosts[0].at;
+        assert_eq!(ghosts.len(), 2);
+        assert!(ghosts.iter().all(|ghost| ghost.track.is_none()));
+        assert_eq!(*app.project(), original, "hover does not edit the project");
+
+        frame(&ctx, &mut app, &[], &files);
+        TEST_CURSOR.with(|cursor| cursor.set(None));
+        let tracks = &app.project().tracks;
+        assert_eq!(tracks.len(), original.tracks.len() + 2);
+        assert_eq!(tracks[0].kind, TrackKind::Video);
+        assert_eq!(tracks[1].kind, TrackKind::Audio);
+        assert_eq!(tracks[1].clips[0].start, at);
+        assert_eq!(&tracks[2..], original.tracks.as_slice());
+        app.undo();
+        assert_eq!(*app.project(), original, "the full drop is one undo step");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

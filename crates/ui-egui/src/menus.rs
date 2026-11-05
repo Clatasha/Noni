@@ -919,14 +919,10 @@ pub fn toolbar(ui: &mut Ui, app: &mut BananaApp) {
         // The buttons of Options › Customize Toolbar.
         crate::toolbar_buttons::paint(ui, app, crate::toolbar_buttons::ToolbarKind::Main);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            icons::paint_logo(
-                ui.painter(),
-                egui::Rect::from_center_size(
-                    ui.cursor().right_center() - egui::vec2(14.0, 0.0),
-                    egui::vec2(20.0, 20.0),
-                ),
-            );
-            ui.add_space(26.0);
+            ui.add_space(4.0);
+            let (mark, _) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::hover());
+            icons::paint_logo_mark(ui.painter(), mark);
+            ui.add_space(2.0);
             ui.label(
                 egui::RichText::new("Noni")
                     .strong()

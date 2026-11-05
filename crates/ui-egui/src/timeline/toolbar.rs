@@ -26,12 +26,7 @@ pub(crate) fn ui(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp
             ui.close();
         }
     });
-    let zoom = Rect::from_min_max(
-        pos2(l.toolbar.right() - 78.0, l.toolbar.top()),
-        pos2(l.toolbar.right() - 4.0, l.toolbar.bottom()),
-    );
-    zoom_buttons(view, ui, app, zoom);
-    let clocks = time_boxes(view, ui, app, l, zoom.left() - 8.0);
+    let clocks = time_boxes(view, ui, app, l, l.toolbar.right() - 8.0);
     let buttons = toolbar_buttons::current(app, ToolbarKind::Timeline);
     let (editing, controls) = if app.settings.timeline_toolbar.is_none() {
         let split = buttons
@@ -114,34 +109,33 @@ fn listening_volume(ui: &mut egui::Ui, app: &mut BananaApp, rect: Rect) {
     );
 }
 
-fn zoom_buttons(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp, rect: Rect) {
-    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-        ui.horizontal_centered(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            ui.spacing_mut().interact_size = vec2(22.0, 20.0);
-            if ui
-                .small_button("−")
-                .on_hover_text(tr("Zoom Out (↓)"))
-                .clicked()
-            {
-                view.zoom_around(1.5, app.display_time());
-            }
-            if ui
-                .small_button("+")
-                .on_hover_text(tr("Zoom In (↑)"))
-                .clicked()
-            {
-                view.zoom_around(1.0 / 1.5, app.display_time());
-            }
-            if ui
-                .small_button("⇔")
-                .on_hover_text(tr("Fit to Project"))
-                .clicked()
-            {
+const ZOOM_BUTTON_W: f32 = 24.0;
+const ZOOM_BUTTONS_W: f32 = ZOOM_BUTTON_W * 3.0;
+
+fn zoom_buttons(view: &mut TimelineView, ui: &mut egui::Ui, app: &BananaApp, rect: Rect) {
+    let buttons = [
+        ("−", tr("Zoom Out (↓)"), Some(1.5)),
+        ("+", tr("Zoom In (↑)"), Some(1.0 / 1.5)),
+        ("⇔", tr("Fit to Project"), None),
+    ];
+    for (index, (label, tooltip, scale)) in buttons.into_iter().enumerate() {
+        let center = pos2(
+            rect.left() + ZOOM_BUTTON_W * (index as f32 + 0.5),
+            rect.center().y,
+        );
+        let cell = Rect::from_center_size(center, vec2(ZOOM_BUTTON_W - 2.0, 20.0));
+        if ui
+            .put(cell, egui::Button::new(label))
+            .on_hover_text(tooltip)
+            .clicked()
+        {
+            if let Some(scale) = scale {
+                view.zoom_around(scale, app.display_time());
+            } else {
                 view.fit(app.project().duration());
             }
-        });
-    });
+        }
+    }
 }
 
 /// One of the time boxes at the toolbar's right.
@@ -592,16 +586,31 @@ pub(crate) fn scrollbars(
     let visible = Tick((lanes * view.ticks_per_px) as i64);
     let total = (app.project().duration().max(view.view_start + visible) + Tick(visible.0 / 5))
         .max(Tick(1));
-    if let Some((start, len)) = crate::widgets::zoom_scrollbar(
-        ui,
-        l.hscroll.shrink2(vec2(0.0, 1.0)),
-        ui.id().with("rolagem-h"),
-        (view.view_start.0 as f64, visible.0 as f64),
-        total.0 as f64,
-        (MIN_TICKS_PER_PX * lanes, MAX_TICKS_PER_PX * lanes),
-    ) {
-        view.view_start = Tick(start as i64).max(Tick::ZERO);
-        view.ticks_per_px = len / lanes;
+    let buttons_left = l.hscroll.right() - ZOOM_BUTTONS_W - 3.0;
+    let slider = Rect::from_min_max(
+        pos2(l.hscroll.left(), l.hscroll.center().y - 7.0),
+        pos2(buttons_left - 4.0, l.hscroll.center().y + 7.0),
+    );
+    if slider.width() > 12.0 {
+        painter.rect_filled(slider.shrink2(vec2(0.0, 2.0)), 3.0, theme::panel_dark());
+        if let Some((start, len)) = crate::widgets::zoom_scrollbar(
+            ui,
+            slider,
+            ui.id().with("rolagem-h"),
+            (view.view_start.0 as f64, visible.0 as f64),
+            total.0 as f64,
+            (MIN_TICKS_PER_PX * lanes, MAX_TICKS_PER_PX * lanes),
+        ) {
+            view.view_start = Tick(start as i64).max(Tick::ZERO);
+            view.ticks_per_px = len / lanes;
+        }
+    }
+    if buttons_left >= l.hscroll.left() {
+        let buttons = Rect::from_min_size(
+            pos2(buttons_left, l.hscroll.top()),
+            vec2(ZOOM_BUTTONS_W, l.hscroll.height()),
+        );
+        zoom_buttons(view, ui, app, buttons);
     }
     // Vertical.
     painter.rect_filled(l.vscroll, 0.0, theme::panel());
