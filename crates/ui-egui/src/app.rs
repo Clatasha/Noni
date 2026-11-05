@@ -221,6 +221,7 @@ pub struct BananaApp {
     pub(crate) explorer: ExplorerState,
     /// Project Media's bins and view.
     pub(crate) media_window: crate::tabs::media::MediaWindow,
+    pub(crate) stickers: crate::tabs::stickers::StickerPanel,
     pub(crate) meters: MeterState,
     /// Media previews (Start Preview, the Trimmer's Play) and the Preview
     /// fader's meter.
@@ -592,6 +593,7 @@ impl BananaApp {
             trimmer: TrimmerState::default(),
             explorer: ExplorerState::new(),
             media_window: Default::default(),
+            stickers: Default::default(),
             meters: MeterState::default(),
             previews: Default::default(),
             track_meters: std::collections::HashMap::new(),
@@ -977,7 +979,8 @@ impl BananaApp {
     /// apps start from the default layout and never write the settings.
     fn restore_session(&mut self) {
         if let Some(s) = self.settings.session.clone() {
-            if let Ok(dock) = crate::layouts::dock_from_value(&s.dock) {
+            if let Ok(mut dock) = crate::layouts::dock_from_value(&s.dock) {
+                dock::upgrade_sticker_layout(&mut dock);
                 self.dock = Some(dock);
                 self.timeline_top = s.timeline_top;
                 self.layout_slot = s

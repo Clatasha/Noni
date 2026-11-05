@@ -26,6 +26,7 @@ pub enum Tab {
     ProjectMedia,
     Generators,
     Text,
+    Stickers,
     Transitions,
     VideoFx,
     ColorGrading,
@@ -49,11 +50,12 @@ pub enum Tab {
 }
 
 impl Tab {
-    pub const ALL: [Tab; 19] = [
+    pub const ALL: [Tab; 20] = [
         Tab::Explorer,
         Tab::ProjectMedia,
         Tab::Generators,
         Tab::Text,
+        Tab::Stickers,
         Tab::Transitions,
         Tab::VideoFx,
         Tab::ColorGrading,
@@ -77,6 +79,7 @@ impl Tab {
             Tab::ProjectMedia => tr("Project Media"),
             Tab::Generators => tr("Media Generators"),
             Tab::Text => tr("Text"),
+            Tab::Stickers => tr("Stickers"),
             Tab::Transitions => tr("Transitions"),
             Tab::VideoFx => tr("Video FX"),
             Tab::ColorGrading => tr("Color Grading"),
@@ -125,6 +128,7 @@ const LIBRARY_CATEGORIES: &[(Tab, Icon)] = &[
     (Tab::ProjectMedia, Icon::FilmStrip),
     (Tab::MixingConsole, Icon::Speaker),
     (Tab::Text, Icon::Text),
+    (Tab::Stickers, Icon::HeartBubble),
     (Tab::VideoFx, Icon::Sparkle),
     (Tab::Transitions, Icon::Transition),
     (Tab::Generators, Icon::Generator),
@@ -391,6 +395,27 @@ pub fn ensure_timeline(dock: &mut DockState<Tab>, top: bool) {
     }
 }
 
+/// Adds the new category to an older default library without changing
+/// deliberately customized panes.
+pub(crate) fn upgrade_sticker_layout(dock: &mut DockState<Tab>) {
+    if dock.find_tab(&Tab::Stickers).is_some() {
+        return;
+    }
+    let tree = dock.main_surface_mut();
+    let Some((node, _)) = tree.find_tab(&Tab::ProjectMedia) else {
+        return;
+    };
+    let is_old_library = tree[node].tabs().is_some_and(|tabs| {
+        tabs.len() + 1 == LIBRARY_CATEGORIES.len()
+            && LIBRARY_CATEGORIES
+                .iter()
+                .all(|(tab, _)| *tab == Tab::Stickers || tabs.contains(tab))
+    });
+    if is_old_library {
+        tree[node].append_tab(Tab::Stickers);
+    }
+}
+
 /// Where the timeline's window is, as last drawn.
 pub fn timeline_rect(dock: &DockState<Tab>) -> Option<Rect> {
     let tree = dock.main_surface();
@@ -609,6 +634,7 @@ impl TabViewer for Viewer<'_> {
                 | Tab::ProjectMedia
                 | Tab::Generators
                 | Tab::Text
+                | Tab::Stickers
                 | Tab::Transitions
                 | Tab::VideoFx
                 | Tab::Compositors
@@ -661,6 +687,7 @@ impl TabViewer for Viewer<'_> {
             Tab::ProjectMedia => tabs::media::ui(ui, app),
             Tab::Generators => tabs::generators::ui(ui, app, false),
             Tab::Text => tabs::generators::ui(ui, app, true),
+            Tab::Stickers => tabs::stickers::ui(ui, app),
             Tab::Transitions => tabs::transitions::ui(ui, app),
             Tab::VideoFx => tabs::effects::ui(ui, app),
             Tab::ColorGrading => tabs::color::ui(ui, app),

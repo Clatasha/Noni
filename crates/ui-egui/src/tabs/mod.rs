@@ -16,6 +16,7 @@ pub mod notes;
 pub mod plugins;
 pub mod preview;
 pub mod properties;
+pub mod stickers;
 pub mod scopes;
 pub mod storyboard;
 pub mod surround;
