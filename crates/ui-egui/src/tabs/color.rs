@@ -426,6 +426,11 @@ fn context(app: &BananaApp) -> Option<Cx> {
         }
         Level::VideoOutput => (FxTarget::VideoOutput, String::new()),
     };
+    context_for(app, target, name)
+}
+
+fn context_for(app: &BananaApp, target: FxTarget, name: String) -> Option<Cx> {
+    let p = app.project();
     let chain = target.chain(p)?;
     let index = chain
         .iter()
@@ -493,6 +498,122 @@ fn change_effect(app: &mut BananaApp, cx: &Cx, f: impl FnOnce(&mut Effect)) {
     f(&mut chain[i]);
     let t = cx.target;
     app.modify(move |p| t.set_chain(p, chain));
+}
+
+/// Compact color controls for the timeline inspector. Both views edit the
+/// same event-level Color Grading effect and its keyframes.
+pub(super) fn inspector(ui: &mut egui::Ui, app: &mut BananaApp, id: bv_timeline::ClipId) {
+    use super::properties::section;
+
+    if ui.button(tr("Color Grading")).clicked() {
+        open_at(app, Level::Event);
+    }
+    let Some(cx) = context_for(app, FxTarget::Clip(id), String::new()) else {
+        super::hint(ui, tr("Color Grading plug-in unavailable."));
+        return;
+    };
+    if !cx.on() && ui.button(tr("Enable Color Grading")).clicked() {
+        change_effect(app, &cx, |effect| effect.enabled = true);
+        return;
+    }
+
+    let key = ui.id().with(("inspector-grade", id.0));
+    let mut adjustment = None;
+    ui.add_enabled_ui(cx.on(), |ui| {
+        section(ui, tr("Look LUT"));
+        let file_p = cg::LUT_FILE[1];
+        let on_p = cg::LUT_ENABLE[1];
+        let strength_p = cg::LUT_GAIN[1];
+        let file = cx.text(file_p);
+        let entries = lut_entries(false);
+        let shown = entries
+            .iter()
+            .find(|(_, path, _)| *path == file)
+            .map(|(name, _, _)| name.as_str())
+            .or_else(|| std::path::Path::new(&file).file_stem().and_then(|s| s.to_str()))
+            .filter(|s| !s.is_empty())
+            .unwrap_or(tr("None"));
+        let mut chosen = None;
+        egui::ComboBox::from_id_salt("inspector-lut")
+            .width((ui.available_width() - 24.0).max(72.0))
+            .selected_text(shown)
+            .show_ui(ui, |ui| {
+                for (name, path, usable) in &entries {
+                    if *usable && ui.selectable_label(*path == file, name).clicked() {
+                        chosen = Some(path.clone());
+                    }
+                }
+            });
+        if ui.button(tr("Browse")).clicked()
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter(tr("Cube LUT"), &["cube"])
+                .pick_file()
+        {
+            chosen = Some(path.to_string_lossy().into_owned());
+        }
+        if let Some(chosen) = chosen
+            && chosen != file
+        {
+            let on = if chosen.is_empty() { 0.0 } else { 1.0 };
+            set(
+                app,
+                &cx,
+                &[(file_p, Value::Text(chosen)), (on_p, Value::Num(vec![on]))],
+                key.with("lut-file"),
+            );
+            return;
+        }
+        if !file.is_empty() {
+            let mut enabled = cx.num(on_p) != 0.0;
+            if crate::widgets::checkbox(ui, &mut enabled, tr("Active")).changed() {
+                set(
+                    app,
+                    &cx,
+                    &[(on_p, Value::Num(vec![if enabled { 1.0 } else { 0.0 }]))],
+                    key.with("lut-active"),
+                );
+                return;
+            }
+            if enabled {
+                adjustment = inspector_grade_slider(ui, &cx, strength_p, tr("Strength:"));
+            }
+        }
+
+        section(ui, tr("Color"));
+        for (name, label) in [
+            ("temperatureAdjust", tr("Temperature")),
+            ("tintAdjust", tr("Tint")),
+            ("saturationAdjust", tr("Saturation")),
+        ] {
+            if let Some(value) = inspector_grade_slider(ui, &cx, name, label) {
+                adjustment = Some(value);
+            }
+        }
+        section(ui, tr("Lightness"));
+        for (name, label) in [
+            ("exposureLnAdjust", tr("Log. Exposure:")),
+            ("contrastAdjust", tr("Contrast")),
+        ] {
+            if let Some(value) = inspector_grade_slider(ui, &cx, name, label) {
+                adjustment = Some(value);
+            }
+        }
+    });
+    if let Some((name, value)) = adjustment {
+        set(app, &cx, &[(name, value)], key.with(name));
+    }
+}
+
+fn inspector_grade_slider<'a>(
+    ui: &mut egui::Ui,
+    cx: &Cx,
+    name: &'a str,
+    label: &str,
+) -> Option<(&'a str, Value)> {
+    let mut value = cx.num(name) as f32;
+    let (min, max) = cx.range(name);
+    super::properties::value_slider(ui, label, &mut value, min as f32..=max as f32, 2, "")
+        .then_some((name, Value::Num(vec![f64::from(value)])))
 }
 
 pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {

@@ -614,6 +614,7 @@ impl TabViewer for Viewer<'_> {
                 | Tab::Compositors
                 | Tab::Preview
                 | Tab::Trimmer
+                | Tab::Properties
                 | Tab::Master
                 | Tab::Timeline
                 | Tab::Scopes
