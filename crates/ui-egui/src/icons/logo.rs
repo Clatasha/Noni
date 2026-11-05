@@ -1,4 +1,4 @@
-//! Paint the original Noni illustration on a transparent background.
+//! Paint the approved Noni app icon in the interface.
 
 use crate::egui::{Color32, ColorImage, Id, Painter, Rect, TextureHandle, TextureOptions, pos2, vec2};
 
@@ -10,12 +10,12 @@ pub fn paint(painter: &Painter, rect: Rect) {
     }
 
     let ctx = painter.ctx();
-    let id = Id::new("noni-fruit-mark");
+    let id = Id::new("noni-app-icon");
     let cached = ctx.data(|data| data.get_temp::<TextureHandle>(id));
     let texture = if let Some(texture) = cached {
         texture
     } else {
-        let Ok(png) = bv_png::decode(include_bytes!("../../../../packaging/icons/noni-mark.png"))
+        let Ok(png) = bv_png::decode(include_bytes!("../../../../packaging/icons/noni.png"))
         else {
             return;
         };
@@ -23,7 +23,7 @@ pub fn paint(painter: &Painter, rect: Rect) {
             [png.width as usize, png.height as usize],
             &png.to_rgba8(),
         );
-        let texture = ctx.load_texture("Noni fruit mark", image, TextureOptions::LINEAR);
+        let texture = ctx.load_texture("Noni app icon", image, TextureOptions::LINEAR);
         ctx.data_mut(|data| data.insert_temp(id, texture.clone()));
         texture
     };

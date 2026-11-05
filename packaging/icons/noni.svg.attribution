@@ -5,4 +5,4 @@ source:       original work
 license:      GPL-3.0-or-later
 license-file: ../../LICENSE
 added:        2026-11-04 by Clatasha
-notes:        Square icon using Clatasha's original fruit illustration.
+notes:        Wraps the 256 px Noni icon in a self-contained SVG. ImageGen-assisted refinement of Clatasha's original illustration.
