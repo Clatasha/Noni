@@ -25,6 +25,8 @@ mod formats;
 pub(crate) mod images;
 mod mpeg;
 mod smart;
+mod timing;
+use timing::{Stage, Timing};
 mod video;
 
 pub use formats::{Availability, Category, Encoder, FileFormat, ProResProfile};
@@ -472,8 +474,15 @@ impl RenderJob {
                 .stack_size(bv_ofx::PLUGIN_STACK)
                 .spawn(move || {
                     let started = Instant::now();
+                    let timing = (std::env::var_os("NONI_EXPORT_TIMING").as_deref()
+                        == Some(std::ffi::OsStr::new("1")))
+                    .then(|| Arc::new(Timing::default()));
                     let mut painter =
-                        crate::accel::Painter::new(accel, crate::plugins::Purpose::File);
+                        crate::accel::Painter::new(accel.clone(), crate::plugins::Purpose::File);
+                    if timing.is_some() {
+                        painter.measure_readback();
+                    }
+                    let decoding = timing.as_ref().map(|_| bv_mf::hardware_decoding());
                     // Swap video files on render: into a file beside the
                     // one there, put in its place when all went well.
                     let swap = swap_target(&settings);
@@ -490,6 +499,7 @@ impl RenderJob {
                         &repaint,
                         started,
                         &mut painter,
+                        timing.as_ref(),
                     );
                     let result = match swap {
                         Some((target, temp)) => swapped(result, &target, &temp, &cancel),
@@ -503,7 +513,16 @@ impl RenderJob {
                         Ok(files) => p.files = files,
                         Err(e) => p.error = Some(e),
                     }
+                    let report = timing.as_ref().map(|_| p.clone());
                     drop(p);
+                    if let (Some(timing), Some(report), Some(decoding)) = (timing, report, decoding)
+                    {
+                        if let Err(error) =
+                            timing.report(&settings, &report, &accel.status(), &decoding)
+                        {
+                            eprintln!("Could not save Noni export timing: {error}");
+                        }
+                    }
                     repaint();
                 })
                 .expect("could not start the render thread")
@@ -790,14 +809,20 @@ fn write(
     mut out: Box<dyn Output>,
     work: Receiver<Work>,
     bytes: &AtomicU64,
+    timing: Option<&Timing>,
 ) -> (Box<dyn Output>, Result<(), String>) {
     for w in work {
-        let r = match w {
+        let stage = if matches!(w, Work::Audio(_)) {
+            Stage::AudioWrite
+        } else {
+            Stage::VideoWrite
+        };
+        let r = Timing::measure(timing, stage, || match w {
             Work::Image(img, n) => out.video(&img, n),
             Work::Packed(data, n) => out.video_packed(&data, n),
             Work::Compressed(data, n) => out.compressed(&data, n),
             Work::Audio(planar) => out.audio(&planar),
-        };
+        });
         bytes.store(out.bytes(), Ordering::Relaxed);
         if let Err(e) = r {
             return (out, Err(e));
@@ -996,6 +1021,7 @@ fn run(
     repaint: &crate::RepaintFn,
     started: Instant,
     painter: &mut crate::accel::Painter,
+    timing: Option<&Arc<Timing>>,
 ) -> Result<Vec<PathBuf>, String> {
     let s = &normalized(s);
     // Multichannel mapping: the busses' sound in the file's channels.
@@ -1038,9 +1064,10 @@ fn run(
     let (work, received): (SyncSender<Work>, Receiver<Work>) = std::sync::mpsc::sync_channel(4);
     let writer = {
         let bytes = bytes.clone();
+        let timing = timing.cloned();
         std::thread::Builder::new()
             .name("bv-render-writer".into())
-            .spawn(move || write(out, received, &bytes))
+            .spawn(move || write(out, received, &bytes, timing.as_deref()))
             .map_err(|e| e.to_string())?
     };
     // What the writer says when it stops: its output and how it went.
@@ -1097,21 +1124,25 @@ fn run(
     let file_channels = audio.map_or(0, |a| a.channels as usize);
     // The writer gone (it failed): its error says why.
     let gone = || "the file could not be written".to_string();
+    let timing = timing.map(Arc::as_ref);
     let mut mix = |a0: i64, a1: i64, work: &SyncSender<Work>| -> Result<(), String> {
         if a1 <= a0 {
             return Ok(());
         }
-        let buf = bv_mixer::mix(project, a0, (a1 - a0) as usize, &mut apool);
-        if let Some(m) = &mut meter {
-            m.push(&buf.channels);
-        }
-        let planar = if mapped.is_empty() {
-            buf.channels
-        } else {
-            let busses = apool.take_bus_outputs();
-            mapped_planar(&mapped, buf.channels, &busses, file_channels)
-        };
-        work.send(Work::Audio(planar)).map_err(|_| gone())
+        let planar = Timing::measure(timing, Stage::AudioMix, || {
+            let buf = bv_mixer::mix(project, a0, (a1 - a0) as usize, &mut apool);
+            if let Some(m) = &mut meter {
+                m.push(&buf.channels);
+            }
+            if mapped.is_empty() {
+                buf.channels
+            } else {
+                let busses = apool.take_bus_outputs();
+                mapped_planar(&mapped, buf.channels, &busses, file_channels)
+            }
+        });
+        Timing::measure(timing, Stage::QueueWait, || work.send(Work::Audio(planar)))
+            .map_err(|_| gone())
     };
     let mut sent: Result<(), String> = Ok(());
 
@@ -1129,7 +1160,8 @@ fn run(
             let (t, next) = (rate.frame_start(f), rate.frame_start(f + 1));
             let later = (v.field_order != bv_core::FieldOrder::Progressive)
                 .then(|| t + Tick((next - t).0 / 2));
-            match packed {
+            let start = timing.map(|_| (Instant::now(), pool.waited()));
+            let frame = match packed {
                 Some(ten_bit) => {
                     let mut data = packed_at(project, t, size, fit, ten_bit, pool, painter);
                     if let Some(t2) = later {
@@ -1146,7 +1178,15 @@ fn run(
                     }
                     Work::Image(img, n)
                 }
+            };
+            if let (Some(timing), Some((start, waited))) = (timing, start) {
+                timing.draw(
+                    start.elapsed(),
+                    pool.waited() - waited,
+                    painter.take_readback_timing(),
+                );
             }
+            frame
         };
         // Frame `n` handed on, in order: some go to the preview (four a
         // second), the writer gets it, then its audio, sample-exact.
@@ -1168,7 +1208,7 @@ fn run(
                     last_shown = Some(Instant::now());
                 }
             }
-            work.send(job).map_err(|_| gone())?;
+            Timing::measure(timing, Stage::QueueWait, || work.send(job)).map_err(|_| gone())?;
             if audio.is_some() {
                 let a0 = sr.sample_at(t).max(first_sample);
                 let a1 = if n + 1 == frames {
@@ -1284,7 +1324,7 @@ fn run(
     // The writer's own error says more than "could not be written".
     let out = finish_writer(work)?;
     sent?;
-    let files = out.finish()?;
+    let files = Timing::measure(timing, Stage::Finish, || out.finish())?;
     if let Some(m) = &meter {
         write_loudness_log(&s.path, &m.report())?;
     }

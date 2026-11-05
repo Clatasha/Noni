@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use bv_core::{ImageRgbaF32, PixelFormat, PlaneData, TransferCharacteristic, VideoFrame};
 use bv_media::{Ask, Picture, VideoPool, Want};
@@ -81,6 +82,17 @@ struct Img {
     h: u32,
 }
 
+/// Time spent returning completed GPU output to system memory.
+#[derive(Debug, Default)]
+pub struct ReadbackTiming {
+    pub frames: u64,
+    pub bytes: u64,
+    /// Submission through mapping, including GPU execution and the transfer.
+    pub wait: Duration,
+    /// Reading and unpacking the mapped bytes into the owned result.
+    pub copy: Duration,
+}
+
 /// Draws frames on a graphics card. Keeps its buffers and the pictures it
 /// uploaded from one frame to the next.
 pub struct Compositor {
@@ -96,6 +108,7 @@ pub struct Compositor {
     /// Transfer tables on the card: (encode, curve).
     luts: HashMap<(bool, TransferCharacteristic), wgpu::Buffer>,
     readback: Option<wgpu::Buffer>,
+    readback_timing: Option<ReadbackTiming>,
     /// Buffers CUDA shares, all of one size: a frame's plug-ins that
     /// render with CUDA use them one after another.
     shared: Vec<Shared>,
@@ -155,9 +168,21 @@ impl Compositor {
             seen: Vec::new(),
             luts: HashMap::new(),
             readback: None,
+            readback_timing: None,
             shared: Vec::new(),
             plugin_readbacks: Vec::new(),
         }
+    }
+
+    pub fn measure_readback(&mut self, on: bool) {
+        self.readback_timing = on.then(ReadbackTiming::default);
+    }
+
+    pub fn take_readback_timing(&mut self) -> ReadbackTiming {
+        self.readback_timing
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
     }
 
     pub fn gpu(&self) -> &Arc<Gpu> {
@@ -297,6 +322,7 @@ impl Compositor {
             }),
         };
         enc.copy_buffer_to_buffer(&result_buf, 0, &readback, 0, bytes);
+        let submitted_at = self.readback_timing.as_ref().map(|_| Instant::now());
         let submitted = gpu.queue.submit([enc.finish()]);
         let failed = pollster::block_on(validation.pop())
             .or(pollster::block_on(memory.pop()))
@@ -304,7 +330,14 @@ impl Compositor {
             .or_else(|| gpu.take_stray());
         let result = match failed {
             Some(e) => Err(GpuError::Failed(e)),
-            None => self.read(&readback, submitted, bytes, (out.w, out.h), output),
+            None => self.read(
+                &readback,
+                submitted,
+                bytes,
+                (out.w, out.h),
+                output,
+                submitted_at,
+            ),
         };
         self.readback = Some(readback);
         self.end_frame();
@@ -317,13 +350,15 @@ impl Compositor {
     /// Waits for the frame (the work `submitted` copies it into
     /// `readback`) and copies it out of the card. Only that work is waited
     /// for: another compositor's on the same card goes on meanwhile.
+    #[allow(clippy::too_many_arguments)]
     fn read(
-        &self,
+        &mut self,
         readback: &wgpu::Buffer,
         submitted: wgpu::SubmissionIndex,
         bytes: u64,
         (w, h): (u32, u32),
         output: Output,
+        submitted_at: Option<Instant>,
     ) -> Result<Rendered, GpuError> {
         let (tx, rx) = std::sync::mpsc::channel();
         readback.map_async(wgpu::MapMode::Read, .., move |r| {
@@ -339,6 +374,7 @@ impl Compositor {
         rx.recv()
             .map_err(|_| GpuError::Lost)?
             .map_err(|e| GpuError::Failed(e.to_string()))?;
+        let mapped_at = submitted_at.map(|_| Instant::now());
         let rendered = {
             let view = readback
                 .get_mapped_range(..bytes)
@@ -385,6 +421,14 @@ impl Compositor {
             }
         };
         readback.unmap();
+        if let (Some(timing), Some(submitted), Some(mapped)) =
+            (&mut self.readback_timing, submitted_at, mapped_at)
+        {
+            timing.frames += 1;
+            timing.bytes += bytes;
+            timing.wait += mapped.duration_since(submitted);
+            timing.copy += mapped.elapsed();
+        }
         Ok(rendered)
     }
 
@@ -2013,7 +2057,14 @@ impl Compositor {
             });
         let done = std::mem::replace(enc, next);
         let submitted = self.gpu.queue.submit([done.finish()]);
-        let picture = match self.read(&staging, submitted, bytes, (img.w, img.h), Output::Linear) {
+        let picture = match self.read(
+            &staging,
+            submitted,
+            bytes,
+            (img.w, img.h),
+            Output::Linear,
+            None,
+        ) {
             Ok(Rendered::Linear(i)) => Some(i),
             _ => None,
         };

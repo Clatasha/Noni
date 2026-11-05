@@ -16,7 +16,7 @@ mod shared;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-pub use compositor::{Compositor, Output, Rendered, draws};
+pub use compositor::{Compositor, Output, ReadbackTiming, Rendered, draws};
 
 /// This thread gives way to the others: the work it does can wait.
 #[allow(unsafe_code)]

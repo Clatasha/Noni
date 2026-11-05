@@ -215,6 +215,7 @@ impl Accel {
 pub(crate) struct Painter {
     accel: Arc<Accel>,
     compositor: Option<Compositor>,
+    measure_readback: bool,
     /// The plug-in effects' instances.
     plugins: Arc<OfxEffects>,
     /// The thread readying the plug-ins of frames coming soon (see
@@ -238,6 +239,7 @@ impl Painter {
         Painter {
             accel,
             compositor: None,
+            measure_readback: false,
             plugins,
             readier: None,
             readied: (0, (0, 0), Vec::new()),
@@ -255,10 +257,26 @@ impl Painter {
         self.accel.gpu().is_some()
     }
 
+    pub(crate) fn measure_readback(&mut self) {
+        self.measure_readback = true;
+        if let Some(compositor) = &mut self.compositor {
+            compositor.measure_readback(true);
+        }
+    }
+
+    pub(crate) fn take_readback_timing(&mut self) -> bv_gpu::ReadbackTiming {
+        self.compositor
+            .as_mut()
+            .map(Compositor::take_readback_timing)
+            .unwrap_or_default()
+    }
+
     /// Another painter for `purpose` on the same card, with plug-in
     /// instances of its own (a render's second drawing thread).
     pub(crate) fn another(&self, purpose: Purpose) -> Painter {
-        Painter::new(self.accel.clone(), purpose)
+        let mut painter = Painter::new(self.accel.clone(), purpose);
+        painter.measure_readback = self.measure_readback;
+        painter
     }
 
     /// Lets go of the plug-in instances no frame used lately.
@@ -277,7 +295,9 @@ impl Painter {
             .as_ref()
             .is_none_or(|c| !Arc::ptr_eq(c.gpu(), &gpu))
         {
-            self.compositor = Some(Compositor::new(gpu));
+            let mut compositor = Compositor::new(gpu);
+            compositor.measure_readback(self.measure_readback);
+            self.compositor = Some(compositor);
         }
         self.compositor.as_mut()
     }
