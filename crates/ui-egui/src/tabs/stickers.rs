@@ -22,31 +22,69 @@ const THUMB_SIDE: f32 = 80.0;
 // https://github.com/Clatasha/Clatasha-Studio/tree/main/assets/stickers
 const BACKGROUNDS: &[u8] = include_bytes!("../../assets/stickers/background-shapes.zip");
 const YOUTUBE: &[u8] = include_bytes!("../../assets/stickers/youtube.zip");
+// The editor's inline catalog, grouped by its original category. Artwork
+// bundled for Noni itself can go under noni/ in this archive.
+const INLINE: &[u8] = include_bytes!("../../assets/stickers/studio-inline.zip");
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
 enum Pack {
     #[default]
+    Arrows,
+    Badges,
+    Emoji,
+    Mark,
     Backgrounds,
     YouTube,
+    Noni,
     Custom,
 }
 
 impl Pack {
-    const ALL: [Self; 3] = [Self::Backgrounds, Self::YouTube, Self::Custom];
+    const ALL: [Self; 8] = [
+        Self::Arrows,
+        Self::Badges,
+        Self::Emoji,
+        Self::Mark,
+        Self::Backgrounds,
+        Self::YouTube,
+        Self::Noni,
+        Self::Custom,
+    ];
 
     fn title(self) -> &'static str {
         match self {
+            Self::Arrows => tr("Arrows"),
+            Self::Badges => tr("Badges"),
+            Self::Emoji => tr("Emoji"),
+            Self::Mark => tr("Mark"),
             Self::Backgrounds => tr("Backgrounds"),
             Self::YouTube => tr("YouTube"),
+            Self::Noni => tr("Noni Originals"),
             Self::Custom => tr("My Stickers"),
         }
     }
 
     fn folder(self) -> &'static str {
         match self {
+            Self::Arrows => "Studio-1/Arrows",
+            Self::Badges => "Studio-1/Badges",
+            Self::Emoji => "Studio-1/Emoji",
+            Self::Mark => "Studio-1/Mark",
             Self::Backgrounds => "Studio-1/Backgrounds",
             Self::YouTube => "Studio-1/YouTube",
+            Self::Noni => "Noni-1",
             Self::Custom => "Custom",
+        }
+    }
+
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::Arrows => "arrows/",
+            Self::Badges => "badges/",
+            Self::Emoji => "emoji/",
+            Self::Mark => "highlight/",
+            Self::Noni => "noni/",
+            Self::Backgrounds | Self::YouTube | Self::Custom => "",
         }
     }
 
@@ -55,6 +93,7 @@ impl Pack {
             Self::Backgrounds => BACKGROUNDS,
             Self::YouTube => YOUTUBE,
             Self::Custom => return None,
+            _ => INLINE,
         };
         bv_zip::ZipReader::new(Cursor::new(data)).ok()
     }
@@ -78,6 +117,11 @@ impl StickerPanel {
     fn ui(&mut self, ui: &mut egui::Ui, app: &mut BananaApp) {
         ui.horizontal_wrapped(|ui| {
             for pack in Pack::ALL {
+                if pack == Pack::Noni
+                    && self.names.entry(pack).or_insert_with(|| names(pack)).is_empty()
+                {
+                    continue;
+                }
                 if ui.selectable_label(self.pack == pack, pack.title()).clicked() {
                     self.pack = pack;
                     ui.ctx().request_repaint();
@@ -222,7 +266,8 @@ fn title(pack: Pack, file: &str) -> String {
     let stem = file.strip_suffix(".png").unwrap_or(file);
     match pack {
         Pack::Backgrounds => trf!("Background Shape {}", stem.trim_start_matches('0')),
-        Pack::YouTube => stem
+        Pack::Noni | Pack::Custom => stem.to_owned(),
+        _ => stem
             .split_once('-')
             .map_or(stem, |(_, title)| title)
             .split('-')
@@ -233,7 +278,6 @@ fn title(pack: Pack, file: &str) -> String {
             })
             .collect::<Vec<_>>()
             .join(" "),
-        Pack::Custom => stem.to_owned(),
     }
 }
 
@@ -245,7 +289,13 @@ fn folder(pack: Pack) -> io::Result<PathBuf> {
 
 fn names(pack: Pack) -> Vec<String> {
     if let Some(archive) = pack.archive() {
-        return archive.entries().iter().map(|entry| entry.name.clone()).collect();
+        return archive
+            .entries()
+            .iter()
+            .filter_map(|entry| entry.name.strip_prefix(pack.prefix()))
+            .filter(|name| !name.contains('/') && name.ends_with(".png"))
+            .map(str::to_owned)
+            .collect();
     }
     let mut names: Vec<_> = folder(pack)
         .ok()
@@ -266,7 +316,8 @@ fn read_sticker(pack: Pack, file: &str) -> io::Result<Vec<u8>> {
         return read_png(&folder(pack)?.join(file));
     }
     let mut zip = pack.archive().ok_or(io::ErrorKind::InvalidData)?;
-    let index = zip.find(file).ok_or(io::ErrorKind::NotFound)?;
+    let entry = format!("{}{file}", pack.prefix());
+    let index = zip.find(&entry).ok_or(io::ErrorKind::NotFound)?;
     zip.read(index)
 }
 
