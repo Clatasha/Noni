@@ -42,7 +42,12 @@ pub(crate) fn ui(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp
     } else {
         (&buttons[..], &[][..])
     };
-    let controls_right = clocks - 8.0;
+    let volume = Rect::from_min_max(
+        pos2(clocks - 49.0, l.toolbar.top()),
+        pos2(clocks - 8.0, l.toolbar.bottom()),
+    );
+    listening_volume(ui, app, volume);
+    let controls_right = volume.left() - 8.0;
     let controls_left = controls_right - controls.len() as f32 * 24.0;
     let edit_room = Rect::from_min_max(
         l.toolbar.min,
@@ -82,6 +87,29 @@ fn paint_group(
                         toolbar_buttons::paint_buttons(ui, app, buttons);
                     });
                 });
+        },
+    );
+}
+
+fn listening_volume(ui: &mut egui::Ui, app: &mut BananaApp, rect: Rect) {
+    ui.scope_builder(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+        |ui| {
+            ui.set_clip_rect(rect.intersect(ui.clip_rect()));
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.spacing_mut().interact_size.x = 18.0;
+            ui.spacing_mut().slider_width = 24.0;
+            let (icon, response) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
+            crate::icons::paint(
+                ui.painter(),
+                icon,
+                crate::icons::Icon::Speaker,
+                theme::text(),
+            );
+            response.on_hover_text(tr("Listening Volume"));
+            crate::tabs::master::listening_slider(ui, app, true);
         },
     );
 }

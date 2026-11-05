@@ -42,6 +42,7 @@ pub enum Icon {
     Pause,
     Stop,
     Record,
+    Microphone,
     Loop,
     PlayFromStart,
     GoStart,

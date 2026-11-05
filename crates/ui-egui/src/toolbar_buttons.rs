@@ -486,7 +486,7 @@ impl TbButton {
             | B::RenderToNewTrack
             | B::WelcomeScreen
             | B::Script(_) => Icon::Script,
-            B::Record => Icon::Record,
+            B::Record => Icon::Microphone,
             B::LoopPlayback => Icon::Loop,
             B::PlayFromStart => Icon::PlayFromStart,
             B::Play => Icon::Play,

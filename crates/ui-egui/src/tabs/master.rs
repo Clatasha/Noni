@@ -274,20 +274,31 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
 fn listening_volume(ui: &mut egui::Ui, app: &mut BananaApp) {
     ui.label(tr("Listening Volume"));
     ui.horizontal(|ui| {
-        let mut volume = 100_u8.saturating_sub(app.settings.listening_attenuation);
         ui.spacing_mut().slider_width = (ui.available_width() - 42.0).clamp(24.0, 180.0);
-        let response = ui.add(egui::Slider::new(&mut volume, 0..=100).show_value(false));
+        let volume = listening_slider(ui, app, false);
         ui.label(format!("{volume}%"));
-        if response.changed() {
-            app.settings.listening_attenuation = 100 - volume;
-            bv_engine::Engine::set_listening_volume(volume);
-        }
-        if response.drag_stopped() || (response.changed() && !response.dragged()) {
-            let _ = app.settings.save();
-        }
-        response.on_hover_text(tr("Changes speaker and headphone volume only."));
     });
     ui.separator();
+}
+
+/// The shared listening control, independent of the project's Master fader.
+pub(crate) fn listening_slider(ui: &mut egui::Ui, app: &mut BananaApp, vertical: bool) -> u8 {
+    let mut volume = 100_u8.saturating_sub(app.settings.listening_attenuation);
+    let slider = egui::Slider::new(&mut volume, 0..=100).show_value(false);
+    let response = ui.add(if vertical { slider.vertical() } else { slider });
+    if response.changed() {
+        app.settings.listening_attenuation = 100 - volume;
+        bv_engine::Engine::set_listening_volume(volume);
+    }
+    if response.drag_stopped() || (response.changed() && !response.dragged()) {
+        let _ = app.settings.save();
+    }
+    response.on_hover_text(format!(
+        "{} · {volume}%\n{}",
+        tr("Listening Volume"),
+        tr("Changes speaker and headphone volume only."),
+    ));
+    volume
 }
 
 /// The preview bus's strip: its name, its fader (the level previews play

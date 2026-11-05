@@ -78,6 +78,11 @@ pub(super) fn layers(icon: Icon) -> Vec<Layer> {
             line(d("M21 12A9 9 0 1 1 3 12 9 9 0 1 1 21 12Z")).dim(),
             solid(d("M17.4 12A5.4 5.4 0 1 1 6.6 12 5.4 5.4 0 1 1 17.4 12Z")).red(),
         ],
+        // A microphone capsule above its stand.
+        Icon::Microphone => vec![
+            solid(d("M12 2.8A3.4 3.4 0 0 1 15.4 6.2V11A3.4 3.4 0 0 1 8.6 11V6.2A3.4 3.4 0 0 1 12 2.8Z")),
+            line(d("M5.5 10.5V11A6.5 6.5 0 0 0 18.5 11V10.5M12 17.5V21M8.5 21H15.5")),
+        ],
         // Two arrows chasing each other round a rectangle.
         Icon::Loop => vec![
             line(d("M3.5 11V10A3 3 0 0 1 6.5 7H19.5M17.67 4.17L20.5 7 17.67 9.83M20.5 13V14A3 3 0 0 1 17.5 17H4.5M6.33 19.83L3.5 17 6.33 14.17")),
@@ -819,7 +824,7 @@ impl Layer {
 }
 
 #[cfg(test)]
-pub(super) const ALL: [Icon; 133] = [
+pub(super) const ALL: [Icon; 134] = [
     Icon::New,
     Icon::Open,
     Icon::Save,
@@ -834,6 +839,7 @@ pub(super) const ALL: [Icon; 133] = [
     Icon::Pause,
     Icon::Stop,
     Icon::Record,
+    Icon::Microphone,
     Icon::Loop,
     Icon::PlayFromStart,
     Icon::GoStart,
