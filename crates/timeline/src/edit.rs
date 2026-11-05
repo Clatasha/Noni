@@ -19,6 +19,7 @@ pub enum EditError {
     UnknownMedia(MediaId),
     /// Trilha de vídeo onde se esperava áudio, ou vice-versa.
     WrongTrackKind,
+    TrackLocked,
     /// A mídia não tem nenhum stream que caiba nas trilhas indicadas.
     NothingToInsert,
     /// O instante não está estritamente dentro de nenhum clipe do grupo.
@@ -39,6 +40,7 @@ impl std::fmt::Display for EditError {
             EditError::UnknownTrack(id) => write!(f, "track {id:?} does not exist"),
             EditError::UnknownMedia(id) => write!(f, "media {id:?} does not exist"),
             EditError::WrongTrackKind => f.write_str("incompatible track type"),
+            EditError::TrackLocked => f.write_str("the track is locked"),
             EditError::NothingToInsert => f.write_str("the media has no stream for these tracks"),
             EditError::NotInsideClip => f.write_str("the time is not inside the clip"),
             EditError::UnknownBin(id) => write!(f, "media bin {id:?} does not exist"),
@@ -95,6 +97,9 @@ impl Project {
             .iter()
             .position(|m| m.id == id)
             .ok_or(EditError::UnknownMedia(id))?;
+        if self.clips().any(|(track, clip)| track.locked && clip.take_media().any(|m| m == id)) {
+            return Err(EditError::TrackLocked);
+        }
         self.media.remove(idx);
         // Events with other takes play another; the others go.
         self.drop_takes_of(id);
@@ -135,6 +140,7 @@ impl Project {
             name,
             muted: false,
             solo: false,
+            locked: false,
             level: 1.0,
             pan: 0.0,
             pan_mode: Default::default(),
@@ -373,6 +379,7 @@ impl Project {
         let mut t = self.tracks[i].clone();
         t.id = TrackId(self.alloc_id());
         t.armed = false;
+        t.locked = false;
         for c in &mut t.clips {
             c.id = ClipId(self.alloc_id());
             c.group = None;
@@ -385,6 +392,9 @@ impl Project {
 
     pub fn remove_track(&mut self, id: TrackId) -> Result<()> {
         let idx = self.track_index(id).ok_or(EditError::UnknownTrack(id))?;
+        if self.tracks[idx].locked {
+            return Err(EditError::TrackLocked);
+        }
         self.tracks.remove(idx);
         self.normalize_groups();
         Ok(())
@@ -475,6 +485,9 @@ impl Project {
                 return Err(EditError::WrongTrackKind);
             }
             if info.has(kind) {
+                if t.locked {
+                    return Err(EditError::TrackLocked);
+                }
                 targets.push(track);
             }
         }
@@ -496,7 +509,7 @@ impl Project {
                 let audio: Vec<TrackId> = self
                     .tracks
                     .iter()
-                    .filter(|t| t.kind == TrackKind::Audio)
+                    .filter(|t| t.kind == TrackKind::Audio && !t.locked)
                     .map(|t| t.id)
                     .collect();
                 let pos = audio.iter().position(|&t| t == first).unwrap_or(0);
@@ -874,11 +887,15 @@ impl Project {
 
     fn member_positions(&self, id: ClipId) -> Result<Vec<(usize, usize)>> {
         self.find_clip(id).ok_or(EditError::UnknownClip(id))?;
-        Ok(self
+        let members: Vec<_> = self
             .group_members(id)
             .into_iter()
             .filter_map(|m| self.find_clip(m))
-            .collect())
+            .collect();
+        if members.iter().any(|&(track, _)| self.tracks[track].locked) {
+            return Err(EditError::TrackLocked);
+        }
+        Ok(members)
     }
 
     fn sort_all(&mut self) {
@@ -900,6 +917,9 @@ impl Project {
         if let Some(target) = target_track {
             let kind = self.tracks[ti].kind;
             let t = self.track(target).ok_or(EditError::UnknownTrack(target))?;
+            if t.locked {
+                return Err(EditError::TrackLocked);
+            }
             if t.kind != kind {
                 return Err(EditError::WrongTrackKind);
             }
@@ -1151,6 +1171,9 @@ impl Project {
             self.find_clip(id).ok_or(EditError::UnknownClip(id))?;
         }
         let doomed = self.edit_reach(ids, grouped);
+        if doomed.iter().any(|&id| self.clip_track(id).is_some_and(|t| t.locked)) {
+            return Err(EditError::TrackLocked);
+        }
         let mut removed: HashMap<TrackId, Vec<TimeRange>> = HashMap::new();
         for t in &mut self.tracks {
             t.clips.retain(|c| {
@@ -1462,6 +1485,30 @@ mod tests {
             p.insert_media(m, Tick::ZERO, Some(a), Some(v)),
             Err(EditError::WrongTrackKind)
         );
+    }
+
+    #[test]
+    fn a_locked_track_blocks_timeline_edits_until_unlocked() {
+        let (mut p, video, _, clip, _) = setup();
+        let destination = p.add_track(TrackKind::Video);
+        let media = p.clip(clip).unwrap().media;
+        p.track_by_id_mut(video).unwrap().locked = true;
+
+        assert_eq!(p.move_clip(clip, s(5), None), Err(EditError::TrackLocked));
+        assert_eq!(p.trim_end(clip, s(1)), Err(EditError::TrackLocked));
+        assert_eq!(p.delete_clips(&[clip], false), Err(EditError::TrackLocked));
+        assert_eq!(
+            p.insert_media(media, Tick::ZERO, Some(video), None),
+            Err(EditError::TrackLocked)
+        );
+
+        p.track_by_id_mut(video).unwrap().locked = false;
+        p.track_by_id_mut(destination).unwrap().locked = true;
+        assert_eq!(
+            p.move_clip(clip, s(5), Some(destination)),
+            Err(EditError::TrackLocked)
+        );
+        assert_eq!(p.move_clip(clip, s(5), None), Ok(s(5)));
     }
 
     #[test]

@@ -57,6 +57,7 @@ pub(super) enum Spot {
     Button(HeaderButton),
     Minimize,
     Maximize,
+    TrackLock,
     /// Audio, while the project has busses: where the track plays.
     Bus,
     /// A track minimized alone: Restore Track Height (` brings the others
@@ -124,7 +125,7 @@ impl ButtonsFor<'_> {
                 self.set.contains(&b) || (b == HeaderButton::TrackFx && self.adjustment)
             }
             Spot::Minimize | Spot::Maximize => self.set.contains(&HeaderButton::MinMax),
-            Spot::Bus | Spot::Restore | Spot::Armed => true,
+            Spot::Bus | Spot::Restore | Spot::Armed | Spot::TrackLock => true,
         }
     }
 
@@ -147,6 +148,7 @@ impl ButtonsFor<'_> {
             TrackKind::Audio => &AUDIO_TOP,
         };
         let first = [
+            Spot::TrackLock,
             Spot::Button(HeaderButton::Solo),
             Spot::Button(HeaderButton::Mute),
         ];
@@ -501,7 +503,7 @@ fn header_button(
         Spot::Button(b) => b.name(),
         Spot::Minimize => tr("Minimize"),
         Spot::Maximize => tr("Maximize"),
-        Spot::Bus | Spot::Restore | Spot::Armed => return,
+        Spot::Bus | Spot::Restore | Spot::Armed | Spot::TrackLock => return,
     };
     let mode = track.composite_mode;
     let (on, enabled) = match spot {
@@ -1249,6 +1251,28 @@ pub(crate) fn ui(
                         } else {
                             toggle_solo(app, track);
                         }
+                    }
+                }
+                Spot::TrackLock => {
+                    let response = ui.interact(button, id("track-lock"), Sense::click());
+                    if track.locked || response.hovered() {
+                        ui.painter().rect_filled(
+                            button,
+                            2.0,
+                            if track.locked { theme::banana() } else { theme::hover() },
+                        );
+                    }
+                    crate::icons::paint(
+                        ui.painter(),
+                        button.shrink(2.0),
+                        crate::icons::Icon::Lock,
+                        if track.locked { Color32::BLACK } else { theme::text() },
+                    );
+                    if response
+                        .on_hover_text(if track.locked { tr("Unlock Track") } else { tr("Lock Track") })
+                        .clicked()
+                    {
+                        toggle_track_lock(app, track);
                     }
                 }
                 Spot::Button(HeaderButton::Automation) => automation_button(ui, app, track, cell),
@@ -2411,13 +2435,24 @@ fn more_menu(
     }
 }
 
-/// More's Mute and Solo, when the header does not show them.
+fn toggle_track_lock(app: &mut BananaApp, track: &Track) {
+    app.modify(|project| {
+        if let Some(target) = project.track_by_id_mut(track.id) {
+            target.locked = !track.locked;
+        }
+    });
+}
+
+/// More's Mute, Solo and Lock Track, when the header does not show them.
 fn mute_solo_items(
     ui: &mut egui::Ui,
     app: &mut BananaApp,
     track: &Track,
     hidden: &dyn Fn(Spot) -> bool,
 ) {
+    if hidden(Spot::TrackLock) && mark_item(ui, tr("Lock Track"), track.locked) {
+        toggle_track_lock(app, track);
+    }
     if hidden(Spot::Button(HeaderButton::Mute)) && mark_item(ui, tr("Mute"), track.muted) {
         let key = egui::Id::new(("cabecalho", track.id.0, "mute"));
         toggle_mute(app, track, key);
@@ -2833,7 +2868,7 @@ mod tests {
     /// 24, Automation Settings 34 with its arrow; the compositing buttons
     /// every 20, Make Compositing Child's middle 16.5 in.
     #[test]
-    fn the_buttons_sit_where_vegas_puts_them() {
+    fn the_track_lock_sits_next_to_mute_and_solo() {
         let cells = ButtonsFor {
             kind: TrackKind::Video,
             set: &HeaderButton::VIDEO,
@@ -2850,10 +2885,11 @@ mod tests {
                     .unwrap()
         };
         use HeaderButton as B;
-        assert!((middle(Spot::Button(B::Solo)) - 15.5).abs() < 0.01);
-        assert!((middle(Spot::Button(B::Mute)) - 39.5).abs() < 0.01);
-        assert!((middle(Spot::Button(B::TrackFx)) - 97.5).abs() < 0.01);
-        assert!((middle(Spot::Maximize) - 217.5).abs() < 0.01);
+        assert!((middle(Spot::TrackLock) - 15.5).abs() < 0.01);
+        assert!((middle(Spot::Button(B::Solo)) - 39.5).abs() < 0.01);
+        assert!((middle(Spot::Button(B::Mute)) - 63.5).abs() < 0.01);
+        assert!((middle(Spot::Button(B::TrackFx)) - 121.5).abs() < 0.01);
+        assert!((middle(Spot::Maximize) - 241.5).abs() < 0.01);
         assert!((middle(Spot::Button(B::MakeChild)) - 16.5).abs() < 0.01);
         assert!((middle(Spot::Button(B::CompositingMode)) - 56.5).abs() < 0.01);
     }
@@ -2876,6 +2912,7 @@ mod tests {
         assert_eq!(
             spots,
             [
+                Spot::TrackLock,
                 Spot::Button(B::Solo),
                 Spot::Button(B::Mute),
                 Spot::Restore,

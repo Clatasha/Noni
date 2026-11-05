@@ -38,6 +38,10 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     let (Some(clip), Some(track)) = (project.clip(id), project.clip_track(id)) else {
         return;
     };
+    if track.locked {
+        super::hint(ui, tr("This track is locked."));
+        return;
+    }
     let rate = project.settings.frame_rate;
     let media_name = project
         .media(clip.media)

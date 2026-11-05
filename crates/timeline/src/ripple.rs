@@ -22,11 +22,11 @@ pub enum RippleScope {
 
 impl Project {
     fn target_tracks(&self, tracks: &[TrackId]) -> Vec<TrackId> {
-        if tracks.is_empty() {
-            self.tracks.iter().map(|t| t.id).collect()
-        } else {
-            tracks.to_vec()
-        }
+        self.tracks
+            .iter()
+            .filter(|t| !t.locked && (tracks.is_empty() || tracks.contains(&t.id)))
+            .map(|t| t.id)
+            .collect()
     }
 
     /// Splits every clip of `tracks` that strictly contains `at` (without
@@ -35,7 +35,7 @@ impl Project {
         let ids: Vec<ClipId> = self
             .tracks
             .iter()
-            .filter(|t| tracks.contains(&t.id))
+            .filter(|t| !t.locked && tracks.contains(&t.id))
             .flat_map(|t| t.clips.iter())
             .filter(|c| at > c.start && at < c.end())
             .map(|c| c.id)
@@ -87,7 +87,7 @@ impl Project {
         }
         let tracks = self.target_tracks(tracks);
         self.split_tracks_at(at, &tracks);
-        for t in self.tracks.iter_mut().filter(|t| tracks.contains(&t.id)) {
+        for t in self.tracks.iter_mut().filter(|t| !t.locked && tracks.contains(&t.id)) {
             for c in t.clips.iter_mut().filter(|c| c.start >= at) {
                 c.start += dur;
             }
@@ -109,7 +109,7 @@ impl Project {
         self.split_tracks_at(r.start, &tracks);
         self.split_tracks_at(r.end(), &tracks);
         let mut removed = 0;
-        for t in self.tracks.iter_mut().filter(|t| tracks.contains(&t.id)) {
+        for t in self.tracks.iter_mut().filter(|t| !t.locked && tracks.contains(&t.id)) {
             let before = t.clips.len();
             t.clips
                 .retain(|c| !(c.start >= r.start && c.end() <= r.end()));
@@ -154,7 +154,7 @@ impl Project {
         let removed = self.delete_range(r, tracks, markers);
         // The parts that meet at the cut, on each track.
         let mut pairs: Vec<(ClipId, ClipId, TrackKind)> = Vec::new();
-        for t in self.tracks.iter().filter(|t| targets.contains(&t.id)) {
+        for t in self.tracks.iter().filter(|t| !t.locked && targets.contains(&t.id)) {
             let left = t.clips.iter().rfind(|c| c.end() == r.start);
             let right = t.clips.iter().find(|c| c.start == r.start);
             if let (Some(l), Some(rt)) = (left, right) {
@@ -169,7 +169,7 @@ impl Project {
         if pairs.is_empty() || overlap <= Tick::ZERO {
             return removed;
         }
-        for t in self.tracks.iter_mut().filter(|t| targets.contains(&t.id)) {
+        for t in self.tracks.iter_mut().filter(|t| !t.locked && targets.contains(&t.id)) {
             for c in t.clips.iter_mut().filter(|c| c.start >= r.start) {
                 c.start -= overlap;
             }
@@ -246,7 +246,7 @@ impl Project {
     /// between consecutive ones. Returns how many clips moved.
     pub fn close_gaps(&mut self, ids: &[ClipId]) -> usize {
         let mut moved = 0;
-        for t in &mut self.tracks {
+        for t in self.tracks.iter_mut().filter(|t| !t.locked) {
             let mut chosen: Vec<usize> = (0..t.clips.len())
                 .filter(|&i| ids.contains(&t.clips[i].id))
                 .collect();
@@ -295,7 +295,7 @@ impl Project {
                 .filter_map(|&m| self.clip_track(m).map(|t| t.id))
                 .collect(),
         };
-        for t in self.tracks.iter_mut().filter(|t| tracks.contains(&t.id)) {
+        for t in self.tracks.iter_mut().filter(|t| !t.locked && tracks.contains(&t.id)) {
             for c in t
                 .clips
                 .iter_mut()
@@ -459,7 +459,7 @@ impl Project {
         self.sort_commands();
         self.sort_cd();
         if scope == RippleScope::All {
-            for t in self.tracks.iter_mut().filter(|t| !affected.contains(&t.id)) {
+            for t in self.tracks.iter_mut().filter(|t| !t.locked && !affected.contains(&t.id)) {
                 for c in &mut t.clips {
                     c.start = shifted(c.start);
                 }

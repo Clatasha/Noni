@@ -977,6 +977,9 @@ pub struct Track {
     pub name: String,
     pub muted: bool,
     pub solo: bool,
+    /// Protects the track's timeline clips while leaving playback controls available.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
     /// Opacidade (vídeo) ou ganho linear (áudio) da trilha inteira.
     #[serde(default = "one")]
     pub level: f32,

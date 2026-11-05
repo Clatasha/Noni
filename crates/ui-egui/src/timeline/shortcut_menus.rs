@@ -213,6 +213,11 @@ pub(super) fn event_menu(ui: &mut Ui, app: &mut BananaApp, clip: ClipId) {
         ui.close();
         return;
     };
+    if p.clip_track(clip).is_some_and(|track| track.locked) {
+        ui.label(tr("This track is locked."));
+        cmd(ui, app, Cmd::Copy);
+        return;
+    }
     let media = p.media(c.media).cloned();
     let video = kind == TrackKind::Video;
     ui.set_min_width(280.0);

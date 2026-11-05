@@ -5647,6 +5647,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Lock Tangents", "Travar tangentes"),
     ("Lock to grid", "Travar na grade"),
+    ("Lock Track", "Bloquear trilha"),
     ("Locked", "Travado"),
     (
         "Log Plugin loading:",
@@ -10953,6 +10954,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "This plug-in shows no parameters.",
         "Este plug-in não mostra parâmetros.",
     ),
+    ("This track is locked.", "Esta trilha está bloqueada."),
     (
         "Three Panes, Large Left",
         "Três painéis, o grande à esquerda",
@@ -11426,6 +11428,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Código Universal de Produto / Número de Catálogo de Mídia:",
     ),
     ("Unlink", "Desvincular"),
+    ("Unlock Track", "Desbloquear trilha"),
     ("Unpacking {}", "Desempacotando {}"),
     ("Unpin", "Desafixar"),
     ("Unresolve Note", "Reabrir nota"),

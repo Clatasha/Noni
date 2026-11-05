@@ -247,7 +247,9 @@ impl BananaApp {
         let Some(copied) = self.copied_clip_effects.clone() else {
             return;
         };
-        if !self.project().clip(id).is_some_and(|clip| !clip.locked) {
+        if !self.project().clip(id).is_some_and(|clip| !clip.locked)
+            || self.project().clip_track(id).is_some_and(|track| track.locked)
+        {
             return;
         }
         self.modify(|project| {
@@ -304,7 +306,7 @@ impl BananaApp {
         let mut n = 0;
         self.modify(|p| {
             for id in targets {
-                let Some(kind) = p.clip_track(id).map(|t| t.kind) else {
+                let Some(kind) = p.clip_track(id).filter(|t| !t.locked).map(|t| t.kind) else {
                     continue;
                 };
                 let Some(src) = data.first_of(kind).cloned() else {

@@ -1874,6 +1874,11 @@ fn start_drag(
     m: egui::Modifiers,
     right: bool,
 ) {
+    if let Hit::Clip { clip, .. } = hit(view, l, project, origin)
+        && project.clip_track(clip).is_some_and(|t| t.locked)
+    {
+        return;
+    }
     let (add, shift, alt) = (m.command, m.shift, m.alt);
     let t = view.time_at(l, origin.x).max(Tick::ZERO);
     if let Hit::Clip {
@@ -3842,6 +3847,18 @@ fn drop_media(
     };
     let released =
         ui.input(|i| i.pointer.any_released()) || app.os_drag.as_ref().is_some_and(|d| d.dropped);
+    if l.row_at(pos.y)
+        .and_then(|row| project.track(row.track))
+        .is_some_and(|track| track.locked)
+    {
+        view.snap_line = None;
+        if released {
+            app.media_drag = None;
+            app.os_drag = None;
+            app.notify(tr("This track is locked."));
+        }
+        return;
+    }
     // Held near the tracks' sides, the view runs on, as VEGAS's.
     if !released {
         view.edge_scroll_x(ui, l, pos.x);
@@ -3982,7 +3999,7 @@ fn drop_media(
                 project
                     .tracks
                     .iter()
-                    .find(|t| t.kind == kind && !t.adjustment)
+                    .find(|t| t.kind == kind && !t.adjustment && !t.locked)
                     .map(|t| t.id)
             })
         };
@@ -4941,7 +4958,7 @@ pub(crate) fn paint(
                     fill.gamma_multiply(0.8),
                 );
                 let mut tx = r.left().max(l.lanes.left()) + 5.0;
-                if clip.locked {
+                if clip.locked || track.locked {
                     icons::paint(
                         &cp,
                         Rect::from_min_size(pos2(tx, r.top() + 2.0), vec2(10.0, 10.0)),

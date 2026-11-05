@@ -162,7 +162,9 @@ pub fn apply_to_clips(app: &mut BananaApp, clips: &[ClipId], chain: &[Effect]) -
     app.modify(|p| {
         let mut n = 0;
         for id in ids {
-            let is_video = p.clip_track(id).is_some_and(|t| t.kind == TrackKind::Video);
+            let is_video = p
+                .clip_track(id)
+                .is_some_and(|t| t.kind == TrackKind::Video && !t.locked);
             if is_video && let Some(c) = p.clip_mut(id) {
                 c.effects.extend(chain.iter().cloned());
                 n += 1;

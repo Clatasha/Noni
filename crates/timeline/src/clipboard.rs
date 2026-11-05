@@ -88,8 +88,9 @@ impl Project {
                 continue;
             }
             let target = match self.track(*track) {
+                Some(t) if t.locked => continue,
                 Some(t) if t.kind == *kind => *track,
-                _ => match self.tracks.iter().find(|t| t.kind == *kind) {
+                _ => match self.tracks.iter().find(|t| t.kind == *kind && !t.locked) {
                     Some(t) => t.id,
                     None => self.add_track(*kind),
                 },
@@ -127,6 +128,9 @@ impl Project {
         delta: Tick,
         to: Option<TrackId>,
     ) -> Vec<ClipId> {
+        if to.and_then(|id| self.track(id)).is_some_and(|t| t.locked) {
+            return Vec::new();
+        }
         let (Some(m), Some(from)) = (
             self.clip(main).cloned(),
             self.clip_track(main).map(|t| t.id),

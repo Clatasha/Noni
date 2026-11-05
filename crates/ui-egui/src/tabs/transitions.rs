@@ -162,6 +162,9 @@ fn apply_with(app: &mut BananaApp, clips: &[ClipId], set: impl Fn(&mut Clip)) {
     let (before, after) = app.settings.prefs.cut_overlap_split();
     app.modify(|p| {
         for id in ids {
+            if p.clip_track(id).is_some_and(|track| track.locked) {
+                continue;
+            }
             let has_overlap = p
                 .clip_track(id)
                 .zip(p.clip(id))

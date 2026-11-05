@@ -1781,7 +1781,7 @@ impl BananaApp {
                 }
                 p.tracks
                     .iter()
-                    .find(|t| t.kind == kind && !t.adjustment)
+                    .find(|t| t.kind == kind && !t.adjustment && !t.locked)
                     .map(|t| t.id)
                     .unwrap_or_else(|| p.add_track(kind))
             };
@@ -1927,7 +1927,7 @@ impl BananaApp {
         let Some(clip) = self.project().clip(id).filter(|c| !c.locked).cloned() else {
             return;
         };
-        let Some(kind) = self.project().clip_track(id).map(|track| track.kind) else {
+        let Some(kind) = self.project().clip_track(id).filter(|track| !track.locked).map(|track| track.kind) else {
             return;
         };
         let dialog = rfd::FileDialog::new().set_title(tr("Replace Media…"));
