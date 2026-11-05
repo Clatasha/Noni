@@ -389,7 +389,14 @@ pub(crate) fn rate(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaA
         app.scrub_rate = 0.0;
         return;
     }
-    let label_w = 72.0;
+    let font = FontId::proportional(11.0);
+    let longest = trf!("Scrub Rate: {}", crate::fmt::num(-MAX_RATE, 2));
+    let label_w = (painter
+        .layout_no_wrap(longest, font.clone(), theme::text())
+        .size()
+        .x
+        + 12.0)
+        .min(r.width());
     let label_rect = Rect::from_min_size(
         pos2(r.left(), r.center().y - 9.0),
         vec2(label_w - 8.0, 18.0),
@@ -413,12 +420,14 @@ pub(crate) fn rate(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaA
             view.rate_text = None;
         }
     } else {
-        painter.text(
-            pos2(r.left(), r.center().y),
+        crate::widgets::fit_text(
+            &painter,
+            label_rect.left_center(),
             Align2::LEFT_CENTER,
-            trf!("Rate: {}", crate::fmt::num(app.scrub_rate, 2)),
-            FontId::proportional(11.0),
+            trf!("Scrub Rate: {}", crate::fmt::num(app.scrub_rate, 2)),
+            font,
             theme::text(),
+            label_rect.width(),
         );
         let label = ui.interact(label_rect, ui.id().with("taxa-rotulo"), Sense::click());
         if label.double_clicked() {

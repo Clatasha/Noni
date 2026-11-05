@@ -7480,7 +7480,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Randomness", "Aleatoriedade"),
     ("Range", "Alcance"),
     ("Rate", "Taxa"),
-    ("Rate: {}", "Taxa: {}"),
     ("Ratio", "Razão"),
     ("Ratio (x:1)", "Razão (x:1)"),
     ("RAW Processor:", "Processador RAW:"),
@@ -8100,6 +8099,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Scrolling Credits", "Créditos rolando"),
     ("Scrolling Down", "Rolando para baixo"),
     ("Scrub", "Varredura"),
+    ("Scrub Rate: {}", "Taxa de varredura: {}"),
     (
         "Scrub: drag to shuttle from the cursor, the further the faster · double-click: normal rate 1",
         "Scrub: arraste para avançar ou voltar a partir do cursor, quanto mais longe mais rápido · duplo clique: taxa normal 1",
