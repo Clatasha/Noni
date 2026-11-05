@@ -114,7 +114,7 @@ impl ImageOut {
             },
             FileFormat::Bmp => bv_image::bmp(&image),
             FileFormat::Tiff => bv_image::tiff(&image, if deep { 16 } else { 8 }, true),
-            FileFormat::Dpx => bv_image::dpx(&image, "BananaV"),
+            FileFormat::Dpx => bv_image::dpx(&image, "Noni"),
             FileFormat::Dds => bv_image::dds(&image),
             FileFormat::Jpeg => bv_image::jpeg(&image, self.quality),
             FileFormat::Heic | FileFormat::WmPhoto => {

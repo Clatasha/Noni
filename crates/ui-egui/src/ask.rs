@@ -149,7 +149,7 @@ impl BananaApp {
                 PROJECT_TYPE,
                 tr("Noni Project"),
             ) {
-                Ok(()) => self.notify(tr("Noni now opens its project files (.bvproj).")),
+                Ok(()) => self.notify(tr("Noni now opens its project files (.noniproj).")),
                 Err(e) => {
                     self.report_error(trf!("Could not make Noni open its project files: {}", e))
                 }
@@ -261,7 +261,7 @@ impl BananaApp {
         self.ask_user(Ask {
             title: tr("Project Files").into(),
             text: tr(
-                "Make Noni the default app for .bvproj project files?",
+                "Make Noni the default app for .noniproj project files?",
             )
             .into(),
             what: Asked::Associate,
@@ -274,7 +274,7 @@ impl BananaApp {
 }
 
 /// BananaV's project files.
-pub(crate) const PROJECT_EXTENSION: &str = "bvproj";
+pub(crate) const PROJECT_EXTENSION: &str = "noniproj";
 /// The type Windows knows them by.
 const PROJECT_TYPE: &str = "Noni.Project";
 

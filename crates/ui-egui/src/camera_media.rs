@@ -88,7 +88,7 @@ pub(crate) fn import_folder(name: &str) -> PathBuf {
         name.trim().to_string()
     };
     crate::project_properties::default_recorded_folder()
-        .join("BananaV")
+        .join("Noni")
         .join(tr("Imported"))
         .join(name)
 }

@@ -2162,7 +2162,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Copy source media", "Copiar a mídia de origem"),
     ("Copy to:", "Copiar para:"),
-    ("Copy.bvproj", "Cópia.bvproj"),
+    ("Copy.noniproj", "Cópia.noniproj"),
     ("Copying Generated Media", "Cópia de mídia gerada"),
     ("Copying the media to {}", "Copiando a mídia para {}"),
     ("Copying {} of {}", "Copiando {} de {}"),
@@ -5837,8 +5837,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Make Compositing Child", "Tornar filha da composição"),
     ("Make Compositing Parent", "Tornar pai da composição"),
     (
-        "Make Noni the default app for .bvproj project files?",
-        "Definir o Noni como aplicativo padrão para arquivos .bvproj?",
+        "Make Noni the default app for .noniproj project files?",
+        "Definir o Noni como aplicativo padrão para arquivos .noniproj?",
     ),
     (
         "Make spacebar and F12 Play/Stop instead of Play/Pause",
@@ -6667,8 +6667,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Noni Help", "Ajuda do Noni"),
     ("Noni Home Page", "Página inicial do Noni"),
     (
-        "Noni now opens its project files (.bvproj).",
-        "Agora o Noni abre os seus arquivos de projeto (.bvproj).",
+        "Noni now opens its project files (.noniproj).",
+        "Agora o Noni abre os seus arquivos de projeto (.noniproj).",
     ),
     ("Noni on GitHub", "Noni no GitHub"),
     ("Noni Preferences", "Preferências do Noni"),
@@ -6676,8 +6676,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Noni Project", "Projeto Noni"),
     ("Noni project", "Projeto do Noni"),
     (
-        "Noni Project File (*.bvproj)…",
-        "Arquivo de projeto Noni (*.bvproj)…",
+        "Noni Project File (*.noniproj)…",
+        "Arquivo de projeto Noni (*.noniproj)…",
     ),
     (
         "Noni's windows always follow the scale of the display each one is on.",
@@ -7327,7 +7327,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Project Video Settings",
         "Configurações de vídeo do projeto",
     ),
-    ("Project.bvproj", "Projeto.bvproj"),
+    ("Project.noniproj", "Projeto.noniproj"),
     (
         "Prompt to adjust project settings to match first media added to timeline",
         "Perguntar se ajusta as configurações do projeto à primeira mídia adicionada à linha do tempo",
@@ -11432,7 +11432,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Unsharp Mask", "Máscara de nitidez"),
     ("Untitled", "Sem título"),
     ("Untitled Timeline", "Linha do tempo sem título"),
-    ("Untitled.bvproj", "Sem título.bvproj"),
+    ("Untitled.noniproj", "Sem título.noniproj"),
     ("Unzoom", "Afastamento"),
     ("Up", "Para cima"),
     ("Up / Down Arrow", "Seta para cima / baixo"),

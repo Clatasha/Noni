@@ -344,7 +344,7 @@ impl RenderProgress {
 pub fn sequence_path(path: &Path, n: u64) -> PathBuf {
     let stem = path
         .file_stem()
-        .map_or("BananaV".into(), |s| s.to_string_lossy().to_string());
+        .map_or("Noni".into(), |s| s.to_string_lossy().to_string());
     let ext = path
         .extension()
         .map_or(String::new(), |e| e.to_string_lossy().to_string());
@@ -901,7 +901,7 @@ fn discard(out: Box<dyn Output>, s: &RenderSettings) {
 fn write_loudness_log(path: &Path, r: &bv_mixer::loudness::LoudnessReport) -> Result<(), String> {
     let stem = path
         .file_stem()
-        .map_or("BananaV".into(), |s| s.to_string_lossy().to_string());
+        .map_or("Noni".into(), |s| s.to_string_lossy().to_string());
     let log = path.with_file_name(format!("{stem}_loud.txt"));
     let fmt = |v: f64| {
         if v <= -199.0 {

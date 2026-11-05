@@ -123,12 +123,12 @@ pub use eframe::egui;
 
 /// Linux: BananaV's windows are X11 ones, through XWayland under Wayland. A
 /// Wayland window cannot place its dialogs, nor see the mouse, the keypad
-/// or the screen outside its windows; `BANANAV_WAYLAND=1` asks for
+/// or the screen outside its windows; `NONI_WAYLAND=1` asks for
 /// Wayland's own windows all the same.
 #[cfg(target_os = "linux")]
 fn event_loop_builder() -> Option<eframe::EventLoopBuilderHook> {
     let x11 =
-        std::env::var_os("DISPLAY").is_some() && std::env::var_os("BANANAV_WAYLAND").is_none();
+        std::env::var_os("DISPLAY").is_some() && std::env::var_os("NONI_WAYLAND").is_none();
     x11.then(|| -> eframe::EventLoopBuilderHook {
         Box::new(|builder| {
             use winit::platform::x11::EventLoopBuilderExtX11;
@@ -205,7 +205,7 @@ pub fn run() -> eframe::Result {
         ..Default::default()
     };
     let ran = eframe::run_native(
-        "BananaV",
+        "Noni",
         options,
         Box::new(|cc| {
             theme::apply(&cc.egui_ctx);

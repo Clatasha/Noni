@@ -64,7 +64,7 @@ pub fn vst_key(v: &bv_timeline::VstFx) -> String {
 fn path() -> PathBuf {
     bv_platform::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("BananaV")
+        .join("Noni")
         .join("predefinicoes.json")
 }
 
@@ -81,7 +81,7 @@ fn looks_in_place(text: &str) -> String {
         return text.to_string();
     }
     let dir = DIR.get_or_init(|| {
-        let dir = bv_platform::config_dir()?.join("BananaV").join("LUTs");
+        let dir = bv_platform::config_dir()?.join("Noni").join("LUTs");
         bv_engine::plugins::write_looks(&dir).ok()?;
         Some(dir)
     });

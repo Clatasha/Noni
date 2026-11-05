@@ -113,7 +113,7 @@ fn id3(project: &Project) -> Vec<u8> {
         body.extend_from_slice(&text(&s.comments)[1..]);
         frame(b"COMM", body);
     }
-    frame(b"TSSE", text("BananaV"));
+    frame(b"TSSE", text("Noni"));
     let n = frames.len() as u32;
     // Sizes in the tag header are "synchsafe": 7 bits per byte.
     let size = [
@@ -245,7 +245,7 @@ pub(super) fn open(project: &Project, s: &RenderSettings) -> Result<Box<dyn Outp
                 (*b"IENG", sum.engineer.as_str()),
                 (*b"ICOP", sum.copyright.as_str()),
                 (*b"ICMT", sum.comments.as_str()),
-                (*b"ISFT", "BananaV"),
+                (*b"ISFT", "Noni"),
             ];
             let mut w = WavWriter::with_info(create()?, a.sample_rate, a.channels, format, &info)
                 .map_err(err)?;

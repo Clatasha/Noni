@@ -19,7 +19,7 @@ Requirements
 Settings
 - Your settings (recent projects, window layouts, language, toolbars,
   keyboard maps, presets, video templates) are kept in
-  %APPDATA%\BananaV\. Delete that folder to start over with the defaults.
+  %APPDATA%\Noni\. Delete that folder to start over with the defaults.
 - The interface is in English; Options › Preferences › Language switches
   it to Brazilian Portuguese.
 

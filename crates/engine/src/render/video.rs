@@ -89,7 +89,7 @@ pub(super) fn metadata(project: &Project, r: &RenderSettings) -> bv_mp4::Metadat
         artist: s.artist.clone(),
         comment: s.comments.clone(),
         copyright: s.copyright.clone(),
-        encoder: "BananaV".into(),
+        encoder: "Noni".into(),
         project: r.reference().unwrap_or_default(),
     }
 }

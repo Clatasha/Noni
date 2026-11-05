@@ -14,15 +14,17 @@ use bv_timeline::{
 
 use crate::{AudioReader, MediaError, Result, VideoReader};
 
-/// The extension of BananaV's project files.
-pub const PROJECT_EXTENSION: &str = "bvproj";
+/// The extension used for new Noni project files.
+pub const PROJECT_EXTENSION: &str = "noniproj";
 
-/// Whether `path` is a BananaV project file (by its extension).
+/// Whether the path names a Noni or legacy BananaV project file.
 pub fn is_project(path: &str) -> bool {
     Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case(PROJECT_EXTENSION))
+        .is_some_and(|e| {
+            e.eq_ignore_ascii_case(PROJECT_EXTENSION) || e.eq_ignore_ascii_case("bvproj")
+        })
 }
 
 /// Who reads a nested project's pictures and sound: functions given the
@@ -290,6 +292,7 @@ mod tests {
     fn project_files_are_told_by_their_extension() {
         assert!(is_project("C:/Shows/Intro.BVPROJ"));
         assert!(is_project("intro.bvproj"));
+        assert!(is_project("intro.noniproj"));
         assert!(!is_project("intro.mp4"));
         assert!(!is_project("bvproj"));
     }

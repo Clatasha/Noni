@@ -359,7 +359,7 @@ mod imp {
             unsafe {
                 format.SetRecorder(&r).map_err(failed)?;
                 format
-                    .SetClientName(&BSTR::from("BananaV"))
+                    .SetClientName(&BSTR::from("Noni"))
                     .map_err(failed)?;
                 if !format.MediaHeuristicallyBlank().is_ok_and(yes) {
                     return Err(BurnError::NotBlank);
@@ -396,7 +396,7 @@ mod imp {
         // SAFETY: the eraser's own methods, given a live recorder.
         unsafe {
             e.SetRecorder(r).map_err(failed)?;
-            e.SetClientName(&BSTR::from("BananaV")).map_err(failed)?;
+            e.SetClientName(&BSTR::from("Noni")).map_err(failed)?;
             e.SetFullErase(VARIANT_FALSE).map_err(failed)?;
             e.EraseMedia().map_err(failed)
         }
@@ -431,7 +431,7 @@ mod imp {
             // interfaces; the stream is BananaV's own.
             unsafe {
                 tao.SetRecorder(&r).map_err(failed)?;
-                tao.SetClientName(&BSTR::from("BananaV")).map_err(failed)?;
+                tao.SetClientName(&BSTR::from("Noni")).map_err(failed)?;
                 tao.SetBufferUnderrunFreeDisabled(flag(!options.underrun_protection))
                     .map_err(failed)?;
                 tao.SetDoNotFinalizeMedia(flag(!close)).map_err(failed)?;
@@ -477,7 +477,7 @@ mod imp {
             // SAFETY: the format's own methods, given a live recorder.
             unsafe {
                 tao.SetRecorder(&r).map_err(failed)?;
-                tao.SetClientName(&BSTR::from("BananaV")).map_err(failed)?;
+                tao.SetClientName(&BSTR::from("Noni")).map_err(failed)?;
                 tao.SetDoNotFinalizeMedia(VARIANT_FALSE).map_err(failed)?;
                 tao.PrepareMedia().map_err(failed)?;
                 tao.ReleaseMedia().map_err(failed)?;
@@ -570,7 +570,7 @@ mod imp {
             // interfaces.
             unsafe {
                 raw.SetRecorder(&r).map_err(failed)?;
-                raw.SetClientName(&BSTR::from("BananaV")).map_err(failed)?;
+                raw.SetClientName(&BSTR::from("Noni")).map_err(failed)?;
                 raw.SetRequestedSectorType(IMAPI_FORMAT2_RAW_CD_SUBCODE_IS_RAW)
                     .map_err(failed)?;
                 raw.SetBufferUnderrunFreeDisabled(flag(!options.underrun_protection))

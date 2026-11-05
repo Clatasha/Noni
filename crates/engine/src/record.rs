@@ -232,7 +232,7 @@ impl Recorder {
                     let _ = std::fs::create_dir_all(dir);
                 }
                 let bext = t.broadcast_wave.then(|| bv_wav::Bext {
-                    originator: "BananaV".into(),
+                    originator: "Noni".into(),
                     originator_reference: format!("BV{}{}", date.replace('-', ""), t.track.0),
                     date: date.clone(),
                     time: time.clone(),

@@ -2267,8 +2267,8 @@ impl BananaApp {
             _ => {
                 let Some(p) = rfd::FileDialog::new()
                     .set_title(tr("Save Project"))
-                    .add_filter(tr("Noni Project"), &["bvproj"])
-                    .set_file_name(tr("Untitled.bvproj"))
+                    .add_filter(tr("Noni Project"), &["noniproj"])
+                    .set_file_name(tr("Untitled.noniproj"))
                     .save_file()
                 else {
                     return false;

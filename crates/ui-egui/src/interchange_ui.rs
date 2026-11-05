@@ -184,7 +184,7 @@ pub fn import_edl(app: &mut BananaApp) {
 pub fn import_project_media(app: &mut BananaApp) {
     let Some(path) = rfd::FileDialog::new()
         .set_title(tr("Import Media from Another Project"))
-        .add_filter(tr("Noni Project"), &["bvproj"])
+        .add_filter(tr("Noni Project"), &["noniproj"])
         .pick_file()
     else {
         return;

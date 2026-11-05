@@ -103,7 +103,7 @@ pub(crate) fn no_drive_note(ui: &mut egui::Ui, drives: &Option<Vec<Burner>>) {
 /// A job's temporary folder, emptied (a canceled job's leftovers: the
 /// jobs' own folder).
 pub(crate) fn work_folder() -> PathBuf {
-    let work = std::env::temp_dir().join(format!("BananaV burn {}", std::process::id()));
+    let work = std::env::temp_dir().join(format!("Noni burn {}", std::process::id()));
     let _ = std::fs::remove_dir_all(&work);
     work
 }
@@ -214,7 +214,7 @@ impl BurnJob {
     /// A job at `step` (screen tests: nothing runs).
     pub(crate) fn at_step(task: Task, drive: Burner, step: Step, fraction: f32) -> BurnJob {
         BurnJob {
-            work: std::env::temp_dir().join("BananaV burn review"),
+            work: std::env::temp_dir().join("Noni burn review"),
             task,
             drive,
             started: Instant::now(),

@@ -325,7 +325,7 @@ fn archive_into(
             continue;
         };
         let name = from.file_name().map_or_else(
-            || "nested.bvproj".into(),
+            || "nested.noniproj".into(),
             |n| n.to_string_lossy().to_string(),
         );
         let to = free_in(folder, &name, taken);
@@ -574,7 +574,7 @@ impl BananaApp {
             .unwrap_or_else(|| PathBuf::from("."));
         let path = base
             .join(trf!("{} Archive", stem))
-            .join(format!("{stem}.bvproj"));
+            .join(format!("{stem}.noniproj"));
         self.archive_dialog = Some(ArchiveDialog {
             path: path.display().to_string(),
             options: ArchiveOptions::default(),
@@ -590,7 +590,7 @@ impl BananaApp {
         self.open_archive_dialog();
         let path = std::env::temp_dir()
             .join("Demo Archive")
-            .join("Demo.bvproj");
+            .join("Demo.noniproj");
         if let Some(d) = self.archive_dialog.as_mut() {
             d.path = path.display().to_string();
         }
@@ -660,7 +660,7 @@ pub(crate) fn archive_dialog(ctx: &egui::Context, app: &mut BananaApp) {
                                 .map_or_else(String::new, |n| n.to_string_lossy().to_string());
                             if let Some(p) = rfd::FileDialog::new()
                                 .set_title(tr("Archive"))
-                                .add_filter(tr("Noni Project"), &["bvproj"])
+                                .add_filter(tr("Noni Project"), &["noniproj"])
                                 .set_file_name(name)
                                 .save_file()
                             {
@@ -749,7 +749,7 @@ pub(crate) fn archive_dialog(ctx: &egui::Context, app: &mut BananaApp) {
     if next {
         let mut path = PathBuf::from(d.path.trim());
         if path.extension().is_none() {
-            path.set_extension("bvproj");
+            path.set_extension("noniproj");
         }
         d.path = path.display().to_string();
         let folder = path.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -1138,7 +1138,7 @@ mod tests {
         let (src, dst) = (temp("nest-src"), temp("nest-dst"));
         // A nested project of the three media, used by the one archived.
         let (inner, _) = project(&src, &dst);
-        let nested = src.join("Inner.bvproj");
+        let nested = src.join("Inner.noniproj");
         std::fs::write(&nested, inner.to_json()).unwrap();
         let mut p = Project::new(ProjectSettings::default());
         let mut info = MediaInfo::generated(
@@ -1162,7 +1162,7 @@ mod tests {
         let plan = plan_archive(&p, &dst, &o);
         // The nested project's file written beside the copies of the
         // media its events use, pointing at them; never copied as it was.
-        let to = dst.join("Inner.bvproj");
+        let to = dst.join("Inner.noniproj");
         assert_eq!(plan.moves, [(id, to.display().to_string())]);
         assert_eq!(plan.projects.len(), 1);
         assert_eq!(plan.projects[0].0, to);
@@ -1194,7 +1194,7 @@ mod tests {
         let (p, _) = project(&src, &dst);
         app.modify(|q| *q = p);
         app.open_archive_dialog();
-        let archive = dst.join("Archive").join("Show.bvproj");
+        let archive = dst.join("Archive").join("Show.noniproj");
         if let Some(d) = app.archive_dialog.as_mut() {
             d.path = archive.display().to_string();
         }

@@ -3,7 +3,7 @@
 # It starts a new BananaV process, never touches the mouse or keyboard,
 # captures only that process's windows and then closes it.
 #
-#   ./tools/capture_windows.ps1 -Exe target/release/bananav.exe `
+#   ./tools/capture_windows.ps1 -Exe target/release/noni.exe `
 #       -Open "Options.Preferences;Options.CustomizeKeyboard" -OutDir target/janelas
 #
 # -Open lists Global keyboard-map ids run at startup (BANANAV_OPEN).

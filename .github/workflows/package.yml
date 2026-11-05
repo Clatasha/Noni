@@ -5,7 +5,7 @@
 # - Windows x64 and ARM64: Noni.exe (the C runtime inside), a README,
 #   the license texts and the third-party notices
 #   (tools/third_party_notices.py), in a zip and in an installer
-#   (packaging/windows/bananav.iss, Inno Setup), which is tried out here;
+#   (packaging/windows/noni.iss, Inno Setup), which is tried out here;
 # - Linux x64 and ARM64: an AppImage, built on Ubuntu 22.04 for every
 #   distribution since (glibc 2.35), with FFmpeg's libraries built here
 #   under the LGPL (packaging/linux/build_ffmpeg.sh), the third-party and
@@ -57,7 +57,7 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           name="Noni-$version-${GITHUB_SHA::7}-windows-${{ matrix.arch }}"
           mkdir -p "dist/$name"
-          cp target/release/bananav.exe "dist/$name/Noni.exe"
+          cp target/release/noni.exe "dist/$name/Noni.exe"
           cp packaging/windows/README.txt "dist/$name/"
           cp LICENSE "dist/$name/LICENSE.txt"
           cp crates/effects/fonts/OFL.txt "dist/$name/Arimo-OFL.txt"
@@ -77,7 +77,7 @@ jobs:
             Invoke-WebRequest -OutFile innosetup.exe https://jrsoftware.org/download.php/is.exe
             Start-Process -Wait innosetup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'
           }
-          & $iscc /Qp "/DAppVersion=$version" "/DArch=${{ matrix.arch }}" "/DFiles=$PWD\dist\$env:NAME" "/O$PWD\dist-setup" "/F$env:NAME-setup" packaging\windows\bananav.iss
+          & $iscc /Qp "/DAppVersion=$version" "/DArch=${{ matrix.arch }}" "/DFiles=$PWD\dist\$env:NAME" "/O$PWD\dist-setup" "/F$env:NAME-setup" packaging\windows\noni.iss
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: The installer, tried out
         # Installs without a question, starts Noni for a while, opens
@@ -166,9 +166,9 @@ jobs:
           # not found by linuxdeploy): inside, for systems without it.
           lib="/usr/lib/$(gcc -dumpmachine)"
           ./linuxdeploy-${{ matrix.tool }}.AppImage --appimage-extract-and-run \
-            --appdir AppDir -e target/release/bananav \
+            --appdir AppDir -e target/release/noni \
             -l "$lib/libxkbcommon.so.0" -l "$lib/libxkbcommon-x11.so.0" \
-            -d packaging/linux/bananav.desktop -i packaging/icons/noni.png --output appimage
+            -d packaging/linux/noni.desktop -i packaging/icons/noni.png --output appimage
           mkdir -p "dist/$name"
           mv Noni*.AppImage "dist/$name/$name.AppImage"
           cp packaging/linux/README.txt "dist/$name/"
@@ -196,7 +196,7 @@ jobs:
             cat "/usr/share/doc/$pkg/copyright" >> "$notices" 2>/dev/null || echo "(no copyright file)" >> "$notices"
             printf '\n' >> "$notices"
           done
-          ldd target/release/bananav
+          ldd target/release/noni
           echo "NAME=$name" >> "$GITHUB_ENV"
       - name: LGPL sources
         # FFmpeg's and LAME's sources go with the packages (the LGPL asks

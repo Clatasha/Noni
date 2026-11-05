@@ -284,7 +284,7 @@ impl Default for OfxUi {
 fn cache_path() -> Option<PathBuf> {
     Some(
         bv_platform::config_dir()?
-            .join("BananaV")
+            .join("Noni")
             .join("ofx_cache.json"),
     )
 }

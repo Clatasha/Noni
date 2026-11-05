@@ -8,7 +8,7 @@
 //! with the "Coming soon" tip; ACES's work with 32-bit floating point
 //! (full range), as VEGAS's (`bv_timeline::color`). The Audio tab has VEGAS's controls too
 //! (stereo busses and recording come later), and so do the Ruler and
-//! Summary tabs, and so does Audio CD (kept for when BananaV burns CDs).
+//! Summary tabs, and so does Audio CD (kept for when Noni burns CDs).
 //! The Advanced tab's master display needs HDR projects: greyed out; its
 //! 360 Output makes the project a 360° one.
 
@@ -318,7 +318,7 @@ fn template_name(s: &ProjectSettings, saved: &[VideoTemplate]) -> String {
 fn default_prerender_folder() -> PathBuf {
     bv_platform::cache_dir()
         .unwrap_or_else(std::env::temp_dir)
-        .join("BananaV")
+        .join("Noni")
 }
 
 /// "115.1 Gigabytes".

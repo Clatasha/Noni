@@ -351,7 +351,7 @@ mod imp {
             alsa::Direction::Capture
         };
         let seq = Seq::open(None, Some(dir), false).map_err(err)?;
-        let _ = seq.set_client_name(c"BananaV");
+        let _ = seq.set_client_name(c"Noni");
         let (name, caps) = if out {
             (c"BananaV out", readable())
         } else {

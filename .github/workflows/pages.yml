@@ -1,4 +1,4 @@
-# Publishes site/ (BananaV's website) to GitHub Pages. Started by hand only:
+# Publishes site/ (the Noni project page) to GitHub Pages. Started by hand only:
 # Pages needs the repository to be public (or a paid plan) and Pages turned
 # on with "GitHub Actions" as its source.
 name: Website

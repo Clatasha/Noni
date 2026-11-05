@@ -795,7 +795,7 @@ impl BananaApp {
             .project_path
             .as_ref()
             .and_then(|p| p.file_name())
-            .map_or(tr("Project.bvproj").to_string(), |n| {
+            .map_or(tr("Project.noniproj").to_string(), |n| {
                 n.to_string_lossy().to_string()
             });
         self.project_path = Some(dir.join(name));

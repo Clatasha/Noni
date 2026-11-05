@@ -13,7 +13,7 @@ Requirements
 - A graphics card with Vulkan or OpenGL (Mesa or NVIDIA's driver).
 - An X11 or Wayland desktop. Under Wayland Noni's windows go through
   XWayland, so that dialogs can be placed and the eyedropper and the
-  numeric keypad work; BANANAV_WAYLAND=1 gives Wayland's own windows.
+  numeric keypad work; NONI_WAYLAND=1 gives Wayland's own windows.
 - Sound through ALSA (PipeWire and PulseAudio offer it).
 - Video decoding and encoding on the graphics card: VA-API drivers on AMD
   and Intel cards (mesa-va-drivers, intel-media-va-driver), NVIDIA's
@@ -22,7 +22,7 @@ Requirements
 Settings
 - Your settings (recent projects, window layouts, language, toolbars,
   keyboard maps, presets, video templates) are kept in
-  ~/.config/BananaV/. Delete that folder to start over with the defaults.
+  ~/.config/Noni/. Delete that folder to start over with the defaults.
 - The interface is in English; Options › Preferences › Language switches
   it to Brazilian Portuguese.
 

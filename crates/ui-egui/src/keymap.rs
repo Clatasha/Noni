@@ -1960,7 +1960,7 @@ struct Store {
 fn store_path() -> Option<PathBuf> {
     Some(
         bv_platform::config_dir()?
-            .join("BananaV")
+            .join("Noni")
             .join("teclado.json"),
     )
 }

@@ -991,7 +991,7 @@ impl Prefs {
     pub fn temp_dir(&self) -> PathBuf {
         self.temp_folder
             .clone()
-            .unwrap_or_else(|| std::env::temp_dir().join("BananaV"))
+            .unwrap_or_else(|| std::env::temp_dir().join("Noni"))
     }
 }
 
@@ -1936,7 +1936,7 @@ impl MeterRange {
 fn default_path() -> Option<PathBuf> {
     Some(
         bv_platform::config_dir()?
-            .join("BananaV")
+            .join("Noni")
             .join("interface.json"),
     )
 }

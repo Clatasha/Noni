@@ -82,8 +82,8 @@ impl BananaApp {
             .map_or(String::new(), |s| s.to_string_lossy().to_string());
         let mut dialog = rfd::FileDialog::new()
             .set_title(tr("Save Nested Timeline"))
-            .add_filter(tr("Noni Project"), &["bvproj"])
-            .set_file_name(format!("{stem}_{}.bvproj", tr("Untitled Timeline")));
+            .add_filter(tr("Noni Project"), &["noniproj"])
+            .set_file_name(format!("{stem}_{}.noniproj", tr("Untitled Timeline")));
         if let Some(dir) = parent.parent() {
             dialog = dialog.set_directory(dir);
         }
@@ -254,12 +254,12 @@ mod tests {
         let event = p.insert_media(red, Tick::from_seconds(2), v, None).unwrap()[0];
         app.history.reset(p.clone());
         app.saved = p;
-        let parent = dir.join("Show.bvproj");
+        let parent = dir.join("Show.noniproj");
         std::fs::write(&parent, app.project().to_json()).unwrap();
         app.project_path = Some(parent.clone());
         app.settings.prefs.warn_nested_save = false;
         app.selection = [event].into();
-        let nested = dir.join("Show_Untitled Timeline.bvproj");
+        let nested = dir.join("Show_Untitled Timeline.noniproj");
         app.nest_into(nested.clone());
         // In the nested timeline: the event alone, at zero.
         assert!(app.in_nested_timeline());

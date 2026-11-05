@@ -1,0 +1,8 @@
+asset:        noni.png
+title:        Noni website icon
+author:       Clatasha (original illustration)
+source:       ../../../packaging/icons/noni.png
+license:      GPL-3.0-or-later
+license-file: ../../../LICENSE
+added:        2026-11-05 by Clatasha
+notes:        Copy of the packaged Noni fruit icon.

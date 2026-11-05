@@ -5,7 +5,7 @@
 ;
 ; Built by .github/workflows/package.yml:
 ;   ISCC /DAppVersion=0.2.0 /DArch=x64 /DFiles=<folder of the zip's files>
-;        /O<output folder> /F<file name> packaging\windows\bananav.iss
+;        /O<output folder> /F<file name> packaging\windows\noni.iss
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -55,8 +55,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [CustomMessages]
-english.OpenProjects=Open Noni projects (.bvproj) with Noni
-brazilianportuguese.OpenProjects=Abrir projetos do Noni (.bvproj) com o Noni
+english.OpenProjects=Open Noni projects (.noniproj) with Noni
+brazilianportuguese.OpenProjects=Abrir projetos do Noni (.noniproj) com o Noni
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -71,7 +71,7 @@ Name: "{autoprograms}\Noni"; Filename: "{app}\Noni.exe"; IconFilename: "{app}\no
 Name: "{autodesktop}\Noni"; Filename: "{app}\Noni.exe"; IconFilename: "{app}\noni.ico"; Tasks: desktopicon
 
 [Registry]
-Root: HKA; Subkey: "Software\Classes\.bvproj"; ValueType: string; ValueName: ""; ValueData: "Noni.Project"; Flags: uninsdeletevalue; Tasks: projects
+Root: HKA; Subkey: "Software\Classes\.noniproj"; ValueType: string; ValueName: ""; ValueData: "Noni.Project"; Flags: uninsdeletevalue; Tasks: projects
 Root: HKA; Subkey: "Software\Classes\Noni.Project"; ValueType: string; ValueName: ""; ValueData: "Noni Project"; Flags: uninsdeletekey; Tasks: projects
 Root: HKA; Subkey: "Software\Classes\Noni.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\noni.ico"; Tasks: projects
 Root: HKA; Subkey: "Software\Classes\Noni.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\Noni.exe"" ""%1"""; Tasks: projects

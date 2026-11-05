@@ -27,7 +27,7 @@ use crate::theme;
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct CaptureSettings {
-    /// Where recordings go (`None`: the Videos folder's "BananaV Captures").
+    /// Where recordings go (`None`: the Videos folder's "Noni Captures").
     pub folder: Option<PathBuf>,
     pub defaults: CaptureDefaults,
 }

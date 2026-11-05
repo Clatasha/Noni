@@ -29,7 +29,7 @@ pub(crate) fn kind_of(path: &Path) -> Option<FileKind> {
         .unwrap_or("")
         .to_ascii_lowercase();
     let ext = ext.as_str();
-    if ext == "bvproj" {
+    if matches!(ext, "noniproj" | "bvproj") {
         Some(FileKind::Project)
     } else if ext == "veg" {
         Some(FileKind::VegProject)
@@ -66,20 +66,20 @@ fn kinds(d: rfd::FileDialog) -> rfd::FileDialog {
 /// video, audio, images, projects and any file.
 pub(crate) fn media_filters(d: rfd::FileDialog) -> rfd::FileDialog {
     let mut all = all_media();
-    all.push("bvproj");
+    all.extend(["noniproj", "bvproj"]);
     kinds(d.add_filter(tr("All Media Files"), &all))
-        .add_filter(tr("Noni Project"), &["bvproj"])
+        .add_filter(tr("Noni Project"), &["noniproj", "bvproj"])
         .add_filter(tr("All Files"), &["*"])
 }
 
 /// File › Open's filters: projects, timelines and media together first
 /// (VEGAS's Open opens both), then each kind.
 pub(crate) fn open_filters(d: rfd::FileDialog) -> rfd::FileDialog {
-    let mut all = vec!["bvproj", "veg", "otio", "otioz", "xml", "fcpxml"];
+    let mut all = vec!["noniproj", "bvproj", "veg", "otio", "otioz", "xml", "fcpxml"];
     all.extend(all_media());
     let d = d
         .add_filter(tr("All Project and Media Files"), &all)
-        .add_filter(tr("Noni Project"), &["bvproj"])
+        .add_filter(tr("Noni Project"), &["noniproj", "bvproj"])
         .add_filter(tr("VEG Project (*.veg)"), &["veg"])
         .add_filter("OpenTimelineIO (*.otio, *.otioz)", &["otio", "otioz"])
         .add_filter("Final Cut Pro 7/DaVinci Resolve (*.xml)", &["xml"])
@@ -123,7 +123,7 @@ mod tests {
         assert_eq!(kind_of(Path::new("a.flac")), Some(FileKind::Audio));
         assert_eq!(kind_of(Path::new("a.heic")), Some(FileKind::Image));
         assert_eq!(kind_of(Path::new("a.gif")), Some(FileKind::Image));
-        assert_eq!(kind_of(Path::new("a.bvproj")), Some(FileKind::Project));
+        assert_eq!(kind_of(Path::new("a.noniproj")), Some(FileKind::Project));
         assert_eq!(kind_of(Path::new("a.OTIOZ")), Some(FileKind::Timeline));
         assert_eq!(
             kind_of(Path::new("My Project.xml")),

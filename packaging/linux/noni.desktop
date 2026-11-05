@@ -2,8 +2,8 @@
 Type=Application
 Name=Noni Video Editor
 Comment=Video editor
-Exec=bananav %f
+Exec=noni %f
 Icon=noni
 Terminal=false
 Categories=AudioVideo;Video;AudioVideoEditing;
-MimeType=application/x-bvproj;
+MimeType=application/x-noniproj;

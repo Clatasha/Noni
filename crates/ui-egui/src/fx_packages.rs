@@ -71,7 +71,7 @@ impl FxPackages {
     /// The user's, in `%APPDATA%\BananaV\FX Packages`.
     pub(crate) fn load() -> FxPackages {
         FxPackages {
-            dir: bv_platform::config_dir().map(|d| d.join("BananaV").join("FX Packages")),
+            dir: bv_platform::config_dir().map(|d| d.join("Noni").join("FX Packages")),
             ..FxPackages::default()
         }
     }

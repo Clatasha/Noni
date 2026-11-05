@@ -41,7 +41,7 @@ fn folder(prefs: &Prefs) -> PathBuf {
 fn files(prefs: &Prefs, session: u32) -> (PathBuf, PathBuf) {
     let dir = folder(prefs);
     (
-        dir.join(format!("{session}.bvproj")),
+        dir.join(format!("{session}.noniproj")),
         dir.join(format!("{session}.json")),
     )
 }
@@ -102,7 +102,7 @@ impl BananaApp {
         let newest = entries
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e == "bvproj"))
+            .filter(|p| p.extension().is_some_and(|e| e == "noniproj"))
             .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
         let Some(file) = newest else {
             return;

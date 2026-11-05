@@ -6,6 +6,8 @@
 
 Noni is Clatasha's personal video editor for Windows and Linux. It has a track-based timeline, clip effects and animations, and a dedicated export dialog.
 
+New projects are saved as `.noniproj`. Noni can also open `.bvproj` projects.
+
 ## Build from source
 
 Use Rust 1.95 or newer. See [the build instructions](CONTRIBUTING.md) for platform dependencies.

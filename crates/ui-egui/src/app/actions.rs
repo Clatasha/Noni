@@ -95,7 +95,7 @@ impl BananaApp {
         });
         let ext = path
             .extension()
-            .map_or("bvproj".to_string(), |s| s.to_string_lossy().to_string());
+            .map_or("noniproj".to_string(), |s| s.to_string_lossy().to_string());
         let (base, mut n) = match stem.rsplit_once('_') {
             Some((b, num)) if num.len() == 3 && num.chars().all(|c| c.is_ascii_digit()) => {
                 (b.to_string(), num.parse::<u32>().unwrap_or(0))
@@ -119,8 +119,8 @@ impl BananaApp {
     pub(crate) fn export_project_copy(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .set_title(tr("Export Noni Project"))
-            .add_filter(tr("Noni Project"), &["bvproj"])
-            .set_file_name(tr("Copy.bvproj"))
+            .add_filter(tr("Noni Project"), &["noniproj"])
+            .set_file_name(tr("Copy.noniproj"))
             .save_file()
         else {
             return;

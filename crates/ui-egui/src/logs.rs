@@ -83,7 +83,7 @@ impl LogKind {
 
 /// The logs' folder.
 pub(crate) fn folder() -> Option<PathBuf> {
-    Some(bv_platform::cache_dir()?.join("BananaV").join("Logs"))
+    Some(bv_platform::cache_dir()?.join("Noni").join("Logs"))
 }
 
 /// Notes down a failure of the audio output in `Audio.log`, always: they
