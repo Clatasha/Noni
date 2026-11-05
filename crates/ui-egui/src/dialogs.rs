@@ -9,6 +9,55 @@ use crate::app::BananaApp;
 use crate::egui::{self, RichText};
 use crate::theme;
 
+pub(crate) fn prompt_header(
+    ui: &mut egui::Ui,
+    icon: crate::icons::Icon,
+    title: &str,
+    detail: &str,
+    accent: egui::Color32,
+) {
+    let width = ui.available_width();
+    egui::Frame::new()
+        .fill(theme::panel_dark())
+        .stroke(egui::Stroke::new(1.0, accent.gamma_multiply(0.6)))
+        .corner_radius(8.0)
+        .inner_margin(egui::Margin::same(14))
+        .show(ui, |ui| {
+            ui.set_width((width - 30.0).max(1.0));
+            ui.horizontal(|ui| {
+                let (badge, _) =
+                    ui.allocate_exact_size(egui::Vec2::splat(42.0), egui::Sense::hover());
+                ui.painter()
+                    .rect_filled(badge, 9.0, accent.gamma_multiply(0.24));
+                crate::icons::paint(ui.painter(), badge.shrink(8.0), icon, accent);
+                ui.add_space(4.0);
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(title)
+                            .size(21.0)
+                            .strong()
+                            .color(theme::text_strong()),
+                    );
+                    if !detail.is_empty() {
+                        ui.label(RichText::new(detail).size(14.0).color(theme::text()));
+                    }
+                });
+            });
+        });
+}
+
+pub(crate) fn prompt_button(label: &str, fill: Option<egui::Color32>) -> egui::Button<'_> {
+    let mut text = RichText::new(label).size(14.0);
+    if fill.is_some() {
+        text = text.strong().color(egui::Color32::WHITE);
+    }
+    let button = egui::Button::new(text).min_size(egui::vec2(100.0, 34.0));
+    match fill {
+        Some(color) => button.fill(color),
+        None => button,
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Dialogs {
     /// File › Properties.

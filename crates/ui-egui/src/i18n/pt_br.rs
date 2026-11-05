@@ -7941,6 +7941,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Rotate 90° Counterclockwise",
         "Girar 90° no sentido anti-horário",
     ),
+    ("Rotate clip", "Girar clipe"),
     ("Rotate hue", "Girar matiz"),
     ("Rotate Scale Fade", "Girar, ampliar e esmaecer"),
     ("Rotate −90°", "Girar −90°"),

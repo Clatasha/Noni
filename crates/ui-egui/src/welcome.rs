@@ -729,7 +729,7 @@ fn paint_logo(painter: &egui::Painter, center: Pos2, icon: f32, text: f32, color
     let galley = painter.layout_no_wrap("Noni".to_string(), FontId::proportional(text), color);
     let width = icon + 8.0 + galley.size().x;
     let left = center.x - width / 2.0;
-    icons::paint_logo(
+    icons::paint_logo_mark(
         painter,
         Rect::from_center_size(pos2(left + icon / 2.0, center.y), vec2(icon, icon)),
     );
@@ -844,7 +844,7 @@ fn paint_banner(painter: &egui::Painter, r: Rect) {
     ));
     // The logo and what it is.
     let logo = pos2(r.left() + 46.0, r.center().y - 22.0);
-    icons::paint_logo(
+    icons::paint_logo_mark(
         painter,
         Rect::from_min_size(logo - vec2(0.0, 40.0), vec2(84.0, 84.0)),
     );

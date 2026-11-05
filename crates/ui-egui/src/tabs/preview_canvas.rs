@@ -130,11 +130,14 @@ fn framed_key(tf: &Transform, place: &PlaceIn, original: &PanCropKey) -> PanCrop
 const HANDLE_RADIUS: f32 = 4.0;
 const HANDLE_HIT: f32 = 10.0;
 const SNAP_DISTANCE: f32 = 8.0;
+const ROTATE_RADIUS: f32 = 8.0;
+const ROTATE_OFFSET: f32 = 23.0;
 
 #[derive(Clone, Copy)]
 enum Tool {
     Move,
     Resize(usize),
+    Rotate,
 }
 
 #[derive(Clone, Copy)]
@@ -143,6 +146,8 @@ struct Drag {
     time: Tick,
     edit_at: Tick,
     start: Pos2,
+    previous: Pos2,
+    rotation_delta: f32,
     frame: Rect,
     corners: [Pos2; 4],
     center: Pos2,
@@ -209,13 +214,15 @@ pub(super) fn clip_handles(
     let primary = egui::PointerButton::Primary;
     if nav.drag_started_by(primary)
         && let Some(start) = ui.input(|input| input.pointer.press_origin())
-        && let Some(tool) = tool_at(start, &corners)
+        && let Some(tool) = tool_at(start, &corners, area)
     {
         active = Some(Drag {
             id,
             time,
             edit_at,
             start,
+            previous: start,
+            rotation_delta: 0.0,
             frame,
             corners,
             center: source_point(
@@ -234,10 +241,15 @@ pub(super) fn clip_handles(
     }
     let tool = active
         .map(|drag| drag.tool)
-        .or_else(|| nav.hover_pos().and_then(|pos| tool_at(pos, &corners)));
+        .or_else(|| nav.hover_pos().and_then(|pos| tool_at(pos, &corners, area)));
     if let Some(tool) = tool {
         let cursor = match tool {
             Tool::Move => egui::CursorIcon::Move,
+            Tool::Rotate if active.is_some() => egui::CursorIcon::Grabbing,
+            Tool::Rotate => {
+                nav.clone().on_hover_text(tr("Rotate clip"));
+                egui::CursorIcon::Grab
+            }
             Tool::Resize(i) => {
                 let delta = corners[i] - corners[(i + 2) % 4];
                 if delta.x * delta.y >= 0.0 {
@@ -251,7 +263,7 @@ pub(super) fn clip_handles(
     }
 
     let mut guides = [false; 2];
-    if let Some(drag) = active
+    if let Some(mut drag) = active
         && (nav.dragged_by(primary) || nav.drag_stopped_by(primary))
         && let Some(pointer) = nav
             .interact_pointer_pos()
@@ -281,6 +293,18 @@ pub(super) fn clip_handles(
                 tf.scale = (scale * relative).clamp(0.05_f32.min(scale), 4.0_f32.max(scale));
                 let factor = tf.scale / drag.transform.scale;
                 delta = (anchor - drag.center) * (1.0 - factor);
+            }
+            Tool::Rotate => {
+                let before = drag.previous - drag.center;
+                let after = pointer - drag.center;
+                // A pointer through the pivot has no meaningful angle.
+                if after.length_sq() >= 9.0 {
+                    drag.rotation_delta += turn_between(before, after);
+                    drag.previous = pointer;
+                }
+                tf.rotation_deg += drag.rotation_delta;
+                delta = Vec2::ZERO;
+                active = Some(drag);
             }
         }
         let normalized = from_output_delta(delta / frame.size(), rotation) / place.adjust as f32;
@@ -322,9 +346,42 @@ pub(super) fn clip_handles(
         painter.circle_filled(corner, HANDLE_RADIUS, theme::panel_dark());
         painter.circle_stroke(corner, HANDLE_RADIUS, stroke);
     }
+    if let Some((edge, handle)) = rotate_handle(&corners, area) {
+        painter.line_segment([edge, handle], stroke);
+        painter.circle_filled(handle, ROTATE_RADIUS, theme::panel_dark());
+        painter.circle_stroke(handle, ROTATE_RADIUS, stroke);
+        crate::icons::paint(
+            &painter,
+            Rect::from_center_size(handle, Vec2::splat(13.0)),
+            Icon::Refresh,
+            theme::banana(),
+        );
+    }
 }
 
-fn tool_at(pos: Pos2, corners: &[Pos2; 4]) -> Option<Tool> {
+fn turn_between(before: Vec2, after: Vec2) -> f32 {
+    let cross = before.x * after.y - before.y * after.x;
+    cross.atan2(before.dot(after)).to_degrees()
+}
+
+fn rotate_handle(corners: &[Pos2; 4], area: Rect) -> Option<(Pos2, Pos2)> {
+    let edge = corners[0].lerp(corners[1], 0.5);
+    let center = corners[0].lerp(corners[2], 0.5);
+    let offset = (edge - center).normalized() * ROTATE_OFFSET;
+    let safe = area.shrink(ROTATE_RADIUS + 2.0);
+    // When the frame touches the preview edge, put the handle just inside it.
+    [edge + offset, edge - offset]
+        .into_iter()
+        .find(|&handle| safe.contains(handle))
+        .map(|handle| (edge, handle))
+}
+
+fn tool_at(pos: Pos2, corners: &[Pos2; 4], area: Rect) -> Option<Tool> {
+    if rotate_handle(corners, area)
+        .is_some_and(|(_, handle)| handle.distance_sq(pos) <= HANDLE_HIT * HANDLE_HIT)
+    {
+        return Some(Tool::Rotate);
+    }
     if let Some((i, _)) = corners
         .iter()
         .enumerate()
@@ -393,5 +450,101 @@ fn from_output_delta(delta: Vec2, rotation: OutputRotation) -> Vec2 {
         OutputRotation::Clockwise90 => vec2(delta.y, -delta.x),
         OutputRotation::Inverted180 => -delta,
         OutputRotation::Counterclockwise90 => vec2(-delta.y, delta.x),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rotate_handle_stays_reachable_when_the_clip_fills_the_preview() {
+        let area = Rect::from_min_size(Pos2::ZERO, vec2(400.0, 225.0));
+        let corners = [
+            area.left_top(),
+            area.right_top(),
+            area.right_bottom(),
+            area.left_bottom(),
+        ];
+        let (_, handle) = rotate_handle(&corners, area).expect("rotate handle");
+        assert!(area.shrink(ROTATE_RADIUS).contains(handle));
+        assert!(matches!(
+            tool_at(handle, &corners, area),
+            Some(Tool::Rotate)
+        ));
+        assert!(matches!(
+            tool_at(corners[0], &corners, area),
+            Some(Tool::Resize(0))
+        ));
+    }
+
+    #[test]
+    fn dragging_the_rotate_handle_rotates_the_clip_and_undoes_in_one_step() {
+        let ctx = egui::Context::default();
+        let mut app = BananaApp::new(ctx.clone());
+        app.load_demo();
+        let clip = app.project().tracks[0].clips[0].clone();
+        let id = clip.id;
+        let at = clip.start;
+        app.select_clip(id, false);
+        app.seek(at);
+        let place = app.project().clip_place_in(id).expect("clip placement");
+        let original = clip.box_at(at, place.media, place.media_aspect);
+        let area = Rect::from_min_size(pos2(12.0, 12.0), vec2(480.0, 300.0));
+        let frame = Rect::from_center_size(area.center(), vec2(400.0, 225.0));
+        let initial = pancrop::place(&original, &place);
+        let output = app.project().settings.rotation;
+        let (slide, _) = bv_timeline::scene::clip_animation(&clip, at);
+        let corners = outline(&initial, &place, output, frame, slide).expect("clip outline");
+        let (_, start) = rotate_handle(&corners, area).expect("rotate handle");
+        let center = source_point(
+            &initial,
+            &place,
+            output,
+            frame,
+            place.media.map(|v| v * 0.5),
+            slide,
+        );
+        let offset = start - center;
+        let end = center + vec2(-offset.y, offset.x);
+
+        let mut frame_input = |events| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(520.0, 340.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let nav = ui.interact(area, ui.id().with("preview-test"), egui::Sense::drag());
+                    clip_handles(ui, &mut app, &nav, frame, area);
+                },
+            );
+            output.textures_delta.clear();
+        };
+        let primary = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            pressed,
+            button: egui::PointerButton::Primary,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame_input(vec![]);
+        frame_input(vec![egui::Event::PointerMoved(start), primary(start, true)]);
+        frame_input(vec![egui::Event::PointerMoved(start.lerp(end, 0.5))]);
+        frame_input(vec![egui::Event::PointerMoved(end)]);
+        frame_input(vec![primary(end, false)]);
+
+        let rotated =
+            app.project()
+                .clip(id)
+                .expect("clip")
+                .box_at(at, place.media, place.media_aspect);
+        let before = pancrop::transform_from_key(&original, &place);
+        let after = pancrop::transform_from_key(&rotated, &place);
+        assert!((after.rotation_deg - before.rotation_deg - 90.0).abs() < 0.01);
+        assert!((after.x - before.x).abs() < 0.001 && (after.y - before.y).abs() < 0.001);
+        assert!((after.scale - before.scale).abs() < 0.001);
+        app.undo();
+        assert_eq!(app.project().clip(id), Some(&clip));
     }
 }

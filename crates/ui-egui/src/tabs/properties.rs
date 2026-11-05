@@ -520,13 +520,13 @@ fn fades(ui: &mut egui::Ui, c: &mut Clip, rate: FrameRate) {
 fn animation_tiles(ui: &mut egui::Ui, animation: &mut ClipAnimation, duration: Tick) {
     let previous = animation.preset;
     ui.horizontal_wrapped(|ui| {
-        for (preset, glyph, label) in [
-            (AnimationPreset::None, "⊘", tr("None")),
-            (AnimationPreset::Fade, "◐", tr("Fade")),
-            (AnimationPreset::SlideUp, "↑", tr("Slide Up")),
-            (AnimationPreset::SlideDown, "↓", tr("Slide Down")),
+        for (preset, label) in [
+            (AnimationPreset::None, tr("None")),
+            (AnimationPreset::Fade, tr("Fade")),
+            (AnimationPreset::SlideUp, tr("Slide Up")),
+            (AnimationPreset::SlideDown, tr("Slide Down")),
         ] {
-            if tile(ui, glyph, label, animation.preset == preset) {
+            if animation_tile(ui, preset, label, animation.preset == preset) {
                 animation.preset = preset;
             }
         }
@@ -541,6 +541,87 @@ fn animation_tiles(ui: &mut egui::Ui, animation: &mut ClipAnimation, duration: T
             animation.duration = Tick::from_seconds_f64(f64::from(seconds));
         }
     }
+}
+
+fn animation_tile(ui: &mut egui::Ui, preset: AnimationPreset, label: &str, selected: bool) -> bool {
+    use egui::{Align2, FontId, Rect, Stroke, StrokeKind, vec2};
+
+    let text =
+        ui.painter()
+            .layout_no_wrap(label.to_owned(), FontId::proportional(12.0), theme::text());
+    let size = vec2((text.size().x + 16.0).max(72.0), 59.0);
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, label)
+    });
+    let painter = ui.painter();
+    let accent = if selected {
+        theme::banana()
+    } else {
+        theme::text_strong()
+    };
+    let fill = if response.hovered() {
+        theme::hover()
+    } else {
+        theme::panel_dark()
+    };
+    painter.rect_filled(rect, 5.0, fill);
+    painter.rect_stroke(
+        rect,
+        5.0,
+        Stroke::new(
+            1.0,
+            if selected || response.has_focus() {
+                accent
+            } else {
+                theme::separator()
+            },
+        ),
+        StrokeKind::Inside,
+    );
+    let center = rect.center_top() + vec2(0.0, 21.0);
+    let stroke = Stroke::new(1.7, accent);
+    match preset {
+        AnimationPreset::None => {
+            painter.circle_stroke(center, 9.0, stroke);
+            painter.line_segment([center + vec2(-6.0, 6.0), center + vec2(6.0, -6.0)], stroke);
+        }
+        AnimationPreset::Fade => {
+            for (x, alpha) in [(-10.0, 0.25), (0.0, 0.55), (10.0, 1.0)] {
+                painter.rect_filled(
+                    Rect::from_center_size(center + vec2(x, 0.0), vec2(7.0, 16.0)),
+                    2.0,
+                    accent.gamma_multiply(alpha),
+                );
+            }
+        }
+        AnimationPreset::SlideUp | AnimationPreset::SlideDown => {
+            let direction = if preset == AnimationPreset::SlideUp {
+                -1.0
+            } else {
+                1.0
+            };
+            painter.rect_stroke(
+                Rect::from_center_size(center + vec2(-5.0, direction * 3.0), vec2(15.0, 12.0)),
+                2.0,
+                stroke,
+                StrokeKind::Inside,
+            );
+            let tip = center + vec2(9.0, direction * 9.0);
+            painter.line_segment([center + vec2(9.0, -direction * 8.0), tip], stroke);
+            for x in [-4.0, 4.0] {
+                painter.line_segment([tip, tip + vec2(x, -direction * 4.0)], stroke);
+            }
+        }
+    }
+    painter.text(
+        rect.center_bottom() - vec2(0.0, 9.0),
+        Align2::CENTER_BOTTOM,
+        label,
+        FontId::proportional(12.0),
+        theme::text_strong(),
+    );
+    response.clicked()
 }
 
 fn tile(ui: &mut egui::Ui, glyph: &str, label: &str, selected: bool) -> bool {

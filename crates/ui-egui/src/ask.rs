@@ -83,15 +83,47 @@ impl BananaApp {
         };
         let mut answer = None;
         egui::Modal::new(egui::Id::new("ask")).show(ctx, |ui| {
-            ui.set_max_width(440.0);
-            ui.heading(&ask.title);
-            ui.add_space(4.0);
-            ui.label(&ask.text);
+            let recording = matches!(ask.what, Asked::RecordNewTrack);
+            if recording {
+                ui.set_width(440.0_f32.min(ctx.content_rect().width() * 0.86));
+                crate::dialogs::prompt_header(
+                    ui,
+                    crate::icons::Icon::Microphone,
+                    &ask.title,
+                    &ask.text,
+                    egui::Color32::from_rgb(231, 77, 82),
+                );
+            } else {
+                ui.set_max_width(440.0);
+                ui.heading(&ask.title);
+                ui.add_space(4.0);
+                ui.label(&ask.text);
+            }
             if let Some((label, value)) = ask.check {
                 ui.add_space(6.0);
                 crate::widgets::checkbox(ui, value(&mut self.settings.prefs), label);
             }
             ui.add_space(8.0);
+            if recording {
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add(crate::dialogs::prompt_button(
+                            tr("Start Recording"),
+                            Some(egui::Color32::from_rgb(162, 50, 54)),
+                        ))
+                        .clicked()
+                    {
+                        answer = Some(true);
+                    }
+                    if ui
+                        .add(crate::dialogs::prompt_button(tr("Cancel"), None))
+                        .clicked()
+                    {
+                        answer = Some(false);
+                    }
+                });
+                return;
+            }
             ui.horizontal(|ui| {
                 if ui
                     .add(egui::Button::new(tr("Yes")).min_size(egui::vec2(72.0, 0.0)))

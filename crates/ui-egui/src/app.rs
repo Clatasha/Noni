@@ -2771,17 +2771,24 @@ impl BananaApp {
         };
         let mut choice = None;
         egui::Modal::new(egui::Id::new("fechar")).show(ctx, |ui| {
-            ui.heading(tr("Save changes?"));
-            ui.label(tr("The project has unsaved changes."));
-            ui.horizontal(|ui| {
-                if ui.button(tr("Save")).clicked() {
-                    choice = Some(0);
-                }
-                if ui.button(tr("Discard")).clicked() {
-                    choice = Some(1);
-                }
-                if ui.button(tr("Cancel")).clicked() {
-                    choice = Some(2);
+            ui.set_width(420.0_f32.min(ctx.content_rect().width() * 0.86));
+            crate::dialogs::prompt_header(
+                ui,
+                crate::icons::Icon::Save,
+                tr("Save changes?"),
+                tr("The project has unsaved changes."),
+                theme::banana(),
+            );
+            ui.add_space(12.0);
+            ui.horizontal_wrapped(|ui| {
+                for (label, fill, action) in [
+                    (tr("Save"), Some(theme::ACTION_BLUE), 0),
+                    (tr("Discard"), Some(egui::Color32::from_rgb(162, 50, 54)), 1),
+                    (tr("Cancel"), None, 2),
+                ] {
+                    if ui.add(crate::dialogs::prompt_button(label, fill)).clicked() {
+                        choice = Some(action);
+                    }
                 }
             });
         });
