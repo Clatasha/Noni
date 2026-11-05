@@ -93,6 +93,13 @@ static METRONOME: Mutex<Option<Arc<Clicks>>> = Mutex::new(None);
 static DOWNMIX: AtomicU32 = AtomicU32::new(0);
 static DIM: AtomicBool = AtomicBool::new(false);
 
+// Applied only to samples sent to the device, after the meter tap.
+static LISTENING_VOLUME: AtomicU32 = AtomicU32::new(100);
+
+pub(crate) fn set_listening_volume(percent: u8) {
+    LISTENING_VOLUME.store(u32::from(percent.min(100)), Ordering::Relaxed);
+}
+
 /// Dim Output's cut: 20 dB.
 const DIM_GAIN: f32 = 0.1;
 
@@ -596,6 +603,8 @@ fn fill<T: Copy + Default>(
     let mut ring = audio.ring.lock().expect("buffer de áudio");
     // Só quadros completos (todas as amostras de um instante) contam.
     let available = (ring.len() / channels).min(out.len() / channels);
+    let volume = LISTENING_VOLUME.load(Ordering::Relaxed) as f32 / 100.0;
+    let gain = volume * volume;
     for (i, (o, s)) in out
         .iter_mut()
         .zip(ring.drain(..available * channels))
@@ -603,7 +612,7 @@ fn fill<T: Copy + Default>(
     {
         let p = &mut peaks[i % channels];
         *p = p.max(s.abs());
-        *o = convert(s);
+        *o = convert(s * gain);
     }
     drop(ring);
     for o in &mut out[available * channels..] {

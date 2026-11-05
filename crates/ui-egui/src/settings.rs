@@ -1547,6 +1547,9 @@ pub struct UiSettings {
     pub preview_fader: bool,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub preview_gain_db: f32,
+    /// How far the listening volume is turned down, from 0 to 100.
+    #[serde(default)]
+    pub listening_attenuation: u8,
     /// Auto Preview in Project Media and in the Explorer: a click on a
     /// media plays it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

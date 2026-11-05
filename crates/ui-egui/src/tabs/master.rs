@@ -248,6 +248,7 @@ fn vegas_scale(painter: &egui::Painter, rect: Rect) {
 /// The window: the Master's strip, and with View › Mixer Preview Fader
 /// the preview bus's strip left of it, as VEGAS's Help shows them.
 pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
+    listening_volume(ui, app);
     if !app.settings.preview_fader {
         master_strip(ui, app);
         return;
@@ -268,6 +269,25 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         master_strip(ui, app)
     });
     ui.allocate_rect(area, Sense::hover());
+}
+
+fn listening_volume(ui: &mut egui::Ui, app: &mut BananaApp) {
+    ui.label(tr("Listening Volume"));
+    ui.horizontal(|ui| {
+        let mut volume = 100_u8.saturating_sub(app.settings.listening_attenuation);
+        ui.spacing_mut().slider_width = (ui.available_width() - 42.0).clamp(24.0, 180.0);
+        let response = ui.add(egui::Slider::new(&mut volume, 0..=100).show_value(false));
+        ui.label(format!("{volume}%"));
+        if response.changed() {
+            app.settings.listening_attenuation = 100 - volume;
+            bv_engine::Engine::set_listening_volume(volume);
+        }
+        if response.drag_stopped() || (response.changed() && !response.dragged()) {
+            let _ = app.settings.save();
+        }
+        response.on_hover_text(tr("Changes speaker and headphone volume only."));
+    });
+    ui.separator();
 }
 
 /// The preview bus's strip: its name, its fader (the level previews play

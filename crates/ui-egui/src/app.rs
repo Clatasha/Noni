@@ -777,6 +777,7 @@ impl BananaApp {
         bv_engine::Engine::set_aces_on_gpu(prefs.aces_on_gpu);
         bv_engine::Engine::set_true_peak_blocking(app.settings.loudness.blocking);
         app.apply_audio_prefs();
+        Engine::set_listening_volume(100_u8.saturating_sub(app.settings.listening_attenuation));
         let p = &app.settings.prefs;
         crate::logs::set_levels(p.log_plugins, p.log_reads, p.log_renders);
         if !app.settings.prefs.timeline_at_bottom {

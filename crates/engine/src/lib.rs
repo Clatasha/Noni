@@ -508,6 +508,11 @@ impl Engine {
         playback::dim()
     }
 
+    /// Set the listening volume for the audio device without changing the mix.
+    pub fn set_listening_volume(percent: u8) {
+        playback::set_listening_volume(percent);
+    }
+
     /// Follows the system's default audio output when it changed (while
     /// nothing plays), unless a device is chosen.
     pub fn follow_default_audio(&mut self) {
