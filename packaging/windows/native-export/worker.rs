@@ -44,6 +44,10 @@ fn main() -> Result<()> {
         println!("Noni native export worker 1");
         return Ok(());
     }
+    if arg == "--check-scene" {
+        full_frame_scene(&[], &ExportParams::default()).context("invalid export scene")?;
+        return Ok(());
+    }
     let request: Request = serde_json::from_slice(&std::fs::read(arg)?)?;
     let clips = request
         .clips
@@ -140,8 +144,8 @@ fn full_frame_scene(clips: &[ClipSource], params: &ExportParams) -> Result<Scene
         "background": {"kind": "color", "color": "#000000"},
         "zoomRegions": [],
         "cursor": {
-            "show": false, "size": 1, "smoothing": 0, "motion_blur": 0,
-            "click_bounce": 0, "clip_to_bounds": false, "theme": ""
+            "show": false, "size": 1, "smoothing": 0, "motionBlur": 0,
+            "clickBounce": 0, "clipToBounds": false, "theme": ""
         },
         "output": {"width": params.width, "height": params.height, "fps": params.fps}
     }))?)

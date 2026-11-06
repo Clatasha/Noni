@@ -80,7 +80,7 @@ jobs:
           cp "$ffmpeg_dir"/LICENSE* native-export/
           cp reaction-station/LICENSE native-export/Reaction-Station-LICENSE.txt
           cp packaging/windows/native-export/README.txt native-export/
-          ./native-export/noni-export.exe --version
+          ./native-export/noni-export.exe --check-scene
       - name: Zip
         shell: bash
         run: |
