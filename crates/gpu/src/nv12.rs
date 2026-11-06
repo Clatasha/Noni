@@ -5,18 +5,161 @@
 #![allow(unsafe_code)]
 
 use std::mem::ManuallyDrop;
-use std::os::windows::io::{AsHandle, BorrowedHandle, FromRawHandle, OwnedHandle};
+use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle};
 
 use wgpu::hal::api::Dx12;
-use windows::Win32::Foundation::GENERIC_ALL;
+use windows::Win32::Foundation::{GENERIC_ALL, HANDLE, HMODULE};
+use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
+use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Direct3D12::*;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC};
+use windows::Win32::Graphics::Dxgi::{
+    CreateDXGIFactory1, DXGI_SHARED_RESOURCE_READ, DXGI_SHARED_RESOURCE_WRITE, IDXGIAdapter,
+    IDXGIFactory4, IDXGIResource1,
+};
 use windows::core::{Interface, PCWSTR};
 
 use crate::{Gpu, GpuError};
 
+fn stage(step: &'static str) -> impl FnOnce(windows::core::Error) -> GpuError {
+    move |e| GpuError::Failed(format!("{step}: {e} (0x{:08X})", e.code().0 as u32))
+}
+
 fn error(e: windows::core::Error) -> GpuError {
-    GpuError::Failed(format!("NV12 texture handoff: {e}"))
+    stage("recording the D3D12 NV12 copy")(e)
+}
+
+/// Creates the shareable NV12 surfaces in D3D11 so Media Foundation
+/// opens a D3D11-originated resource. D3D12 imports the same allocation.
+/// This follows the sharing direction in Dawn's Windows VideoViewsTests.
+pub(crate) struct Nv12Device {
+    device: ID3D11Device,
+    context: ID3D11DeviceContext4,
+    ready: ID3D11Fence,
+    ready_on_dx12: ID3D12Fence,
+    value: u64,
+}
+
+impl Nv12Device {
+    fn new(dx12: &ID3D12Device) -> Result<Self, GpuError> {
+        // SAFETY: the D3D11 device and its fence are made on the same
+        // adapter as D3D12. The temporary handle is closed after import.
+        unsafe {
+            let factory: IDXGIFactory4 =
+                CreateDXGIFactory1().map_err(stage("creating DXGI factory"))?;
+            let adapter: IDXGIAdapter = factory
+                .EnumAdapterByLuid(dx12.GetAdapterLuid())
+                .map_err(stage("locating compositor adapter"))?;
+            let mut device = None;
+            let mut context = None;
+            D3D11CreateDevice(
+                &adapter,
+                D3D_DRIVER_TYPE_UNKNOWN,
+                HMODULE::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                None,
+                D3D11_SDK_VERSION,
+                Some(&mut device),
+                None,
+                Some(&mut context),
+            )
+            .map_err(stage("creating D3D11 sharing device"))?;
+            let device = device.ok_or(GpuError::NoAdapter)?;
+            let context = context
+                .ok_or(GpuError::NoAdapter)?
+                .cast::<ID3D11DeviceContext4>()
+                .map_err(stage("opening D3D11 fence context"))?;
+            let device5: ID3D11Device5 =
+                device.cast().map_err(stage("opening D3D11 fence device"))?;
+            let mut ready = None;
+            device5
+                .CreateFence(0, D3D11_FENCE_FLAG_SHARED, &mut ready)
+                .map_err(stage("creating D3D11 initialization fence"))?;
+            let ready: ID3D11Fence = ready.ok_or(GpuError::NoAdapter)?;
+            let handle = ready
+                .CreateSharedHandle(None, GENERIC_ALL.0, PCWSTR::null())
+                .map_err(stage("sharing D3D11 initialization fence"))?;
+            let handle = OwnedHandle::from_raw_handle(handle.0);
+            let mut ready_on_dx12 = None;
+            dx12.OpenSharedHandle(HANDLE(handle.as_raw_handle()), &mut ready_on_dx12)
+                .map_err(stage("importing initialization fence into D3D12"))?;
+            Ok(Self {
+                device,
+                context,
+                ready,
+                ready_on_dx12: ready_on_dx12.ok_or(GpuError::NoAdapter)?,
+                value: 0,
+            })
+        }
+    }
+
+    fn create(&mut self, dx12: &ID3D12Device, w: u32, h: u32) -> Result<SharedNv12, GpuError> {
+        // SAFETY: this factory is locked by the caller so its D3D11
+        // context and monotonically increasing fence are used in order.
+        unsafe {
+            let desc = D3D11_TEXTURE2D_DESC {
+                Width: w,
+                Height: h,
+                MipLevels: 1,
+                ArraySize: 1,
+                Format: DXGI_FORMAT_NV12,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                Usage: D3D11_USAGE_DEFAULT,
+                BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+                CPUAccessFlags: 0,
+                MiscFlags: (D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED).0
+                    as u32,
+            };
+            let mut texture = None;
+            self.device
+                .CreateTexture2D(&desc, None, Some(&mut texture))
+                .map_err(stage("allocating shared D3D11 NV12 texture"))?;
+            let texture = texture.ok_or(GpuError::NoAdapter)?;
+            let shared: IDXGIResource1 = texture
+                .cast()
+                .map_err(stage("querying shareable NV12 texture"))?;
+            let handle = shared
+                .CreateSharedHandle(
+                    None,
+                    (DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE).0,
+                    PCWSTR::null(),
+                )
+                .map_err(stage("sharing D3D11 NV12 texture"))?;
+            let handle = OwnedHandle::from_raw_handle(handle.0);
+            let mut resource = None;
+            dx12.OpenSharedHandle(HANDLE(handle.as_raw_handle()), &mut resource)
+                .map_err(stage("importing D3D11 NV12 texture into D3D12"))?;
+            let resource: ID3D12Resource = resource.ok_or(GpuError::NoAdapter)?;
+            let desc = resource.GetDesc();
+            let mut planes = [D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); 2];
+            dx12.GetCopyableFootprints(&desc, 0, 2, 0, Some(planes.as_mut_ptr()), None, None, None);
+            let [y, uv] = planes;
+            let pitch = y.Footprint.RowPitch;
+            if pitch < w
+                || y.Offset != 0
+                || uv.Offset != u64::from(pitch) * u64::from(h)
+                || uv.Footprint.RowPitch != pitch
+            {
+                return Err(GpuError::Failed("unsupported NV12 plane layout".into()));
+            }
+            self.value += 1;
+            self.context
+                .Signal(&self.ready, self.value)
+                .map_err(stage("signaling D3D11 texture initialization"))?;
+            self.context.Flush();
+            Ok(SharedNv12 {
+                handle,
+                resource,
+                _texture: texture,
+                planes,
+                ready: self.ready_on_dx12.clone(),
+                value: self.value,
+            })
+        }
+    }
 }
 
 /// One completed frame. Its resource is kept alive until the writer has
@@ -25,6 +168,9 @@ fn error(e: windows::core::Error) -> GpuError {
 pub struct SharedNv12 {
     handle: OwnedHandle,
     resource: ID3D12Resource,
+    _texture: ID3D11Texture2D,
+    ready: ID3D12Fence,
+    value: u64,
     planes: [D3D12_PLACED_SUBRESOURCE_FOOTPRINT; 2],
 }
 
@@ -53,83 +199,53 @@ impl Gpu {
                 "NV12 requires even frame dimensions".into(),
             ));
         }
-        // SAFETY: this only allocates on the live wgpu device. The new
-        // resource is private until its GPU copy has completed.
-        unsafe {
-            let hal = self.device.as_hal::<Dx12>().ok_or(GpuError::NoAdapter)?;
-            let device = hal.raw_device();
-            let desc = D3D12_RESOURCE_DESC {
-                Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-                Width: u64::from(w),
-                Height: h,
-                DepthOrArraySize: 1,
-                MipLevels: 1,
-                Format: DXGI_FORMAT_NV12,
-                SampleDesc: DXGI_SAMPLE_DESC {
-                    Count: 1,
-                    Quality: 0,
-                },
-                Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
-                Flags: D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
-                ..Default::default()
-            };
-            let heap = D3D12_HEAP_PROPERTIES {
-                Type: D3D12_HEAP_TYPE_DEFAULT,
-                ..Default::default()
-            };
-            let mut resource = None;
-            device
-                .CreateCommittedResource(
-                    &heap,
-                    D3D12_HEAP_FLAG_SHARED,
-                    &desc,
-                    D3D12_RESOURCE_STATE_COMMON,
-                    None,
-                    &mut resource,
-                )
-                .map_err(error)?;
-            let resource: ID3D12Resource = resource.ok_or(GpuError::Lost)?;
-            let handle = device
-                .CreateSharedHandle(&resource, None, GENERIC_ALL.0, PCWSTR::null())
-                .map_err(error)?;
-            let handle = OwnedHandle::from_raw_handle(handle.0);
-            let mut planes = [D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); 2];
-            device.GetCopyableFootprints(
-                &desc,
-                0,
-                2,
-                0,
-                Some(planes.as_mut_ptr()),
-                None,
-                None,
-                None,
-            );
-            let [y, uv] = planes;
-            let pitch = y.Footprint.RowPitch;
-            if pitch < w
-                || y.Offset != 0
-                || uv.Offset != u64::from(pitch) * u64::from(h)
-                || uv.Footprint.RowPitch != pitch
-            {
-                return Err(GpuError::Failed("unsupported NV12 plane layout".into()));
-            }
-            Ok(SharedNv12 {
-                handle,
-                resource,
-                planes,
-            })
+        // SAFETY: the HAL device remains borrowed through the import.
+        let hal = unsafe { self.device.as_hal::<Dx12>() }.ok_or(GpuError::NoAdapter)?;
+        let dx12 = hal.raw_device();
+        let mut factory = self
+            .nv12_device
+            .lock()
+            .map_err(|_| GpuError::Failed("D3D11 sharing device lock failed".into()))?;
+        if factory.is_none() {
+            *factory = Some(Nv12Device::new(dx12)?);
         }
+        factory
+            .as_mut()
+            .ok_or(GpuError::NoAdapter)?
+            .create(dx12, w, h)
     }
 }
 
-/// A private command list for one compositor. D3D12 buffers and
-/// simultaneous-access textures promote from COMMON for copies and decay
-/// back to COMMON once this separate ExecuteCommandLists call completes.
+/// A private command list for one compositor. The source buffer decays
+/// to COMMON after the shader submission and promotes for the copy.
+/// The shared texture is explicitly returned to COMMON for D3D11.
 pub(crate) struct CopyNv12 {
     allocator: ID3D12CommandAllocator,
     list: ID3D12GraphicsCommandList,
     command: ID3D12CommandList,
     queue: ID3D12CommandQueue,
+}
+
+fn transition(
+    resource: &ID3D12Resource,
+    before: D3D12_RESOURCE_STATES,
+    after: D3D12_RESOURCE_STATES,
+) -> D3D12_RESOURCE_BARRIER {
+    // SAFETY: the command records this borrowed pointer while the frame
+    // owns its resource, which stays alive through the submission wait.
+    let resource = unsafe { ID3D12Resource::from_raw(resource.as_raw()) };
+    D3D12_RESOURCE_BARRIER {
+        Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+        Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
+        Anonymous: D3D12_RESOURCE_BARRIER_0 {
+            Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
+                pResource: ManuallyDrop::new(Some(resource)),
+                Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                StateBefore: before,
+                StateAfter: after,
+            }),
+        },
+    }
 }
 
 impl CopyNv12 {
@@ -171,6 +287,11 @@ impl CopyNv12 {
             let source = hal.raw_resource();
             self.allocator.Reset().map_err(error)?;
             self.list.Reset(&self.allocator, None).map_err(error)?;
+            self.list.ResourceBarrier(&[transition(
+                &dst.resource,
+                D3D12_RESOURCE_STATE_COMMON,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+            )]);
             for (i, plane) in dst.planes.iter().enumerate() {
                 // The copy locations borrow the resources. ManuallyDrop
                 // prevents the temporary COM wrappers from releasing them.
@@ -192,7 +313,15 @@ impl CopyNv12 {
                 };
                 self.list.CopyTextureRegion(&target, 0, 0, 0, &src, None);
             }
+            self.list.ResourceBarrier(&[transition(
+                &dst.resource,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                D3D12_RESOURCE_STATE_COMMON,
+            )]);
             self.list.Close().map_err(error)?;
+            self.queue
+                .Wait(&dst.ready, dst.value)
+                .map_err(stage("waiting for D3D11 NV12 initialization"))?;
             self.queue
                 .ExecuteCommandLists(&[Some(self.command.clone())]);
         }

@@ -148,12 +148,17 @@ impl Device {
         height: u32,
     ) -> Result<ID3D11Texture2D> {
         let device = self.device.cast::<ID3D11Device1>().map_err(win)?;
-        // SAFETY: handle is borrowed from the live D3D12 resource. The
-        // caller waits for the compositor's submission before handing it off.
+        // SAFETY: the handle is borrowed from the live shared texture.
+        // The caller waits for the compositor before encoding.
         unsafe {
             let texture: ID3D11Texture2D = device
                 .OpenSharedResource1(HANDLE(handle.as_raw_handle()))
-                .map_err(win)?;
+                .map_err(|e| {
+                    Error::Windows(format!(
+                        "OpenSharedResource1: {e} (0x{:08X})",
+                        e.code().0 as u32
+                    ))
+                })?;
             let mut desc = D3D11_TEXTURE2D_DESC::default();
             texture.GetDesc(&mut desc);
             if (desc.Width, desc.Height, desc.Format) != (width, height, DXGI_FORMAT_NV12)

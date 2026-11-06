@@ -183,6 +183,8 @@ pub struct Gpu {
     device: wgpu::Device,
     queue: wgpu::Queue,
     adapter: Adapter,
+    #[cfg(windows)]
+    nv12_device: Mutex<Option<nv12::Nv12Device>>,
     kernels: kernels::Kernels,
     lost: Arc<AtomicBool>,
     /// The first error not caught by a frame (shown when one fails).
@@ -239,6 +241,8 @@ impl Gpu {
         }
         Ok(Arc::new(Gpu {
             adapter: describe(&adapter),
+            #[cfg(windows)]
+            nv12_device: Mutex::new(None),
             device,
             queue,
             kernels,

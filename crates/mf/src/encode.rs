@@ -26,6 +26,10 @@ fn pack(hi: u32, lo: u32) -> u64 {
     ((hi as u64) << 32) | lo as u64
 }
 
+fn video_setup(step: &'static str) -> impl FnOnce(windows::core::Error) -> Error {
+    move |e| Error::Windows(format!("{step}: {e} (0x{:08X})", e.code().0 as u32))
+}
+
 fn video_subtype(codec: Codec) -> Result<GUID> {
     match codec {
         Codec::H264 => Ok(MFVideoFormat_H264),
@@ -402,9 +406,12 @@ impl VideoEncoder {
                     .then_some((a, name))
             })
             .ok_or_else(|| Error::Windows(format!("no {:?} {:?} encoder", s.vendor, s.codec)))?;
-        let mut mft = Mft::create(activate)?;
+        let mut mft = Mft::create(activate)
+            .map_err(|e| Error::Windows(format!("activating video encoder: {e}")))?;
         let device = if d3d {
-            let dev = crate::d3d::Device::new(s.vendor, shared.map(|(id, _)| id))?;
+            let dev = crate::d3d::Device::new(s.vendor, shared.map(|(id, _)| id)).map_err(|e| {
+                Error::Windows(format!("creating encoder's D3D11 device manager: {e}"))
+            })?;
             if let Some((_, probe)) = shared {
                 // SAFETY: these are attribute queries on the active MFT.
                 let aware = unsafe {
@@ -418,12 +425,16 @@ impl VideoEncoder {
                         "NVIDIA encoder does not accept D3D11 input".into(),
                     ));
                 }
-                dev.shared_nv12(probe, s.width, s.height)?;
+                dev.shared_nv12(probe, s.width, s.height).map_err(|e| {
+                    Error::Windows(format!(
+                        "opening shared NV12 on the encoder's D3D11 device: {e}"
+                    ))
+                })?;
             }
             unsafe {
                 mft.mft
                     .ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, dev.manager.as_raw() as usize)
-                    .map_err(win)?;
+                    .map_err(video_setup("setting encoder D3D11 device manager"))?;
             }
             Some(dev)
         } else {
@@ -491,7 +502,9 @@ impl VideoEncoder {
             if mft.mft.SetOutputType(0, &out, 0).is_err() {
                 out.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)
                     .map_err(win)?;
-                mft.mft.SetOutputType(0, &out, 0).map_err(win)?;
+                mft.mft
+                    .SetOutputType(0, &out, 0)
+                    .map_err(video_setup("setting encoded video format"))?;
             }
             let mode = out
                 .GetUINT32(&MF_MT_INTERLACE_MODE)
@@ -515,9 +528,12 @@ impl VideoEncoder {
                 .map_err(win)?;
             inp.SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32)
                 .map_err(win)?;
-            mft.mft.SetInputType(0, &inp, 0).map_err(win)?;
+            mft.mft
+                .SetInputType(0, &inp, 0)
+                .map_err(video_setup("setting encoder input format"))?;
         }
-        mft.start()?;
+        mft.start()
+            .map_err(|e| Error::Windows(format!("starting video encoder: {e}")))?;
         Ok(VideoEncoder {
             mft,
             settings: s,

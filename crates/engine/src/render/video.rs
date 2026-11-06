@@ -139,7 +139,7 @@ pub(super) fn mp4(
             let attempt = open_shared_nv12(encoder_settings, gpu);
             if let Some(timing) = timing {
                 timing.set_shared_nv12_status(match &attempt {
-                    Ok(_) => "enabled (Direct3D 12 to Direct3D 11)".to_string(),
+                    Ok(_) => "enabled (shared Direct3D 11 NV12 texture)".to_string(),
                     Err(e) => format!("unavailable, using packed input: {e}"),
                 });
             }
