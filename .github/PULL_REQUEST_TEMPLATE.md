@@ -19,4 +19,3 @@ One subject per pull request; for a large change, open an issue first.
 - [ ] No asset without its `.attribution` sidecar and its line in `ATTRIBUTION.md` (or this pull request adds no assets).
 - [ ] Nothing taken from proprietary programs: no code, assets, screenshots or reference material of theirs (AGENTS.md §2 and §3).
 - [ ] New dependencies, if any, pass `cargo deny check licenses`.
-- [ ] Every commit is signed off (`Signed-off-by:`, `git commit -s`) by the person responsible for it; AI agents never sign off.
