@@ -388,7 +388,12 @@ pub(crate) trait Output: Send {
     }
 
     #[cfg(windows)]
-    fn video_shared_nv12(&mut self, _frame: &bv_gpu::SharedNv12, _n: u64) -> Result<(), String> {
+    fn video_shared_nv12(
+        &mut self,
+        _frame: &bv_gpu::SharedNv12,
+        _n: u64,
+        _timing: Option<&Timing>,
+    ) -> Result<(), String> {
         Err("this encoder takes no shared NV12 textures".into())
     }
 
@@ -895,7 +900,7 @@ fn write(
             Work::Image(img, n) => out.video(&img, n),
             Work::Packed(data, n) => out.video_packed(&data, n),
             #[cfg(windows)]
-            Work::SharedNv12(frame, n) => out.video_shared_nv12(&frame, n).inspect(|()| {
+            Work::SharedNv12(frame, n) => out.video_shared_nv12(&frame, n, timing).inspect(|()| {
                 if let Some(timing) = timing {
                     timing.shared_nv12();
                 }

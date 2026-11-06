@@ -532,7 +532,7 @@ pub struct Still {
 }
 
 #[cfg(windows)]
-pub use encode::{AudioEncoder, VideoEncoder};
+pub use encode::{AudioEncoder, SharedNv12Timing, VideoEncoder};
 #[cfg(windows)]
 pub use encoders::encoders;
 #[cfg(windows)]

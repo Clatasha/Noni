@@ -19,6 +19,12 @@ pub(super) enum Stage {
     GpuWait,
     ReadbackCopy,
     VideoWrite,
+    #[cfg(windows)]
+    SharedPrepare,
+    #[cfg(windows)]
+    SharedEncode,
+    #[cfg(windows)]
+    SharedMux,
     AudioMix,
     AudioWrite,
     QueueWait,
@@ -26,13 +32,15 @@ pub(super) enum Stage {
 }
 
 #[derive(Default)]
-pub(super) struct Timing {
+pub(crate) struct Timing {
     nanos: [AtomicU64; Stage::Finish as usize + 1],
     draws: AtomicU64,
     gpu_draws: AtomicU64,
     readbacks: AtomicU64,
     readback_bytes: AtomicU64,
     shared_nv12_frames: AtomicU64,
+    #[cfg(windows)]
+    shared_nv12_pooled: AtomicU64,
     shared_nv12_status: std::sync::OnceLock<String>,
 }
 
@@ -81,6 +89,15 @@ impl Timing {
     #[cfg(windows)]
     pub(super) fn shared_nv12(&self) {
         self.shared_nv12_frames.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[cfg(windows)]
+    pub(super) fn record_shared_writer(&self, timing: bv_mf::SharedNv12Timing) {
+        self.add(Stage::SharedPrepare, timing.prepare);
+        self.add(Stage::SharedEncode, timing.encode);
+        if timing.pooled {
+            self.shared_nv12_pooled.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     #[cfg(windows)]
@@ -226,6 +243,25 @@ impl Timing {
             ("Encoder drain and file finalization", Stage::Finish),
         ] {
             writeln!(file, "{label}: {:.3} s", self.seconds(stage))?;
+        }
+        #[cfg(windows)]
+        {
+            let shared_frames = self.shared_nv12_frames.load(Ordering::Relaxed);
+            if shared_frames != 0 {
+                let pooled = self.shared_nv12_pooled.load(Ordering::Relaxed);
+                writeln!(file, "Fast NVENC writer breakdown ({shared_frames} frames)")?;
+                writeln!(file, "  Pooled encoder samples: {pooled} / {shared_frames}")?;
+                for (label, stage) in [
+                    ("Open, copy and flush encoder texture", Stage::SharedPrepare),
+                    (
+                        "Media Foundation encode and packet retrieval",
+                        Stage::SharedEncode,
+                    ),
+                    ("Write encoded video to MP4", Stage::SharedMux),
+                ] {
+                    writeln!(file, "  {label}: {:.3} s", self.seconds(stage))?;
+                }
+            }
         }
         file.flush()
     }

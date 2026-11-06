@@ -328,13 +328,24 @@ impl Output for Mp4Out {
     }
 
     #[cfg(windows)]
-    fn video_shared_nv12(&mut self, frame: &bv_gpu::SharedNv12, n: u64) -> Result<(), String> {
+    fn video_shared_nv12(
+        &mut self,
+        frame: &bv_gpu::SharedNv12,
+        n: u64,
+        timing: Option<&super::timing::Timing>,
+    ) -> Result<(), String> {
+        use super::timing::{Stage, Timing};
+
         let (t, d) = self.video_time(n);
+        let mut details = timing.map(|_| bv_mf::SharedNv12Timing::default());
         let packets = self
             .video
-            .encode_shared_nv12(frame.handle(), t, d)
+            .encode_shared_nv12(frame.handle(), t, d, details.as_mut())
             .map_err(|e| format!("Fast NVENC failed: {e}. Turn off NONI_FAST_NVENC and retry."))?;
-        self.put_video(packets)
+        if let (Some(timing), Some(details)) = (timing, details) {
+            timing.record_shared_writer(details);
+        }
+        Timing::measure(timing, Stage::SharedMux, || self.put_video(packets))
     }
 
     fn audio(&mut self, planar: &[Vec<f32>]) -> Result<(), String> {

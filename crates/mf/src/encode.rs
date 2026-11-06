@@ -8,6 +8,7 @@
 
 use std::mem::ManuallyDrop;
 use std::os::windows::io::BorrowedHandle;
+use std::time::{Duration, Instant};
 
 use bv_core::VideoFrame;
 use windows::Win32::Media::MediaFoundation::*;
@@ -100,7 +101,7 @@ fn new_sample(bytes: &[u8], capacity: u32) -> Result<IMFSample> {
     }
 }
 
-fn sample_from_buffer(buffer: &IMFMediaBuffer) -> Result<IMFSample> {
+pub(crate) fn sample_from_buffer(buffer: &IMFMediaBuffer) -> Result<IMFSample> {
     // SAFETY: the sample retains its own reference to the media buffer.
     unsafe {
         let sample = MFCreateSample().map_err(win)?;
@@ -327,6 +328,14 @@ impl Drop for Mft {
     }
 }
 
+/// Timings for preparing a shared NV12 sample and feeding Media Foundation.
+#[derive(Debug, Default)]
+pub struct SharedNv12Timing {
+    pub prepare: Duration,
+    pub encode: Duration,
+    pub pooled: bool,
+}
+
 /// A video encoder of the system, fed 4:2:0 frames (8 bits as NV12, 10
 /// bits as P010).
 pub struct VideoEncoder {
@@ -408,7 +417,7 @@ impl VideoEncoder {
             .ok_or_else(|| Error::Windows(format!("no {:?} {:?} encoder", s.vendor, s.codec)))?;
         let mut mft = Mft::create(activate)
             .map_err(|e| Error::Windows(format!("activating video encoder: {e}")))?;
-        let device = if d3d {
+        let mut device = if d3d {
             let dev = crate::d3d::Device::new(s.vendor, shared.map(|(id, _)| id)).map_err(|e| {
                 Error::Windows(format!("creating encoder's D3D11 device manager: {e}"))
             })?;
@@ -531,6 +540,9 @@ impl VideoEncoder {
             mft.mft
                 .SetInputType(0, &inp, 0)
                 .map_err(video_setup("setting encoder input format"))?;
+            if let Some(dev) = device.as_mut().filter(|_| shared.is_some()) {
+                let _ = dev.enable_nv12_pool(&inp, s.width, s.height);
+            }
         }
         mft.start()
             .map_err(|e| Error::Windows(format!("starting video encoder: {e}")))?;
@@ -591,11 +603,23 @@ impl VideoEncoder {
         handle: BorrowedHandle<'_>,
         time: i64,
         duration: i64,
+        timing: Option<&mut SharedNv12Timing>,
     ) -> Result<Vec<Packet>> {
+        let started = timing.as_ref().map(|_| Instant::now());
         init()?;
         let device = self.device.as_ref().ok_or(Error::Unavailable)?;
-        let buffer = device.copy_shared_nv12(handle, self.settings.width, self.settings.height)?;
-        self.encode_sample(sample_from_buffer(&buffer)?, time, duration)
+        let (sample, pooled) =
+            device.copy_shared_nv12(handle, self.settings.width, self.settings.height)?;
+        if let (Some(timing), Some(started)) = (timing, started) {
+            timing.pooled = pooled;
+            timing.prepare = started.elapsed();
+            let encode_start = Instant::now();
+            let packets = self.encode_sample(sample, time, duration);
+            timing.encode = encode_start.elapsed();
+            packets
+        } else {
+            self.encode_sample(sample, time, duration)
+        }
     }
 
     fn encode_sample(&mut self, s: IMFSample, time: i64, duration: i64) -> Result<Vec<Packet>> {

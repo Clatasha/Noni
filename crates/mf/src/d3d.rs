@@ -36,6 +36,7 @@ pub(crate) struct Device {
     nvenc_input: bool,
     /// The CPU-writable texture frames are copied through.
     staging: Option<ID3D11Texture2D>,
+    nv12_pool: Option<IMFVideoSampleAllocatorEx>,
 }
 
 impl Device {
@@ -91,6 +92,7 @@ impl Device {
                 context,
                 nvenc_input: luid.is_some(),
                 staging: None,
+                nv12_pool: None,
             })
         }
     }
@@ -174,16 +176,103 @@ impl Device {
         }
     }
 
-    /// Keep the handoff on the GPU, giving the encoder a private texture
-    /// on its own device just as the packed-input path does.
+    /// A bounded pool of samples on the encoder device. Media Foundation
+    /// recycles them when the asynchronous encoder releases its reference.
+    /// https://learn.microsoft.com/windows/win32/api/mfidl/nn-mfidl-imfvideosampleallocatorex
+    pub(crate) fn enable_nv12_pool(
+        &mut self,
+        media_type: &IMFMediaType,
+        width: u32,
+        height: u32,
+    ) -> Result<()> {
+        // SAFETY: COM is initialized and the media type is the encoder's
+        // negotiated NV12 input. The manager owns this device.
+        unsafe {
+            let mut raw = std::ptr::null_mut();
+            MFCreateVideoSampleAllocatorEx(&IMFVideoSampleAllocatorEx::IID, &mut raw)
+                .map_err(win)?;
+            if raw.is_null() {
+                return Err(Error::Unavailable);
+            }
+            let pool = IMFVideoSampleAllocatorEx::from_raw(raw);
+            pool.SetDirectXManager(&self.manager).map_err(win)?;
+            let mut attrs = None;
+            MFCreateAttributes(&mut attrs, 3).map_err(win)?;
+            let attrs = attrs.ok_or(Error::Unavailable)?;
+            attrs.SetUINT32(&MF_SA_BUFFERS_PER_SAMPLE, 1).map_err(win)?;
+            attrs
+                .SetUINT32(&MF_SA_D3D11_BINDFLAGS, D3D11_BIND_VIDEO_ENCODER.0 as u32)
+                .map_err(win)?;
+            attrs
+                .SetUINT32(&MF_SA_D3D11_USAGE, D3D11_USAGE_DEFAULT.0 as u32)
+                .map_err(win)?;
+            pool.InitializeSampleAllocatorEx(4, 16, &attrs, media_type)
+                .map_err(win)?;
+            self.nv12_pool = Some(pool);
+        }
+        if self.pooled_nv12(width, height).is_none() {
+            self.nv12_pool = None;
+            return Err(Error::Unavailable);
+        }
+        Ok(())
+    }
+
+    /// An available sample and its texture. Keep the same standalone
+    /// surface layout as the existing NVIDIA input path.
+    fn pooled_nv12(&self, width: u32, height: u32) -> Option<(IMFSample, ID3D11Texture2D)> {
+        let pool = self.nv12_pool.as_ref()?;
+        // SAFETY: the allocator returns a sample reserved for this caller.
+        // GetResource gives us an owned COM reference on success.
+        unsafe {
+            let sample = pool.AllocateSample().ok()?;
+            let buffer = sample.GetBufferByIndex(0).ok()?;
+            let dxgi = buffer.cast::<IMFDXGIBuffer>().ok()?;
+            if dxgi.GetSubresourceIndex().ok()? != 0 {
+                return None;
+            }
+            let mut raw = std::ptr::null_mut();
+            dxgi.GetResource(&ID3D11Texture2D::IID, &mut raw).ok()?;
+            if raw.is_null() {
+                return None;
+            }
+            let texture = ID3D11Texture2D::from_raw(raw);
+            let mut desc = D3D11_TEXTURE2D_DESC::default();
+            texture.GetDesc(&mut desc);
+            if (desc.Width, desc.Height, desc.Format) != (width, height, DXGI_FORMAT_NV12)
+                || desc.ArraySize != 1
+                || desc.MipLevels != 1
+                || desc.SampleDesc.Count != 1
+                || desc.BindFlags & D3D11_BIND_VIDEO_ENCODER.0 as u32 == 0
+            {
+                return None;
+            }
+            let length = buffer
+                .cast::<IMF2DBuffer>()
+                .ok()?
+                .GetContiguousLength()
+                .ok()?;
+            buffer.SetCurrentLength(length).ok()?;
+            Some((sample, texture))
+        }
+    }
+
+    /// Copy into a private encoder surface. If the pool is unavailable or
+    /// full, allocate a one-off sample so the writer can keep progressing.
     pub(crate) fn copy_shared_nv12(
         &self,
         handle: BorrowedHandle<'_>,
         width: u32,
         height: u32,
-    ) -> Result<IMFMediaBuffer> {
+    ) -> Result<(IMFSample, bool)> {
         let shared = self.shared_nv12(handle, width, height)?;
-        let frame = self.texture(width, height, DXGI_FORMAT_NV12, false)?;
+        let (sample, frame, pooled) = match self.pooled_nv12(width, height) {
+            Some((sample, frame)) => (sample, frame, true),
+            None => {
+                let frame = self.texture(width, height, DXGI_FORMAT_NV12, false)?;
+                let buffer = Self::media_buffer(&frame)?;
+                (crate::encode::sample_from_buffer(&buffer)?, frame, false)
+            }
+        };
         // SAFETY: both textures belong to this device and have the same
         // shape and format. Its context orders the copy before encoding.
         unsafe {
@@ -192,7 +281,7 @@ impl Device {
             // Submit our pending write before handing the surface to it.
             self.context.Flush();
         }
-        Self::media_buffer(&frame)
+        Ok((sample, pooled))
     }
 
     fn media_buffer(frame: &ID3D11Texture2D) -> Result<IMFMediaBuffer> {
