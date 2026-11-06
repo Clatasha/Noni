@@ -609,6 +609,8 @@ dependencies = [
  "bv-wic",
  "cpal",
  "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

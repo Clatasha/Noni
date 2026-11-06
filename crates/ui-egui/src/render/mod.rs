@@ -25,6 +25,7 @@ mod customize;
 pub(crate) mod folder;
 mod paint;
 pub(crate) mod progress;
+mod simple;
 pub(crate) mod templates;
 
 use paint::FolderKind;
@@ -72,6 +73,8 @@ impl Filters {
 /// The Render dialog's choices, kept between sessions.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct RenderPrefs {
+    #[serde(default)]
+    simple: simple::SimpleSettings,
     #[serde(default)]
     pub favorites: Vec<String>,
     #[serde(default)]
@@ -259,6 +262,7 @@ pub(crate) fn place_new_track(app: &mut BananaApp) {
 
 #[derive(Debug)]
 pub struct RenderDialog {
+    simple: simple::SimpleSettings,
     node: Node,
     expanded: [bool; 3],
     search: String,
@@ -297,7 +301,6 @@ pub enum Outcome {
 
 impl RenderDialog {
     pub fn new(app: &BananaApp) -> RenderDialog {
-        let p = app.project();
         let folder = app
             .settings
             .render
@@ -339,13 +342,14 @@ impl RenderDialog {
             None => Node::UseCases,
         };
         RenderDialog {
+            simple: app.settings.render.simple,
             node,
             expanded: [false; 3],
             search: String::new(),
             selected: last.or_else(|| Some("avc:1920x1080:30000-1001:cpu".into())),
             folder,
             name,
-            loop_only: p.loop_region.is_some(),
+            loop_only: false,
             customize: None,
             channels: None,
             confirm: None,
@@ -363,6 +367,7 @@ impl RenderDialog {
     pub fn to_new_track(app: &BananaApp) -> RenderDialog {
         let mut d = RenderDialog::new(app);
         d.to_new_track = true;
+        d.loop_only = app.project().loop_region.is_some();
         d.name = format!("{} {}", d.name, tr("Mixdown"));
         d
     }
@@ -411,53 +416,63 @@ impl RenderDialog {
     pub fn show(&mut self, ctx: &egui::Context, app: &mut BananaApp) -> Outcome {
         let mut open = true;
         let mut action = Action::None;
-        let all = all_templates(app);
-        let title = if self.to_new_track {
-            tr("Render to New Track")
+        let all = if self.to_new_track {
+            all_templates(app)
         } else {
-            tr("Render")
+            Vec::new()
         };
-        crate::floating::Window::new(title)
-            .id(egui::Id::new("render-dialog"))
-            .collapsible(false)
-            .resizable(true)
-            .default_size([920.0, 700.0])
-            .min_size([760.0, 560.0])
-            .open(&mut open)
-            .show(ctx, |ui| {
-                // The first (measuring) pass sees no size limit: the window
-                // starts at its default size instead of growing to it.
-                if ui.is_sizing_pass() {
-                    ui.allocate_space(vec2(900.0, 640.0));
-                    return;
-                }
-                ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, theme::separator());
-                // Everything is laid out in the window's area: it keeps its
-                // size.
-                let mut area = ui.available_rect_before_wrap();
-                if ui.ctx().embed_viewports() {
-                    // Inside the main window (no OS windows): its default size.
-                    area = Rect::from_min_size(area.min, area.size().min(vec2(900.0, 660.0)));
-                }
-                self.top_bar(ui, app);
-                let footer_h = 34.0;
-                let body = Rect::from_min_max(
-                    pos2(area.left(), ui.cursor().top()),
-                    pos2(
-                        area.right(),
-                        (area.bottom() - footer_h - 6.0).max(area.top() + 200.0),
-                    ),
-                );
-                let tree = Rect::from_min_size(body.min, vec2(250.0, body.height()));
-                let right = Rect::from_min_max(pos2(tree.right() + 6.0, body.top()), body.max);
-                let footer = Rect::from_min_max(pos2(area.left(), body.bottom() + 6.0), area.max);
-                ui.scope_builder(top_down(tree), |ui| self.tree(ui, app));
-                ui.scope_builder(top_down(right), |ui| self.right(ui, app, &all));
-                ui.scope_builder(top_down(footer), |ui| {
-                    action = self.footer(ui, app, &all);
+        if self.to_new_track {
+            crate::floating::Window::new(tr("Render to New Track"))
+                .id(egui::Id::new("render-dialog"))
+                .collapsible(false)
+                .resizable(true)
+                .default_size([920.0, 700.0])
+                .min_size([760.0, 560.0])
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    // The first (measuring) pass sees no size limit: the window
+                    // starts at its default size instead of growing to it.
+                    if ui.is_sizing_pass() {
+                        ui.allocate_space(vec2(900.0, 640.0));
+                        return;
+                    }
+                    ui.visuals_mut().widgets.inactive.bg_stroke =
+                        Stroke::new(1.0, theme::separator());
+                    // Everything is laid out in the window's area: it keeps its
+                    // size.
+                    let mut area = ui.available_rect_before_wrap();
+                    if ui.ctx().embed_viewports() {
+                        // Inside the main window (no OS windows): its default size.
+                        area = Rect::from_min_size(area.min, area.size().min(vec2(900.0, 660.0)));
+                    }
+                    self.top_bar(ui, app);
+                    let footer_h = 34.0;
+                    let body = Rect::from_min_max(
+                        pos2(area.left(), ui.cursor().top()),
+                        pos2(
+                            area.right(),
+                            (area.bottom() - footer_h - 6.0).max(area.top() + 200.0),
+                        ),
+                    );
+                    let tree = Rect::from_min_size(body.min, vec2(250.0, body.height()));
+                    let right = Rect::from_min_max(pos2(tree.right() + 6.0, body.top()), body.max);
+                    let footer =
+                        Rect::from_min_max(pos2(area.left(), body.bottom() + 6.0), area.max);
+                    ui.scope_builder(top_down(tree), |ui| self.tree(ui, app));
+                    ui.scope_builder(top_down(right), |ui| self.right(ui, app, &all));
+                    ui.scope_builder(top_down(footer), |ui| {
+                        action = self.footer(ui, app, &all);
+                    });
+                    ui.allocate_rect(area, Sense::hover());
                 });
-                ui.allocate_rect(area, Sense::hover());
-            });
+        } else {
+            crate::floating::Window::new(tr("Export"))
+                .id(egui::Id::new("simple-export"))
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(ctx, |ui| action = self.show_simple(ui, app));
+        }
         if let Some(c) = &mut self.customize {
             match c.show(ctx, app) {
                 customize::Outcome::Open => {}
@@ -517,8 +532,12 @@ impl RenderDialog {
     /// The dialog's choices go into the settings.
     fn remember(&self, app: &mut BananaApp) {
         let prefs = &mut app.settings.render;
-        if self.selected.is_some() {
-            prefs.last_template = self.selected.clone();
+        if self.to_new_track {
+            if self.selected.is_some() {
+                prefs.last_template = self.selected.clone();
+            }
+        } else {
+            prefs.simple = self.simple;
         }
         let folder = self.folder.trim().to_string();
         if !folder.is_empty() {
@@ -536,6 +555,9 @@ impl RenderDialog {
 
     /// The selected template's render settings.
     fn settings(&self, app: &BananaApp, all: &[Template]) -> Option<RenderSettings> {
+        if !self.to_new_track {
+            return self.simple_render_settings(app);
+        }
         let t = all.iter().find(|t| Some(&t.id) == self.selected.as_ref())?;
         if t.availability() != Availability::Ready {
             return None;

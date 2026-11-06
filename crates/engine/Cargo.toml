@@ -36,6 +36,10 @@ bv-platform.workspace = true
 cpal = "0.18"
 serde.workspace = true
 
+[target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
+serde_json.workspace = true
+tempfile = "3"
+
 [dev-dependencies]
 bv-media.workspace = true
 bv-ofx-testplug = { path = "../ofx-testplug" }

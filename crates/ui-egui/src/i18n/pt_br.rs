@@ -4159,6 +4159,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Higher: also splits on soft scene changes.",
         "Mais alta: divide também em mudanças suaves de cena.",
     ),
+    ("Higher quality", "Qualidade maior"),
     ("Highest", "Máxima"),
     ("Highlight", "Destaque"),
     ("Highlight Motion Blur Area", "Destacar a área desfocada"),
@@ -7549,6 +7550,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Recomputing audio peaks and thumbnails.",
         "Picos de áudio e miniaturas sendo recalculados.",
     ),
+    ("Recommended", "Recomendado"),
     ("Record", "Gravar"),
     ("Record Input", "Entrada de gravação"),
     (
@@ -8792,6 +8794,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Smart adaptive (GPU only)",
         "Adaptativo inteligente (só GPU)",
     ),
+    ("Smaller file", "Arquivo menor"),
     ("Smart Bins", "Compartimentos inteligentes"),
     ("Smart release", "Liberação inteligente"),
     ("Smart Split", "Dividir inteligente"),

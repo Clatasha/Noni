@@ -24,6 +24,8 @@ mod dvd;
 mod formats;
 pub(crate) mod images;
 mod mpeg;
+#[cfg(all(windows, target_arch = "x86_64"))]
+mod native;
 mod smart;
 mod timing;
 use timing::{Stage, Timing};
@@ -216,6 +218,9 @@ impl Default for AudioParams {
 /// The Render dialog's options (its gear menu).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenderOptions {
+    /// Prefer the packaged native MP4 exporter for compatible timelines.
+    #[serde(default)]
+    pub native_mp4: bool,
     /// Fill the file's frame instead of letterboxing a frame of another
     /// shape.
     pub stretch: bool,
@@ -500,17 +505,24 @@ impl RenderJob {
                     if let Some((_, temp)) = &swap {
                         s.path = temp.clone();
                     }
-                    let result = run(
-                        &project,
-                        &s,
-                        &progress,
-                        &cancel,
-                        &shown,
-                        &repaint,
-                        started,
-                        &mut painter,
-                        timing.as_ref(),
-                    );
+                    #[cfg(all(windows, target_arch = "x86_64"))]
+                    let native =
+                        native::try_export(&project, &s, &progress, &cancel, &repaint, started);
+                    #[cfg(not(all(windows, target_arch = "x86_64")))]
+                    let native = None;
+                    let result = native.unwrap_or_else(|| {
+                        run(
+                            &project,
+                            &s,
+                            &progress,
+                            &cancel,
+                            &shown,
+                            &repaint,
+                            started,
+                            &mut painter,
+                            timing.as_ref(),
+                        )
+                    });
                     let result = match swap {
                         Some((target, temp)) => swapped(result, &target, &temp, &cancel),
                         None => result,

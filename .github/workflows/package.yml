@@ -51,6 +51,36 @@ jobs:
           # No Visual C++ runtime to install.
           RUSTFLAGS: -C target-feature=+crt-static
         run: cargo build --release -p bananav
+      - uses: actions/checkout@v5
+        if: matrix.arch == 'x64'
+        with:
+          repository: Clatasha/Reaction-Station
+          ref: a1a45d8a3d20fb7980700841b845bf6679e00aa8
+          path: reaction-station
+      - uses: actions/setup-node@v4
+        if: matrix.arch == 'x64'
+        with:
+          node-version: 24
+      - name: Native MP4 exporter
+        if: matrix.arch == 'x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reaction-station/crates/compositor/examples
+          cp packaging/windows/native-export/worker.rs reaction-station/crates/compositor/examples/noni-export.rs
+          cd reaction-station
+          node scripts/fetch-ffmpeg.mjs
+          cd crates
+          cargo build --locked --release -p openscreen-compositor --no-default-features --example noni-export
+          cd ../..
+          mkdir -p native-export
+          cp reaction-station/crates/target/release/examples/noni-export.exe native-export/
+          ffmpeg_dir=reaction-station/crates/thirdparty/ffmpeg-n8.1.2-win64-lgpl-shared
+          cp "$ffmpeg_dir"/bin/*.dll native-export/
+          cp "$ffmpeg_dir"/LICENSE* native-export/
+          cp reaction-station/LICENSE native-export/Reaction-Station-LICENSE.txt
+          cp packaging/windows/native-export/README.txt native-export/
+          ./native-export/noni-export.exe --version
       - name: Zip
         shell: bash
         run: |
@@ -58,6 +88,7 @@ jobs:
           name="Noni-$version-${GITHUB_SHA::7}-windows-${{ matrix.arch }}"
           mkdir -p "dist/$name"
           cp target/release/noni.exe "dist/$name/Noni.exe"
+          if [ -d native-export ]; then cp -r native-export "dist/$name/"; fi
           cp packaging/windows/README.txt "dist/$name/"
           cp LICENSE "dist/$name/LICENSE.txt"
           cp crates/effects/fonts/OFL.txt "dist/$name/Arimo-OFL.txt"
