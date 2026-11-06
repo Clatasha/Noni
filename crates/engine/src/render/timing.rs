@@ -24,6 +24,8 @@ pub(super) enum Stage {
     #[cfg(windows)]
     SharedEncode,
     #[cfg(windows)]
+    SharedEventWait,
+    #[cfg(windows)]
     SharedMux,
     AudioMix,
     AudioWrite,
@@ -95,6 +97,7 @@ impl Timing {
     pub(super) fn record_shared_writer(&self, timing: bv_mf::SharedNv12Timing) {
         self.add(Stage::SharedPrepare, timing.prepare);
         self.add(Stage::SharedEncode, timing.encode);
+        self.add(Stage::SharedEventWait, timing.event_wait);
         if timing.pooled {
             self.shared_nv12_pooled.fetch_add(1, Ordering::Relaxed);
         }
@@ -253,10 +256,8 @@ impl Timing {
                 writeln!(file, "  Pooled encoder samples: {pooled} / {shared_frames}")?;
                 for (label, stage) in [
                     ("Open, copy and flush encoder texture", Stage::SharedPrepare),
-                    (
-                        "Media Foundation encode and packet retrieval",
-                        Stage::SharedEncode,
-                    ),
+                    ("Wait for Media Foundation events", Stage::SharedEventWait),
+                    ("Submit frames and retrieve packets", Stage::SharedEncode),
                     ("Write encoded video to MP4", Stage::SharedMux),
                 ] {
                     writeln!(file, "  {label}: {:.3} s", self.seconds(stage))?;

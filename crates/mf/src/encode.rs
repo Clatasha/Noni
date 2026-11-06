@@ -22,6 +22,7 @@ use crate::{
 };
 
 const HNS: i64 = 10_000_000;
+const SHARED_NV12_POLL_INTERVAL: u8 = 4;
 
 fn pack(hi: u32, lo: u32) -> u64 {
     ((hi as u64) << 32) | lo as u64
@@ -110,6 +111,13 @@ pub(crate) fn sample_from_buffer(buffer: &IMFMediaBuffer) -> Result<IMFSample> {
     }
 }
 
+fn set_sample_timing(sample: &IMFSample, time: i64, duration: i64) -> Result<()> {
+    unsafe {
+        sample.SetSampleTime(time).map_err(win)?;
+        sample.SetSampleDuration(duration).map_err(win)
+    }
+}
+
 fn read_packet(s: &IMFSample) -> Result<Packet> {
     unsafe {
         let buffer = s.ConvertToContiguousBuffer().map_err(win)?;
@@ -139,6 +147,7 @@ struct Mft {
     events: Option<IMFMediaEventGenerator>,
     /// Inputs the asynchronous MFT asked for and has not been given.
     need_input: u32,
+    shared_submissions: u8,
     provides_samples: bool,
     out_size: u32,
     streaming: bool,
@@ -166,6 +175,7 @@ impl Mft {
                 mft,
                 events,
                 need_input: 0,
+                shared_submissions: 0,
                 provides_samples: false,
                 out_size: 0,
                 streaming: false,
@@ -239,6 +249,10 @@ impl Mft {
 
     /// Handles one event of an asynchronous MFT; true at the end of a drain.
     fn event(&mut self, e: &IMFMediaEvent, out: &mut Vec<Packet>) -> Result<bool> {
+        let status = unsafe { e.GetStatus().map_err(win)? };
+        if status.is_err() {
+            return Err(Error::Windows(format!("encoder error {:#x}", status.0)));
+        }
         let t = unsafe { e.GetType().map_err(win)? };
         if t == METransformNeedInput.0 as u32 {
             self.need_input += 1;
@@ -246,12 +260,70 @@ impl Mft {
             self.pull(out)?;
         } else if t == METransformDrainComplete.0 as u32 {
             return Ok(true);
-        } else if let Ok(status) = unsafe { e.GetStatus() }
-            && status.is_err()
-        {
-            return Err(Error::Windows(format!("encoder error {:#x}", status.0)));
         }
         Ok(false)
+    }
+
+    fn submit_async(
+        &mut self,
+        events: &IMFMediaEventGenerator,
+        sample: &IMFSample,
+        out: &mut Vec<Packet>,
+        mut wait: Option<&mut Duration>,
+    ) -> Result<()> {
+        // Microsoft Learn, Asynchronous MFTs: one input per NeedInput
+        // event and one output pull per HaveOutput event.
+        while self.need_input == 0 {
+            let start = wait.as_ref().map(|_| Instant::now());
+            let event = unsafe { events.GetEvent(MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS(0)) }
+                .map_err(win)?;
+            if let (Some(wait), Some(start)) = (wait.as_deref_mut(), start) {
+                *wait += start.elapsed();
+            }
+            self.stream_event(&event, out)?;
+        }
+        unsafe { self.mft.ProcessInput(0, sample, 0).map_err(win)? };
+        self.need_input -= 1;
+        Ok(())
+    }
+
+    fn stream_event(&mut self, event: &IMFMediaEvent, out: &mut Vec<Packet>) -> Result<()> {
+        if self.event(event, out)? {
+            return Err(Error::Windows(
+                "encoder drained while accepting input".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn poll_async(&mut self, events: &IMFMediaEventGenerator, out: &mut Vec<Packet>) -> Result<()> {
+        loop {
+            match unsafe { events.GetEvent(MF_EVENT_FLAG_NO_WAIT) } {
+                Ok(event) => self.stream_event(&event, out)?,
+                Err(e) if e.code() == MF_E_NO_EVENTS_AVAILABLE => return Ok(()),
+                Err(e) => return Err(win(e)),
+            }
+        }
+    }
+
+    fn feed_shared(
+        &mut self,
+        sample: &IMFSample,
+        out: &mut Vec<Packet>,
+        wait: Option<&mut Duration>,
+    ) -> Result<()> {
+        let Some(events) = self.events.clone() else {
+            return self.feed(sample, out);
+        };
+        self.submit_async(&events, sample, out, wait)?;
+        // Let the encoder work while the writer prepares another frame.
+        // Service output periodically even with spare input credits.
+        self.shared_submissions += 1;
+        if self.shared_submissions == SHARED_NV12_POLL_INTERVAL {
+            self.shared_submissions = 0;
+            self.poll_async(&events, out)?;
+        }
+        Ok(())
     }
 
     /// Feeds one sample and collects what is ready.
@@ -274,18 +346,8 @@ impl Mft {
                 while self.pull(out)? {}
             }
             Some(ev) => {
-                while self.need_input == 0 {
-                    let e = unsafe {
-                        ev.GetEvent(MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS(0))
-                            .map_err(win)?
-                    };
-                    self.event(&e, out)?;
-                }
-                unsafe { self.mft.ProcessInput(0, sample, 0).map_err(win)? };
-                self.need_input -= 1;
-                while let Ok(e) = unsafe { ev.GetEvent(MF_EVENT_FLAG_NO_WAIT) } {
-                    self.event(&e, out)?;
-                }
+                self.submit_async(&ev, sample, out, None)?;
+                self.poll_async(&ev, out)?;
             }
         }
         Ok(())
@@ -333,6 +395,7 @@ impl Drop for Mft {
 pub struct SharedNv12Timing {
     pub prepare: Duration,
     pub encode: Duration,
+    pub event_wait: Duration,
     pub pooled: bool,
 }
 
@@ -603,30 +666,32 @@ impl VideoEncoder {
         handle: BorrowedHandle<'_>,
         time: i64,
         duration: i64,
-        timing: Option<&mut SharedNv12Timing>,
+        mut timing: Option<&mut SharedNv12Timing>,
     ) -> Result<Vec<Packet>> {
         let started = timing.as_ref().map(|_| Instant::now());
         init()?;
         let device = self.device.as_ref().ok_or(Error::Unavailable)?;
         let (sample, pooled) =
             device.copy_shared_nv12(handle, self.settings.width, self.settings.height)?;
-        if let (Some(timing), Some(started)) = (timing, started) {
+        if let (Some(timing), Some(started)) = (timing.as_deref_mut(), started) {
             timing.pooled = pooled;
             timing.prepare = started.elapsed();
-            let encode_start = Instant::now();
-            let packets = self.encode_sample(sample, time, duration);
-            timing.encode = encode_start.elapsed();
-            packets
-        } else {
-            self.encode_sample(sample, time, duration)
         }
+        let encode_start = timing.as_ref().map(|_| Instant::now());
+        let mut out = Vec::new();
+        let mut wait = Duration::ZERO;
+        set_sample_timing(&sample, time, duration)?;
+        self.mft
+            .feed_shared(&sample, &mut out, timing.is_some().then_some(&mut wait))?;
+        if let (Some(timing), Some(encode_start)) = (timing, encode_start) {
+            timing.event_wait = wait;
+            timing.encode = encode_start.elapsed().saturating_sub(wait);
+        }
+        Ok(out)
     }
 
     fn encode_sample(&mut self, s: IMFSample, time: i64, duration: i64) -> Result<Vec<Packet>> {
-        unsafe {
-            s.SetSampleTime(time).map_err(win)?;
-            s.SetSampleDuration(duration).map_err(win)?;
-        }
+        set_sample_timing(&s, time, duration)?;
         let mut out = Vec::new();
         self.mft.feed(&s, &mut out)?;
         Ok(out)
