@@ -1,5 +1,6 @@
 //! Runs the packaged native export worker for timelines it can reproduce.
 
+use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -49,7 +50,7 @@ fn plain_track(track: &Track) -> bool {
         && track.motion.is_none()
         && track.parent_motion.is_none()
         && track.effects.is_empty()
-        && track.envelopes.is_empty()
+        && !track.has_automation()
         && !track.invert_phase
         && track.surround.is_none()
         && track.ducking.is_none()
@@ -76,7 +77,6 @@ fn plain_clip(clip: &Clip) -> bool {
         && clip.channels == Default::default()
         && clip.normalize.is_none()
         && !clip.auto_normalize
-        && clip.audio_stream == 0
         && !clip.reduce_flicker
         && clip.resample.is_none()
         && clip.envelopes.is_empty()
@@ -228,21 +228,26 @@ fn request(
         {
             return Err("A source trim falls outside the media or starts between source frames.");
         }
-        // Only the portion inside the export range has to match. An audio
-        // clip may extend beyond the loop selection without affecting it.
-        let paired = audio.iter().position(|other| {
-            other.media == clip.media
+        // The worker mixes all embedded audio streams. Only hand it audio
+        // when the timeline uses each stream once with the same source trim.
+        let mut streams = BTreeSet::new();
+        let mut valid_streams = true;
+        audio.retain(|other| {
+            let paired = other.media == clip.media
                 && other.start.max(range.start) == start
                 && other.end().min(range.end()) == end
-                && other.source_in + (start - other.start) == source_start
-        });
-        if let Some(i) = paired {
-            if media.audio.is_none_or(|stream| stream.channels != 2)
-                || !media.extra_audio.is_empty()
-            {
-                return Err("A paired source must have exactly one stereo audio stream.");
+                && other.source_in + (start - other.start) == source_start;
+            if paired {
+                valid_streams &= streams.insert(other.audio_stream)
+                    && media
+                        .audio_stream(other.audio_stream)
+                        .is_some_and(|stream| stream.channels == 2);
             }
-            audio.swap_remove(i);
+            !paired
+        });
+        let has_audio = !streams.is_empty();
+        if has_audio && (!valid_streams || streams.len() != media.audio_stream_count()) {
+            return Err("Each embedded audio stream must be stereo and used exactly once.");
         }
         let source =
             std::path::absolute(path).map_err(|_| "A source path could not be resolved.")?;
@@ -253,7 +258,7 @@ fn request(
             source,
             start: source_start.as_seconds_f64(),
             end: source_end.as_seconds_f64(),
-            audio: paired.is_some(),
+            audio: has_audio,
         });
         next = end;
     }
@@ -410,4 +415,73 @@ fn worker_error(log: &Path) -> Option<String> {
         .find_map(|line| line.strip_prefix("Error: "))
         .or_else(|| tail.lines().rev().find(|line| !line.trim().is_empty()))?;
     Some(detail.chars().take(320).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::{AudioParams, RenderOptions, VideoParams};
+    use bv_core::{SampleRate, TimeRange};
+    use bv_timeline::{AudioStreamInfo, ClipId, Generator, MediaInfo, ProjectSettings};
+
+    #[test]
+    fn embedded_streams_must_match_the_timeline_mix() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("recording.mp4");
+        std::fs::File::create(&source).unwrap();
+        let mut project = Project::new(ProjectSettings {
+            frame_rate: FrameRate::FPS_60,
+            ..ProjectSettings::default()
+        });
+        let mut media = MediaInfo::generated(Generator::ColorBars, &project.settings);
+        media.source = MediaSource::File {
+            path: source.to_str().unwrap().to_owned(),
+        };
+        let stereo = AudioStreamInfo {
+            sample_rate: SampleRate(96_000),
+            channels: 2,
+        };
+        media.audio = Some(stereo);
+        media.extra_audio.push(stereo);
+        let media = project.add_media(media);
+        let second_id = project.add_track(TrackKind::Audio);
+        for (index, track) in project.tracks.iter_mut().enumerate() {
+            let mut clip = Clip::new(ClipId(10 + index as u64), media, Tick::ZERO, Tick::SECOND);
+            clip.audio_stream = u16::from(track.id == second_id);
+            track.clips.push(clip);
+        }
+        let path = dir.path().join("export.mp4");
+        let settings = RenderSettings {
+            format: FileFormat::AvcMp4,
+            path: path.clone(),
+            range: TimeRange::new(Tick::ZERO, Tick::SECOND),
+            video: Some(VideoParams {
+                frame_rate: FrameRate::FPS_60,
+                ..VideoParams::default()
+            }),
+            audio: Some(AudioParams::default()),
+            options: RenderOptions::default(),
+            project_file: None,
+        };
+        let job = request(&project, &settings, path.clone()).expect("both streams are aligned");
+        assert_eq!(job.clips.len(), 1);
+        assert!(job.clips[0].audio);
+
+        let second = project
+            .tracks
+            .iter_mut()
+            .find(|track| track.id == second_id)
+            .unwrap();
+        second.muted = true;
+        assert!(request(&project, &settings, path.clone()).is_err());
+
+        let second = project
+            .tracks
+            .iter_mut()
+            .find(|track| track.id == second_id)
+            .unwrap();
+        second.muted = false;
+        second.clips[0].audio_stream = 0;
+        assert!(request(&project, &settings, path).is_err());
+    }
 }
