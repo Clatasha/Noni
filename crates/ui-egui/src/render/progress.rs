@@ -325,6 +325,19 @@ impl ProgressWindow {
                         ui.label(dim(trf!("Elapsed: {}", clock(elapsed))));
                     });
                 });
+                let engine = if p.reaction_station {
+                    "Reaction Station"
+                } else {
+                    "Noni"
+                };
+                if p.reaction_station || p.native_fallback.is_some() || !p.encoder.is_empty() {
+                    ui.label(dim(trf!("Export engine: {}", engine)));
+                }
+                if let Some(reason) = &p.native_fallback {
+                    ui.add(
+                        egui::Label::new(dim(trf!("Reaction Station skipped: {}", reason))).wrap(),
+                    );
+                }
                 if let Some(e) = &p.error {
                     ui.add(
                         egui::Label::new(RichText::new(trf!("Error: {}", e)).color(theme::error()))

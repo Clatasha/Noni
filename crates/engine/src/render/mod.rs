@@ -330,6 +330,10 @@ pub struct RenderProgress {
     pub video: bool,
     /// The encoder doing the video ("NVIDIA H.264 Encoder MFT").
     pub encoder: String,
+    /// The Reaction Station worker is producing the file.
+    pub reaction_station: bool,
+    /// Why a requested Reaction Station export switched to Noni.
+    pub native_fallback: Option<String>,
     /// The files written (one, or every image of a sequence).
     pub files: Vec<PathBuf>,
     /// Frames passed into the file as their media had them (smart
@@ -505,11 +509,28 @@ impl RenderJob {
                     if let Some((_, temp)) = &swap {
                         s.path = temp.clone();
                     }
-                    #[cfg(all(windows, target_arch = "x86_64"))]
-                    let native =
-                        native::try_export(&project, &s, &progress, &cancel, &repaint, started);
-                    #[cfg(not(all(windows, target_arch = "x86_64")))]
-                    let native = None;
+                    let native = s.options.native_mp4.then(|| {
+                        #[cfg(all(windows, target_arch = "x86_64"))]
+                        {
+                            native::try_export(&project, &s, &progress, &cancel, &repaint, started)
+                        }
+                        #[cfg(not(all(windows, target_arch = "x86_64")))]
+                        {
+                            Err("Reaction Station export is available on Windows x64.".to_string())
+                        }
+                    });
+                    let native = native.and_then(|result| match result {
+                        Ok(result) => Some(result),
+                        Err(reason) => {
+                            *progress.lock().expect("progress") = RenderProgress {
+                                stage: "Preparing".into(),
+                                native_fallback: Some(reason),
+                                ..RenderProgress::default()
+                            };
+                            repaint();
+                            None
+                        }
+                    });
                     let result = native.unwrap_or_else(|| {
                         run(
                             &project,

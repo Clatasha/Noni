@@ -120,6 +120,19 @@ impl Timing {
             )?;
         }
         writeln!(file, "Output format: {:?}", settings.format)?;
+        let backend = if progress.reaction_station {
+            "Reaction Station"
+        } else {
+            "Noni"
+        };
+        writeln!(file, "Export engine: {backend}")?;
+        if let Some(reason) = &progress.native_fallback {
+            writeln!(file, "Reaction Station fallback: {reason}")?;
+        }
+        if progress.reaction_station {
+            writeln!(file, "Output units: {} / {}", progress.done, progress.total)?;
+            return file.flush();
+        }
         writeln!(file, "Video encoder: {}", progress.encoder)?;
         writeln!(file, "Compositor status at end: {compositor:?}")?;
         writeln!(

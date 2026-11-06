@@ -3430,6 +3430,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Explorer", "Explorador"),
     ("Explorer…", "Explorador…"),
+    ("Export engine: {}", "Motor de exportação: {}"),
     ("Export", "Exportar"),
     ("Export Chapters", "Exportar capítulos"),
     ("Export Closed Captioning", "Exportar legendas ocultas"),
@@ -7765,6 +7766,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Rename Placeholder", "Renomear espaço reservado"),
     ("Rename…", "Renomear…"),
     ("Render", "Renderizar"),
+    (
+        "Reaction Station skipped: {}",
+        "Reaction Station ignorado: {}",
+    ),
     ("Render As…", "Renderizar como…"),
     ("Render Canceled", "Renderização cancelada"),
     ("Render canceled.", "Renderização cancelada."),
