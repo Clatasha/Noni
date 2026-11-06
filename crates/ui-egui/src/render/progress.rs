@@ -61,10 +61,24 @@ fn open_with_system(path: &Path) {
     let _ = std::process::Command::new("explorer").arg(path).spawn();
 }
 
-fn show_in_folder(path: &Path) {
-    let _ = std::process::Command::new("explorer")
-        .arg(format!("/select,{}", path.display()))
-        .spawn();
+fn open_output_folder(path: &Path) -> std::io::Result<()> {
+    let path = std::path::absolute(path)?;
+    let folder = if path.is_dir() {
+        &path
+    } else {
+        path.parent().unwrap_or(&path)
+    };
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(folder)
+            .spawn()
+            .map(|_| ())
+    }
+    #[cfg(not(windows))]
+    {
+        crate::app::more_actions::open_externally(folder)
+    }
 }
 
 /// What the file is, for the window's title ("Writing MP4 File").
@@ -437,8 +451,9 @@ impl ProgressWindow {
                     if ui
                         .add_enabled(ok, egui::Button::new(tr("Open Folder")).min_size(size))
                         .clicked()
+                        && let Err(e) = open_output_folder(&first)
                     {
-                        show_in_folder(&first);
+                        app.report_error(trf!("Could not open the folder: {}", e));
                     }
                     if ui
                         .add_enabled(ok, egui::Button::new(tr("Open")).min_size(size))
@@ -485,8 +500,10 @@ impl ProgressWindow {
                 if p.elapsed_secs > 60.0 {
                     bv_platform::notify_sound();
                 }
-                if app.settings.render.open_folder_when_done {
-                    show_in_folder(&first);
+                if app.settings.render.open_folder_when_done
+                    && let Err(e) = open_output_folder(&first)
+                {
+                    app.report_error(trf!("Could not open the folder: {}", e));
                 }
                 if app.settings.render.close_when_done {
                     close = true;
