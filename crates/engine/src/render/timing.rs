@@ -11,6 +11,10 @@ use crate::GpuStatus;
 pub(super) enum Stage {
     Draw,
     DecodeWait,
+    SceneSetup,
+    GpuCompose,
+    GpuEffects,
+    SharedOutput,
     GpuWait,
     ReadbackCopy,
     VideoWrite,
@@ -49,9 +53,19 @@ impl Timing {
         result
     }
 
-    pub(super) fn draw(&self, elapsed: Duration, decode: Duration, gpu: bv_gpu::ReadbackTiming) {
+    pub(super) fn draw(
+        &self,
+        elapsed: Duration,
+        decode: Duration,
+        scene_setup: Duration,
+        gpu: bv_gpu::ReadbackTiming,
+    ) {
         self.add(Stage::Draw, elapsed);
         self.add(Stage::DecodeWait, decode);
+        self.add(Stage::SceneSetup, scene_setup);
+        self.add(Stage::GpuCompose, gpu.compose);
+        self.add(Stage::GpuEffects, gpu.effects);
+        self.add(Stage::SharedOutput, gpu.shared_output);
         self.add(Stage::GpuWait, gpu.wait);
         self.add(Stage::ReadbackCopy, gpu.copy);
         self.draws.fetch_add(1, Ordering::Relaxed);
@@ -130,6 +144,12 @@ impl Timing {
             writeln!(file, "Reaction Station fallback: {reason}")?;
         }
         if progress.reaction_station {
+            let encoder = if progress.encoder.is_empty() {
+                "not reported"
+            } else {
+                &progress.encoder
+            };
+            writeln!(file, "Video encoder: {encoder}")?;
             writeln!(file, "Output units: {} / {}", progress.done, progress.total)?;
             return file.flush();
         }
@@ -163,7 +183,24 @@ impl Timing {
         writeln!(file)?;
         writeln!(file, "Cumulative stage time (worker threads can overlap)")?;
         writeln!(file, "Video drawing, total: {draw:.3} s")?;
-        writeln!(file, "  Source video reader wait: {decode:.3} s")?;
+        let setup = self.seconds(Stage::SceneSetup);
+        let compose = self.seconds(Stage::GpuCompose);
+        let shared = self.seconds(Stage::SharedOutput);
+        writeln!(file, "  GPU scene setup: {setup:.3} s")?;
+        writeln!(file, "  GPU composition (host time): {compose:.3} s")?;
+        writeln!(
+            file,
+            "    Effect preparation and synchronous work: {:.3} s",
+            self.seconds(Stage::GpuEffects)
+        )?;
+        writeln!(
+            file,
+            "  Shared NV12 submission and synchronization: {shared:.3} s"
+        )?;
+        writeln!(
+            file,
+            "  Source video reader wait (overlaps drawing): {decode:.3} s"
+        )?;
         writeln!(
             file,
             "  GPU submission to mapped output (execution and transfer): {gpu:.3} s"
@@ -172,7 +209,7 @@ impl Timing {
         writeln!(
             file,
             "  Other drawing, setup and CPU work: {:.3} s",
-            (draw - decode - gpu - copy).max(0.0)
+            (draw - setup - compose - shared - gpu - copy).max(0.0)
         )?;
         for (label, stage) in [
             ("Video encoding and writing", Stage::VideoWrite),
@@ -254,6 +291,9 @@ mod tests {
             .expect("report");
         let report = std::fs::read_to_string(&path).expect("read report");
         assert!(report.contains("Status: completed"));
+        assert!(report.contains("GPU scene setup:"));
+        assert!(report.contains("Effect preparation and synchronous work:"));
+        assert!(report.contains("Shared NV12 submission and synchronization:"));
         assert!(report.contains("Output units: 2 / 2"));
         let error = timing
             .report(&settings, &progress, &GpuStatus::Off, &decoding)

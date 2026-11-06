@@ -86,11 +86,17 @@ struct Img {
     h: u32,
 }
 
-/// Time spent returning completed GPU output to system memory.
+/// Timings for GPU composition and output delivery.
 #[derive(Debug, Default)]
 pub struct ReadbackTiming {
     pub frames: u64,
     pub bytes: u64,
+    /// Host time recording composition commands, including source and effect work.
+    pub compose: Duration,
+    /// Effect work within composition, including any waits the effect requires.
+    pub effects: Duration,
+    /// Packing, submitting and synchronizing the shared encoder texture.
+    pub shared_output: Duration,
     /// Submission through mapping, including GPU execution and the transfer.
     pub wait: Duration,
     /// Reading and unpacking the mapped bytes into the owned result.
@@ -286,9 +292,14 @@ impl Compositor {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("frame"),
             });
+        let compose_at = self.readback_timing.as_ref().map(|_| Instant::now());
         let out = draw(self, &mut enc);
+        if let (Some(timing), Some(start)) = (&mut self.readback_timing, compose_at) {
+            timing.compose += start.elapsed();
+        }
         #[cfg(windows)]
         if let (Output::SharedNv12 { video_levels }, Some(frame)) = (output, shared) {
+            let output_at = self.readback_timing.as_ref().map(|_| Instant::now());
             let pitch = frame.pitch();
             let (words, _) = self.pack_420(&mut enc, &out, false, video_levels, pitch / 4);
             let submitted = gpu.queue.submit([enc.finish()]);
@@ -317,6 +328,9 @@ impl Compositor {
                     timeout: None,
                 });
                 self.nv12_copy = None;
+            }
+            if let (Some(timing), Some(start)) = (&mut self.readback_timing, output_at) {
+                timing.shared_output += start.elapsed();
             }
             self.end_frame();
             return result;
@@ -665,10 +679,10 @@ impl Compositor {
             .enumerate()
             .filter(|(_, e)| e.enabled)
         {
-            match scene.frame_call(None, i, e) {
-                Some(call) => self.plugin_from(enc, scene, &call, &mut out, start.as_ref()),
-                None => self.effect(enc, &mut out, e, scene.scale),
-            }
+            self.measure_effect(|this| match scene.frame_call(None, i, e) {
+                Some(call) => this.plugin_from(enc, scene, &call, &mut out, start.as_ref()),
+                None => this.effect(enc, &mut out, e, scene.scale),
+            });
             self.stored(enc, scene, &out);
         }
         // The video bus's Fade to Color, over everything.
@@ -734,10 +748,10 @@ impl Compositor {
         let pre = &track.effects[..track.post_from];
         let start = self.chain_start(enc, scene, Some(track.track), pre, 0, &layer);
         for (i, e) in pre.iter().enumerate().filter(|(_, e)| e.enabled) {
-            match scene.frame_call(Some(track.track), i, e) {
-                Some(call) => self.plugin_from(enc, scene, &call, &mut layer, start.as_ref()),
-                None => self.effect(enc, &mut layer, e, scene.scale),
-            }
+            self.measure_effect(|this| match scene.frame_call(Some(track.track), i, e) {
+                Some(call) => this.plugin_from(enc, scene, &call, &mut layer, start.as_ref()),
+                None => this.effect(enc, &mut layer, e, scene.scale),
+            });
             self.stored(enc, scene, &layer);
         }
         if let Some((c, v)) = track.fade {
@@ -926,10 +940,10 @@ impl Compositor {
             .skip(t.post_from)
             .filter(|(_, e)| e.enabled)
         {
-            match scene.frame_call(Some(t.track), i, e) {
-                Some(call) => self.plugin_from(enc, scene, &call, &mut img, start.as_ref()),
-                None => self.effect(enc, &mut img, e, scene.scale),
-            }
+            self.measure_effect(|this| match scene.frame_call(Some(t.track), i, e) {
+                Some(call) => this.plugin_from(enc, scene, &call, &mut img, start.as_ref()),
+                None => this.effect(enc, &mut img, e, scene.scale),
+            });
             self.stored(enc, scene, &img);
         }
         let bytes = group.w as u64 * group.h as u64 * 16;
@@ -1061,10 +1075,12 @@ impl Compositor {
             quality: m.quality,
         };
         for (k, e) in m.effects.iter().enumerate() {
-            match scene.media_call(m, k, scene.scale, Some(framing)) {
-                Some(call) => self.plugin(enc, scene, &call, &mut img),
-                None => self.effect(enc, &mut img, e.fx, scene.scale),
-            }
+            self.measure_effect(
+                |this| match scene.media_call(m, k, scene.scale, Some(framing)) {
+                    Some(call) => this.plugin(enc, scene, &call, &mut img),
+                    None => this.effect(enc, &mut img, e.fx, scene.scale),
+                },
+            );
             self.stored(enc, scene, &img);
         }
         img
@@ -1239,10 +1255,10 @@ impl Compositor {
             let per_line = m.placement.picture_per_pixel(src.w, src.h).1;
             let fx_scale = (per_line as f32 * scene.scale).max(1e-4);
             for (k, e) in m.effects[..framed_at].iter().enumerate() {
-                match scene.media_call(m, k, fx_scale, None) {
-                    Some(call) => self.plugin(enc, scene, &call, &mut src),
-                    None => self.effect(enc, &mut src, e.fx, fx_scale),
-                }
+                self.measure_effect(|this| match scene.media_call(m, k, fx_scale, None) {
+                    Some(call) => this.plugin(enc, scene, &call, &mut src),
+                    None => this.effect(enc, &mut src, e.fx, fx_scale),
+                });
                 self.stored(enc, scene, &src);
             }
             (src, fx_scale)
@@ -1303,10 +1319,12 @@ impl Compositor {
             })
             .then(|| self.copy(enc, &img));
         for (k, e) in m.effects.iter().enumerate().skip(framed_at) {
-            match scene.media_call(m, k, scene.scale, Some(framing)) {
-                Some(call) => self.plugin_with(enc, scene, &call, &mut img, start.as_ref()),
-                None => self.effect(enc, &mut img, e.fx, scene.scale),
-            }
+            self.measure_effect(
+                |this| match scene.media_call(m, k, scene.scale, Some(framing)) {
+                    Some(call) => this.plugin_with(enc, scene, &call, &mut img, start.as_ref()),
+                    None => this.effect(enc, &mut img, e.fx, scene.scale),
+                },
+            );
             self.stored(enc, scene, &img);
         }
         if let Some(mask) = &mask {
@@ -1722,6 +1740,14 @@ impl Compositor {
     fn color(&self, enc: &mut wgpu::CommandEncoder, img: &Img, k: K, values: &[f32]) {
         let p = Params::sized(img.w, img.h).with_f(values);
         self.kernel(enc, k, p, &[&img.buf], Grid::Pixels(img.w, img.h));
+    }
+
+    fn measure_effect(&mut self, apply: impl FnOnce(&mut Self)) {
+        let start = self.readback_timing.as_ref().map(|_| Instant::now());
+        apply(self);
+        if let (Some(timing), Some(start)) = (&mut self.readback_timing, start) {
+            timing.effects += start.elapsed();
+        }
     }
 
     /// One effect (as `bv_render::effects::apply`); `scale` turns its sizes

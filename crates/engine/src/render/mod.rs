@@ -509,7 +509,11 @@ impl RenderJob {
                     if let Some((_, temp)) = &swap {
                         s.path = temp.clone();
                     }
-                    let native = s.options.native_mp4.then(|| {
+                    // Allow a controlled comparison on the same timeline.
+                    let use_native = s.options.native_mp4
+                        && std::env::var_os("NONI_EXPORT_ENGINE").as_deref()
+                            != Some(std::ffi::OsStr::new("noni"));
+                    let native = use_native.then(|| {
                         #[cfg(all(windows, target_arch = "x86_64"))]
                         {
                             native::try_export(&project, &s, &progress, &cancel, &repaint, started)
@@ -1283,11 +1287,8 @@ fn run(
                 }
             });
             if let (Some(timing), Some((start, waited))) = (timing, start) {
-                timing.draw(
-                    start.elapsed(),
-                    pool.waited() - waited,
-                    painter.take_readback_timing(),
-                );
+                let (scene_setup, gpu) = painter.take_frame_timing();
+                timing.draw(start.elapsed(), pool.waited() - waited, scene_setup, gpu);
             }
             frame
         };

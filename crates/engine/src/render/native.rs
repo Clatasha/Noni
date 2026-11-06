@@ -322,21 +322,16 @@ pub(super) fn try_export(
         p.video = true;
     }
     repaint();
-    let result = run_worker(
-        &worker,
-        &input,
-        &staging.path().join("worker.log"),
-        cancel,
-        |done| {
-            let mut p = progress.lock().expect("progress");
-            p.stage = "Rendering".into();
-            p.done = done.min(total);
-            p.elapsed_secs = started.elapsed().as_secs_f64();
-            p.avg_fps = p.done as f64 / p.elapsed_secs.max(0.001);
-            drop(p);
-            repaint();
-        },
-    );
+    let log = staging.path().join("worker.log");
+    let result = run_worker(&worker, &input, &log, cancel, |done| {
+        let mut p = progress.lock().expect("progress");
+        p.stage = "Rendering".into();
+        p.done = done.min(total);
+        p.elapsed_secs = started.elapsed().as_secs_f64();
+        p.avg_fps = p.done as f64 / p.elapsed_secs.max(0.001);
+        drop(p);
+        repaint();
+    });
     if cancel.load(Ordering::Relaxed) {
         return Ok(super::cancelled_result());
     }
@@ -348,8 +343,10 @@ pub(super) fn try_export(
     let result = std::fs::rename(&job.path, &output)
         .map(|()| vec![settings.path.clone()])
         .map_err(|e| format!("{}: {e}", output.display()));
+    let encoder = worker_encoder(&log).unwrap_or_default();
     let mut p = progress.lock().expect("progress");
     p.bytes = bytes;
+    p.encoder = encoder;
     Ok(result)
 }
 
@@ -400,6 +397,21 @@ fn run_worker(
             }
         }
     })
+}
+
+fn worker_encoder(log: &Path) -> Option<String> {
+    // Matches the pinned worker's encoder-selection diagnostic after open succeeds.
+    let log = BufReader::new(std::fs::File::open(log).ok()?);
+    for line in log.split(b'\n').map_while(Result::ok) {
+        let line = String::from_utf8_lossy(&line);
+        if let Some((name, _)) = line
+            .strip_prefix("[pipeline] encodeur vidéo : ")
+            .and_then(|value| value.split_once(" ("))
+        {
+            return Some(name.to_owned());
+        }
+    }
+    None
 }
 
 fn worker_error(log: &Path) -> Option<String> {

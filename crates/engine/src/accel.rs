@@ -9,6 +9,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use bv_core::{ImageRgbaF32, Tick, TransferCharacteristic};
 use bv_gpu::{Compositor, Gpu, GpuError, Output, Rendered};
@@ -216,6 +217,7 @@ pub(crate) struct Painter {
     accel: Arc<Accel>,
     compositor: Option<Compositor>,
     measure_readback: bool,
+    scene_setup: Duration,
     #[cfg(windows)]
     shared_nv12_failed: bool,
     /// The plug-in effects' instances.
@@ -242,6 +244,7 @@ impl Painter {
             accel,
             compositor: None,
             measure_readback: false,
+            scene_setup: Duration::ZERO,
             #[cfg(windows)]
             shared_nv12_failed: false,
             plugins,
@@ -273,11 +276,13 @@ impl Painter {
         }
     }
 
-    pub(crate) fn take_readback_timing(&mut self) -> bv_gpu::ReadbackTiming {
-        self.compositor
+    pub(crate) fn take_frame_timing(&mut self) -> (Duration, bv_gpu::ReadbackTiming) {
+        let gpu = self
+            .compositor
             .as_mut()
             .map(Compositor::take_readback_timing)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        (std::mem::take(&mut self.scene_setup), gpu)
     }
 
     /// Another painter for `purpose` on the same card, with plug-in
@@ -327,7 +332,8 @@ impl Painter {
         quality: Option<RenderQuality>,
     ) -> Option<Rendered> {
         let plugins = Arc::clone(&self.plugins);
-        let c = self.compositor()?;
+        self.compositor()?;
+        let setup_at = self.measure_readback.then(Instant::now);
         let rotation = project.settings.rotation;
         let (w, h) = if rotation.is_quarter_turn() {
             (height, width)
@@ -368,6 +374,10 @@ impl Painter {
             scene.set_quality(q);
         }
         scene.plugins = Some(Plugins(&*plugins));
+        if let Some(start) = setup_at {
+            self.scene_setup += start.elapsed();
+        }
+        let c = self.compositor.as_mut()?;
         match c.render(&scene, rotation, pool, background, output) {
             Ok(r) => Some(r),
             #[cfg(windows)]
