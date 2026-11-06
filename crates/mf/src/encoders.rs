@@ -42,6 +42,14 @@ pub(crate) fn string_attr(a: &IMFActivate, key: &GUID) -> Option<String> {
 /// The MFTs that encode to `codec`: hardware first, in the order Windows
 /// ranks them.
 pub(crate) fn activates(codec: Codec, hardware: bool) -> Vec<IMFActivate> {
+    activates_on(codec, hardware, None)
+}
+
+pub(crate) fn activates_on(
+    codec: Codec,
+    hardware: bool,
+    adapter: Option<(u32, i32)>,
+) -> Vec<IMFActivate> {
     if init().is_err() {
         return Vec::new();
     }
@@ -66,9 +74,31 @@ pub(crate) fn activates(codec: Codec, hardware: bool) -> Vec<IMFActivate> {
     unsafe {
         let mut list: *mut Option<IMFActivate> = std::ptr::null_mut();
         let mut count = 0u32;
-        if MFTEnumEx(category, flags, None, Some(&output), &mut list, &mut count).is_err()
-            || list.is_null()
-        {
+        let result = if let Some((low, high)) = adapter {
+            let mut attrs = None;
+            if MFCreateAttributes(&mut attrs, 1).is_err() {
+                return Vec::new();
+            }
+            let Some(attrs) = attrs else {
+                return Vec::new();
+            };
+            let luid = [low.to_le_bytes(), high.to_le_bytes()].concat();
+            if attrs.SetBlob(&MFT_ENUM_ADAPTER_LUID, &luid).is_err() {
+                return Vec::new();
+            }
+            MFTEnum2(
+                category,
+                flags,
+                None,
+                Some(&output),
+                &attrs,
+                &mut list,
+                &mut count,
+            )
+        } else {
+            MFTEnumEx(category, flags, None, Some(&output), &mut list, &mut count)
+        };
+        if result.is_err() || list.is_null() {
             return Vec::new();
         }
         let items = std::slice::from_raw_parts_mut(list, count as usize);

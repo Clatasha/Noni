@@ -27,6 +27,8 @@ pub(super) struct Timing {
     gpu_draws: AtomicU64,
     readbacks: AtomicU64,
     readback_bytes: AtomicU64,
+    shared_nv12_frames: AtomicU64,
+    shared_nv12_status: std::sync::OnceLock<String>,
 }
 
 impl Timing {
@@ -58,6 +60,16 @@ impl Timing {
         }
         self.readbacks.fetch_add(gpu.frames, Ordering::Relaxed);
         self.readback_bytes.fetch_add(gpu.bytes, Ordering::Relaxed);
+    }
+
+    #[cfg(windows)]
+    pub(super) fn shared_nv12(&self) {
+        self.shared_nv12_frames.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[cfg(windows)]
+    pub(super) fn set_shared_nv12_status(&self, status: String) {
+        let _ = self.shared_nv12_status.set(status);
     }
 
     fn seconds(&self, stage: Stage) -> f64 {
@@ -114,6 +126,14 @@ impl Timing {
             file,
             "Hardware decoding preference: {decoding:?} (can fall back per source)"
         )?;
+        if let Some(status) = self.shared_nv12_status.get() {
+            writeln!(file, "Fast NVENC: {status}")?;
+            writeln!(
+                file,
+                "Video frames handed off on the GPU: {}",
+                self.shared_nv12_frames.load(Ordering::Relaxed)
+            )?;
+        }
         writeln!(file, "Output units: {} / {}", progress.done, progress.total)?;
         writeln!(
             file,

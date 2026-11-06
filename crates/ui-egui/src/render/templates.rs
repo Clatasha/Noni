@@ -427,7 +427,7 @@ pub fn builtin() -> Vec<Template> {
     let aac = audio(48_000, 2, 16, false, 192_000);
 
     // Internet MP4: (w, h, rate, AVC bit rate, use cases).
-    let internet: [(u32, u32, FrameRate, u32, &[UseCase]); 15] = [
+    let internet: [(u32, u32, FrameRate, u32, &[UseCase]); 16] = [
         (1920, 1080, r5994, 20_000_000, &[YouTube]),
         (1920, 1080, FrameRate::FPS_50, 20_000_000, &[]),
         (
@@ -439,6 +439,7 @@ pub fn builtin() -> Vec<Template> {
         ),
         (1920, 1080, FrameRate::FPS_25, 16_000_000, &[]),
         (1920, 1080, r23, 12_000_000, &[]),
+        (2560, 1440, FrameRate::FPS_60, 24_000_000, &[YouTube]),
         (3840, 2160, r5994, 40_000_000, &[YouTube]),
         (3840, 2160, FrameRate::FPS_50, 40_000_000, &[]),
         (3840, 2160, r2997, 30_000_000, &[YouTube]),

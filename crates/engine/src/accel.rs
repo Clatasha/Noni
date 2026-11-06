@@ -216,6 +216,8 @@ pub(crate) struct Painter {
     accel: Arc<Accel>,
     compositor: Option<Compositor>,
     measure_readback: bool,
+    #[cfg(windows)]
+    shared_nv12_failed: bool,
     /// The plug-in effects' instances.
     plugins: Arc<OfxEffects>,
     /// The thread readying the plug-ins of frames coming soon (see
@@ -240,6 +242,8 @@ impl Painter {
             accel,
             compositor: None,
             measure_readback: false,
+            #[cfg(windows)]
+            shared_nv12_failed: false,
             plugins,
             readier: None,
             readied: (0, (0, 0), Vec::new()),
@@ -255,6 +259,11 @@ impl Painter {
     /// threads the frame keeps busy).
     pub(crate) fn on_the_card(&self) -> bool {
         self.accel.gpu().is_some()
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn gpu(&self) -> Option<Arc<Gpu>> {
+        self.accel.gpu()
     }
 
     pub(crate) fn measure_readback(&mut self) {
@@ -361,6 +370,11 @@ impl Painter {
         scene.plugins = Some(Plugins(&*plugins));
         match c.render(&scene, rotation, pool, background, output) {
             Ok(r) => Some(r),
+            #[cfg(windows)]
+            Err(e) if matches!(output, Output::SharedNv12 { .. }) && e != GpuError::Lost => {
+                self.shared_nv12_failed = true;
+                None
+            }
             Err(e) => {
                 let gpu = c.gpu().clone();
                 self.compositor = None;
@@ -556,6 +570,37 @@ impl Painter {
             }
         }
         out.unwrap_or_else(|| ImageRgbaF32::filled(size.0, size.1, background))
+    }
+
+    /// A GPU-resident export frame when the scene can use the same GPU
+    /// compositor as packed NV12. The caller handles CPU-only frames.
+    #[cfg(windows)]
+    pub(crate) fn shared_nv12(
+        &mut self,
+        project: &Project,
+        t: Tick,
+        size: (u32, u32),
+        pool: &mut VideoPool,
+    ) -> Option<bv_gpu::SharedNv12> {
+        if self.shared_nv12_failed || project.motion_blur_at(t).is_some() {
+            return None;
+        }
+        let output = Output::SharedNv12 {
+            video_levels: project.settings.pixel_format.is_video_levels(),
+        };
+        match self.on_card(
+            project,
+            t,
+            None,
+            size,
+            pool,
+            [0.0, 0.0, 0.0, 1.0],
+            output,
+            None,
+        ) {
+            Some(Rendered::SharedNv12(frame)) => Some(frame),
+            _ => None,
+        }
     }
 
     /// The finished frame packed for a video encoder (NV12, or P010 with

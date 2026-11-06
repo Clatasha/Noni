@@ -7,13 +7,14 @@
 //! output through events. Software ones are synchronous. Both are handled.
 
 use std::mem::ManuallyDrop;
+use std::os::windows::io::BorrowedHandle;
 
 use bv_core::VideoFrame;
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Variant::{VARIANT, VT_UI4};
 use windows::core::{GUID, Interface};
 
-use crate::encoders::{activates, string_attr, vendor_of};
+use crate::encoders::{activates, activates_on, string_attr, vendor_of};
 use crate::imp::{init, win};
 use crate::{
     AudioEncoderSettings, Codec, Error, Packet, RateControl, Result, Vendor, VideoEncoderSettings,
@@ -91,6 +92,15 @@ fn new_sample(bytes: &[u8], capacity: u32) -> Result<IMFSample> {
         }
         let sample = MFCreateSample().map_err(win)?;
         sample.AddBuffer(&buffer).map_err(win)?;
+        Ok(sample)
+    }
+}
+
+fn sample_from_buffer(buffer: &IMFMediaBuffer) -> Result<IMFSample> {
+    // SAFETY: the sample retains its own reference to the media buffer.
+    unsafe {
+        let sample = MFCreateSample().map_err(win)?;
+        sample.AddBuffer(buffer).map_err(win)?;
         Ok(sample)
     }
 }
@@ -348,19 +358,36 @@ fn interlace_mode(order: bv_core::FieldOrder) -> u32 {
 
 impl VideoEncoder {
     pub fn new(s: VideoEncoderSettings) -> Result<VideoEncoder> {
-        match VideoEncoder::open(s, false) {
+        match VideoEncoder::open(s, false, None) {
             // Some cards' encoders (AMD's) only take frames on a Direct3D
             // device they are given.
-            Err(_) if s.vendor != Vendor::Software => VideoEncoder::open(s, true),
+            Err(_) if s.vendor != Vendor::Software => VideoEncoder::open(s, true, None),
             r => r,
         }
     }
 
-    fn open(s: VideoEncoderSettings, d3d: bool) -> Result<VideoEncoder> {
+    /// Sets up DXGI input on the compositor's adapter and probes its
+    /// shared texture before the caller opens the output file.
+    pub fn new_shared_nv12(
+        s: VideoEncoderSettings,
+        adapter: (u32, i32),
+        probe: BorrowedHandle<'_>,
+    ) -> Result<Self> {
+        if s.vendor != Vendor::Nvidia || s.codec != Codec::H264 || s.ten_bit {
+            return Err(Error::Unavailable);
+        }
+        Self::open(s, true, Some((adapter, probe)))
+    }
+
+    fn open(
+        s: VideoEncoderSettings,
+        d3d: bool,
+        shared: Option<((u32, i32), BorrowedHandle<'_>)>,
+    ) -> Result<VideoEncoder> {
         init()?;
         let subtype = video_subtype(s.codec)?;
         let hardware = s.vendor != Vendor::Software;
-        let (activate, name) = activates(s.codec, hardware)
+        let (activate, name) = activates_on(s.codec, hardware, shared.map(|(id, _)| id))
             .into_iter()
             .find_map(|a| {
                 let name = string_attr(&a, &MFT_FRIENDLY_NAME_Attribute).unwrap_or_default();
@@ -377,7 +404,22 @@ impl VideoEncoder {
             .ok_or_else(|| Error::Windows(format!("no {:?} {:?} encoder", s.vendor, s.codec)))?;
         let mut mft = Mft::create(activate)?;
         let device = if d3d {
-            let dev = crate::d3d::Device::new(s.vendor)?;
+            let dev = crate::d3d::Device::new(s.vendor, shared.map(|(id, _)| id))?;
+            if let Some((_, probe)) = shared {
+                // SAFETY: these are attribute queries on the active MFT.
+                let aware = unsafe {
+                    mft.mft
+                        .GetAttributes()
+                        .and_then(|a| a.GetUINT32(&MF_SA_D3D11_AWARE))
+                }
+                .unwrap_or(0);
+                if aware == 0 {
+                    return Err(Error::Windows(
+                        "NVIDIA encoder does not accept D3D11 input".into(),
+                    ));
+                }
+                dev.shared_nv12(probe, s.width, s.height)?;
+            }
             unsafe {
                 mft.mft
                     .ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, dev.manager.as_raw() as usize)
@@ -521,14 +563,26 @@ impl VideoEncoder {
         let s = match &mut self.device {
             Some(dev) => {
                 let buffer = dev.upload(data, w as u32, h as u32, ten)?;
-                unsafe {
-                    let s = MFCreateSample().map_err(win)?;
-                    s.AddBuffer(&buffer).map_err(win)?;
-                    s
-                }
+                sample_from_buffer(&buffer)?
             }
             None => new_sample(data, 0)?,
         };
+        self.encode_sample(s, time, duration)
+    }
+
+    pub fn encode_shared_nv12(
+        &mut self,
+        handle: BorrowedHandle<'_>,
+        time: i64,
+        duration: i64,
+    ) -> Result<Vec<Packet>> {
+        init()?;
+        let device = self.device.as_ref().ok_or(Error::Unavailable)?;
+        let buffer = device.copy_shared_nv12(handle, self.settings.width, self.settings.height)?;
+        self.encode_sample(sample_from_buffer(&buffer)?, time, duration)
+    }
+
+    fn encode_sample(&mut self, s: IMFSample, time: i64, duration: i64) -> Result<Vec<Packet>> {
         unsafe {
             s.SetSampleTime(time).map_err(win)?;
             s.SetSampleDuration(duration).map_err(win)?;

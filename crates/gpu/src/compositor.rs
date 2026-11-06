@@ -55,6 +55,8 @@ pub enum Output {
     /// or P010 with `ten_bit`; with `video_levels` the frame is studio RGB,
     /// its levels kept. The frame must be opaque, its sides even.
     Yuv420 { ten_bit: bool, video_levels: bool },
+    #[cfg(windows)]
+    SharedNv12 { video_levels: bool },
 }
 
 /// A frame drawn by the card.
@@ -66,6 +68,8 @@ pub enum Rendered {
         rgba: Vec<u8>,
     },
     Linear(ImageRgbaF32),
+    #[cfg(windows)]
+    SharedNv12(crate::SharedNv12),
     Yuv420 {
         width: u32,
         height: u32,
@@ -108,6 +112,8 @@ pub struct Compositor {
     /// Transfer tables on the card: (encode, curve).
     luts: HashMap<(bool, TransferCharacteristic), wgpu::Buffer>,
     readback: Option<wgpu::Buffer>,
+    #[cfg(windows)]
+    nv12_copy: Option<crate::nv12::CopyNv12>,
     readback_timing: Option<ReadbackTiming>,
     /// Buffers CUDA shares, all of one size: a frame's plug-ins that
     /// render with CUDA use them one after another.
@@ -168,6 +174,8 @@ impl Compositor {
             seen: Vec::new(),
             luts: HashMap::new(),
             readback: None,
+            #[cfg(windows)]
+            nv12_copy: None,
             readback_timing: None,
             shared: Vec::new(),
             plugin_readbacks: Vec::new(),
@@ -205,10 +213,27 @@ impl Compositor {
                 "the frame is too large for the card".into(),
             ));
         }
-        self.run(output, |c, enc| {
-            let out = c.draw(enc, scene, pool, background);
-            c.rotated(enc, out, rotation)
-        })
+        #[cfg(windows)]
+        let shared = if matches!(output, Output::SharedNv12 { .. }) {
+            let (w, h) = (scene.width, scene.height);
+            let size = if rotation.is_quarter_turn() {
+                (h, w)
+            } else {
+                (w, h)
+            };
+            Some(self.gpu.shared_nv12(size)?)
+        } else {
+            None
+        };
+        self.run(
+            output,
+            #[cfg(windows)]
+            shared,
+            |c, enc| {
+                let out = c.draw(enc, scene, pool, background);
+                c.rotated(enc, out, rotation)
+            },
+        )
     }
 
     /// A decoded picture in linear light, reduced for `min_size` as the
@@ -229,11 +254,14 @@ impl Compositor {
         min_size: (u32, u32),
         video_levels: bool,
     ) -> Result<ImageRgbaF32, GpuError> {
-        match self.run(Output::Linear, |c, enc| {
-            c.decoded(enc, frame, min_size, None, video_levels)
-        })? {
+        match self.run(
+            Output::Linear,
+            #[cfg(windows)]
+            None,
+            |c, enc| c.decoded(enc, frame, min_size, None, video_levels),
+        )? {
             Rendered::Linear(img) => Ok(img),
-            Rendered::Display { .. } | Rendered::Yuv420 { .. } => {
+            _ => {
                 unreachable!("asked in linear light")
             }
         }
@@ -244,6 +272,7 @@ impl Compositor {
     fn run(
         &mut self,
         output: Output,
+        #[cfg(windows)] shared: Option<crate::SharedNv12>,
         draw: impl FnOnce(&mut Compositor, &mut wgpu::CommandEncoder) -> Img,
     ) -> Result<Rendered, GpuError> {
         let gpu = self.gpu.clone();
@@ -258,6 +287,40 @@ impl Compositor {
                 label: Some("frame"),
             });
         let out = draw(self, &mut enc);
+        #[cfg(windows)]
+        if let (Output::SharedNv12 { video_levels }, Some(frame)) = (output, shared) {
+            let pitch = frame.pitch();
+            let (words, _) = self.pack_420(&mut enc, &out, false, video_levels, pitch / 4);
+            let submitted = gpu.queue.submit([enc.finish()]);
+            let failed = pollster::block_on(validation.pop())
+                .or(pollster::block_on(memory.pop()))
+                .map(|e| e.to_string())
+                .or_else(|| gpu.take_stray());
+            let result = (|| {
+                if let Some(e) = failed {
+                    return Err(GpuError::Failed(e));
+                }
+                if self.nv12_copy.is_none() {
+                    self.nv12_copy = Some(crate::nv12::CopyNv12::new(&gpu)?);
+                }
+                self.nv12_copy
+                    .as_mut()
+                    .ok_or(GpuError::Lost)?
+                    .copy(&gpu, &words, &frame)?;
+                Ok(Rendered::SharedNv12(frame))
+            })();
+            if result.is_err() {
+                // The conversion submission may still be using its buffers
+                // if the native copy failed before it reached its wait.
+                let _ = gpu.device.poll(wgpu::PollType::Wait {
+                    submission_index: Some(submitted),
+                    timeout: None,
+                });
+                self.nv12_copy = None;
+            }
+            self.end_frame();
+            return result;
+        }
         let (result_buf, bytes) = match output {
             Output::Display(tc) => {
                 let words = self.buffer(out.w as u64 * out.h as u64 * 4);
@@ -277,40 +340,17 @@ impl Compositor {
                 ten_bit,
                 video_levels,
             } => {
-                let (w, h) = (out.w, out.h);
+                let w = out.w;
                 // Rows of whole words: four NV12 samples, or two P010.
                 let stride = if ten_bit {
                     w.div_ceil(2)
                 } else {
                     w.div_ceil(4)
                 };
-                let bytes = stride as u64 * (h + h / 2) as u64 * 4;
-                let words = self.buffer(bytes);
-                let tc = TransferCharacteristic::Bt709;
-                let lut = self.lut(true, tc);
-                let top = bv_color::transfer::EncodeLut::shared(tc).max();
-                let depth = if ten_bit { 10 } else { 8 };
-                let range = if video_levels {
-                    bv_core::ColorRange::Full
-                } else {
-                    bv_core::ColorRange::Limited
-                };
-                let [y_off, y_range, c_off, c_range] =
-                    bv_color::matrix::Normalizer::new(range, depth).inverse_params();
-                let (kr, kb) = bv_color::matrix::kr_kb(bv_core::MatrixCoefficients::Bt709)
-                    .unwrap_or((0.2126, 0.0722));
-                let max = ((1u32 << depth) - 1) as f32;
-                let mut params =
-                    Params::sized(w, h).with_f(&[top, kr, kb, y_off, y_range, c_off, c_range, max]);
-                params.j[0] = stride;
-                let (k, grid) = if ten_bit {
-                    (K::EncodeP010, Grid::Pixels(w.div_ceil(2), h.div_ceil(2)))
-                } else {
-                    (K::EncodeNv12, Grid::Pixels(w.div_ceil(4), h.div_ceil(2)))
-                };
-                self.kernel(&mut enc, k, params, &[&out.buf, &lut, &words], grid);
-                (words, bytes)
+                self.pack_420(&mut enc, &out, ten_bit, video_levels, stride)
             }
+            #[cfg(windows)]
+            Output::SharedNv12 { .. } => return Err(GpuError::Lost),
         };
         let readback = match self.readback.take() {
             Some(b) if b.size() == bytes => b,
@@ -345,6 +385,43 @@ impl Compositor {
             return Err(GpuError::Lost);
         }
         result
+    }
+
+    fn pack_420(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        out: &Img,
+        ten_bit: bool,
+        video_levels: bool,
+        stride: u32,
+    ) -> (wgpu::Buffer, u64) {
+        let (w, h) = (out.w, out.h);
+        let bytes = stride as u64 * (h + h / 2) as u64 * 4;
+        let words = self.buffer(bytes);
+        let tc = TransferCharacteristic::Bt709;
+        let lut = self.lut(true, tc);
+        let top = bv_color::transfer::EncodeLut::shared(tc).max();
+        let depth = if ten_bit { 10 } else { 8 };
+        let range = if video_levels {
+            bv_core::ColorRange::Full
+        } else {
+            bv_core::ColorRange::Limited
+        };
+        let [y_off, y_range, c_off, c_range] =
+            bv_color::matrix::Normalizer::new(range, depth).inverse_params();
+        let (kr, kb) =
+            bv_color::matrix::kr_kb(bv_core::MatrixCoefficients::Bt709).unwrap_or((0.2126, 0.0722));
+        let max = ((1u32 << depth) - 1) as f32;
+        let mut params =
+            Params::sized(w, h).with_f(&[top, kr, kb, y_off, y_range, c_off, c_range, max]);
+        params.j[0] = stride;
+        let (k, grid) = if ten_bit {
+            (K::EncodeP010, Grid::Pixels(w.div_ceil(2), h.div_ceil(2)))
+        } else {
+            (K::EncodeNv12, Grid::Pixels(w.div_ceil(4), h.div_ceil(2)))
+        };
+        self.kernel(enc, k, params, &[&out.buf, &lut, &words], grid);
+        (words, bytes)
     }
 
     /// Waits for the frame (the work `submitted` copies it into
@@ -418,6 +495,8 @@ impl Compositor {
                         data,
                     }
                 }
+                #[cfg(windows)]
+                Output::SharedNv12 { .. } => return Err(GpuError::Lost),
             }
         };
         readback.unmap();

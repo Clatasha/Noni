@@ -51,6 +51,8 @@ type Mp4File = Writer<Counted<BufWriter<File>>>;
 pub(super) struct Mp4Out {
     writer: Option<Mp4File>,
     video: VideoEncoder,
+    #[cfg(windows)]
+    shared_nv12: bool,
     audio: Option<AudioEncoder>,
     rate: FrameRate,
     format: PixelFormat,
@@ -94,7 +96,12 @@ pub(super) fn metadata(project: &Project, r: &RenderSettings) -> bv_mp4::Metadat
     }
 }
 
-pub(super) fn mp4(project: &Project, s: &RenderSettings) -> Result<Box<dyn Output>, String> {
+pub(super) fn mp4(
+    project: &Project,
+    s: &RenderSettings,
+    #[cfg(windows)] gpu: Option<&bv_gpu::Gpu>,
+    #[cfg(windows)] timing: Option<&super::timing::Timing>,
+) -> Result<Box<dyn Output>, String> {
     let v = s.video.ok_or("no video settings")?;
     let (codec, format) = match s.format {
         FileFormat::HevcMp4 => (Codec::Hevc, VideoFormat::Hevc),
@@ -109,7 +116,7 @@ pub(super) fn mp4(project: &Project, s: &RenderSettings) -> Result<Box<dyn Outpu
     } else {
         v.frame_rate.as_f64().round().max(1.0) as u32
     };
-    let video = VideoEncoder::new(bv_mf::VideoEncoderSettings {
+    let encoder_settings = bv_mf::VideoEncoderSettings {
         codec,
         vendor: v.encoder.vendor(),
         width: w,
@@ -125,14 +132,34 @@ pub(super) fn mp4(project: &Project, s: &RenderSettings) -> Result<Box<dyn Outpu
         gop,
         ten_bit,
         field_order: v.field_order,
-    })
-    .map_err(|e| {
-        format!(
-            "{} ({}): {e}",
-            s.format.codec_name(),
-            v.encoder.short_name()
-        )
-    })?;
+    };
+    #[cfg(windows)]
+    let direct =
+        if std::env::var_os("NONI_FAST_NVENC").as_deref() == Some(std::ffi::OsStr::new("1")) {
+            let attempt = open_shared_nv12(encoder_settings, gpu);
+            if let Some(timing) = timing {
+                timing.set_shared_nv12_status(match &attempt {
+                    Ok(_) => "enabled (Direct3D 12 to Direct3D 11)".to_string(),
+                    Err(e) => format!("unavailable, using packed input: {e}"),
+                });
+            }
+            attempt.ok()
+        } else {
+            None
+        };
+    #[cfg(not(windows))]
+    let direct = None;
+    #[cfg(windows)]
+    let shared_nv12 = direct.is_some();
+    let video = direct
+        .map_or_else(|| VideoEncoder::new(encoder_settings), Ok)
+        .map_err(|e| {
+            format!(
+                "{} ({}): {e}",
+                s.format.codec_name(),
+                v.encoder.short_name()
+            )
+        })?;
     let audio = match &s.audio {
         Some(a) => Some(
             AudioEncoder::new(AudioEncoderSettings {
@@ -193,6 +220,8 @@ pub(super) fn mp4(project: &Project, s: &RenderSettings) -> Result<Box<dyn Outpu
     Ok(Box::new(Mp4Out {
         writer: Some(writer),
         video,
+        #[cfg(windows)]
+        shared_nv12,
         audio,
         rate,
         format: if ten_bit {
@@ -208,7 +237,36 @@ pub(super) fn mp4(project: &Project, s: &RenderSettings) -> Result<Box<dyn Outpu
     }))
 }
 
+#[cfg(windows)]
+fn open_shared_nv12(
+    settings: bv_mf::VideoEncoderSettings,
+    gpu: Option<&bv_gpu::Gpu>,
+) -> Result<VideoEncoder, String> {
+    if settings.codec != Codec::H264
+        || settings.vendor != bv_mf::Vendor::Nvidia
+        || settings.ten_bit
+        || settings.field_order != bv_core::FieldOrder::Progressive
+    {
+        return Err("Fast NVENC requires progressive, 8-bit NVIDIA H.264".into());
+    }
+    let gpu = gpu.ok_or("the GPU compositor is unavailable for this output shape")?;
+    let adapter = gpu
+        .dx12_luid()
+        .ok_or("the compositor is not using Direct3D 12")?;
+    let probe = gpu
+        .shared_nv12((settings.width, settings.height))
+        .map_err(|e| e.to_string())?;
+    VideoEncoder::new_shared_nv12(settings, adapter, probe.handle()).map_err(|e| e.to_string())
+}
+
 impl Mp4Out {
+    fn video_time(&self, n: u64) -> (i64, i64) {
+        let (num, den) = (self.rate.num as i64, self.rate.den as i64);
+        let t = n as i64 * den * HNS / num;
+        let d = (n as i64 + 1) * den * HNS / num - t;
+        (t, d)
+    }
+
     fn put_video(&mut self, packets: Vec<Packet>) -> Result<(), String> {
         let w = self.writer.as_mut().ok_or("closed")?;
         let (num, den) = (self.rate.num as i64, self.rate.den as i64);
@@ -256,13 +314,26 @@ impl Output for Mp4Out {
     }
 
     fn video_packed(&mut self, data: &[u8], n: u64) -> Result<(), String> {
-        let (num, den) = (self.rate.num as i64, self.rate.den as i64);
-        let t = n as i64 * den * HNS / num;
-        let d = (n as i64 + 1) * den * HNS / num - t;
+        let (t, d) = self.video_time(n);
         let packets = self
             .video
             .encode_packed(data, t, d)
             .map_err(|e| e.to_string())?;
+        self.put_video(packets)
+    }
+
+    #[cfg(windows)]
+    fn takes_shared_nv12(&self) -> bool {
+        self.shared_nv12
+    }
+
+    #[cfg(windows)]
+    fn video_shared_nv12(&mut self, frame: &bv_gpu::SharedNv12, n: u64) -> Result<(), String> {
+        let (t, d) = self.video_time(n);
+        let packets = self
+            .video
+            .encode_shared_nv12(frame.handle(), t, d)
+            .map_err(|e| format!("Fast NVENC failed: {e}. Turn off NONI_FAST_NVENC and retry."))?;
         self.put_video(packets)
     }
 

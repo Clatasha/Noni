@@ -373,6 +373,16 @@ pub(crate) trait Output: Send {
         Ok(())
     }
 
+    #[cfg(windows)]
+    fn takes_shared_nv12(&self) -> bool {
+        false
+    }
+
+    #[cfg(windows)]
+    fn video_shared_nv12(&mut self, _frame: &bv_gpu::SharedNv12, _n: u64) -> Result<(), String> {
+        Err("this encoder takes no shared NV12 textures".into())
+    }
+
     /// What compressed frames it takes as they are (smart rendering).
     fn passable(&self) -> Option<smart::Passable> {
         None
@@ -516,12 +526,10 @@ impl RenderJob {
                     let report = timing.as_ref().map(|_| p.clone());
                     drop(p);
                     if let (Some(timing), Some(report), Some(decoding)) = (timing, report, decoding)
-                    {
-                        if let Err(error) =
+                        && let Err(error) =
                             timing.report(&settings, &report, &accel.status(), &decoding)
-                        {
-                            eprintln!("Could not save Noni export timing: {error}");
-                        }
+                    {
+                        eprintln!("Could not save Noni export timing: {error}");
                     }
                     repaint();
                 })
@@ -749,6 +757,22 @@ pub(crate) fn open_output(
     project: &Project,
     s: &RenderSettings,
 ) -> Result<Box<dyn Output>, String> {
+    open_output_with_gpu(
+        project,
+        s,
+        #[cfg(windows)]
+        None,
+        #[cfg(windows)]
+        None,
+    )
+}
+
+fn open_output_with_gpu(
+    project: &Project,
+    s: &RenderSettings,
+    #[cfg(windows)] gpu: Option<&bv_gpu::Gpu>,
+    #[cfg(windows)] timing: Option<&Timing>,
+) -> Result<Box<dyn Output>, String> {
     use FileFormat::*;
     if let Some(dir) = s.path.parent()
         && !dir.as_os_str().is_empty()
@@ -756,7 +780,14 @@ pub(crate) fn open_output(
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
     match s.format {
-        AvcMp4 | HevcMp4 | Av1Mp4 => video::mp4(project, s),
+        AvcMp4 | HevcMp4 | Av1Mp4 => video::mp4(
+            project,
+            s,
+            #[cfg(windows)]
+            gpu,
+            #[cfg(windows)]
+            timing,
+        ),
         Wmv => video::wmv(s, project.settings.pixel_format.is_video_levels()),
         ProRes => video::prores(project, s),
         Png | Bmp | Tiff | Dpx | Exr | Dds | Jpeg | Heic | WmPhoto => images::open(s),
@@ -765,6 +796,11 @@ pub(crate) fn open_output(
         Mpeg1 | Mpeg2 => mpeg::open(project, s),
         f => Err(format!("{} is not available yet", f.name())),
     }
+}
+
+fn can_pack_on_card(project: &Project, (w, h): (u32, u32), fit: Fit) -> bool {
+    let (pw, ph) = project.settings.output_size();
+    pw as u64 * h as u64 == ph as u64 * w as u64 && !matches!(fit, Fit::Within(..))
 }
 
 /// The frame at `t` packed for the video encoder (see
@@ -781,8 +817,7 @@ fn packed_at(
     pool: &mut VideoPool,
     painter: &mut crate::accel::Painter,
 ) -> Vec<u8> {
-    let (pw, ph) = project.settings.output_size();
-    if pw as u64 * h as u64 == ph as u64 * w as u64 && !matches!(fit, Fit::Within(..)) {
+    if can_pack_on_card(project, (w, h), fit) {
         return painter.yuv420(project, t, (w, h), pool, ten_bit);
     }
     let img = frame_at(project, t, (w, h), fit, false, pool, painter);
@@ -796,6 +831,8 @@ enum Work {
     Image(ImageRgbaF32, u64),
     /// Frame `n` packed for the video encoder.
     Packed(Vec<u8>, u64),
+    #[cfg(windows)]
+    SharedNv12(bv_gpu::SharedNv12, u64),
     /// Frame `n` compressed already (smart rendering).
     Compressed(Vec<u8>, u64),
     /// A block of audio: one vector per channel.
@@ -820,6 +857,12 @@ fn write(
         let r = Timing::measure(timing, stage, || match w {
             Work::Image(img, n) => out.video(&img, n),
             Work::Packed(data, n) => out.video_packed(&data, n),
+            #[cfg(windows)]
+            Work::SharedNv12(frame, n) => out.video_shared_nv12(&frame, n).inspect(|()| {
+                if let Some(timing) = timing {
+                    timing.shared_nv12();
+                }
+            }),
             Work::Compressed(data, n) => out.compressed(&data, n),
             Work::Audio(planar) => out.audio(&planar),
         });
@@ -1047,7 +1090,20 @@ fn run(
     } else {
         ((end_sample - first_sample).max(0) as u64).div_ceil(4800)
     };
-    let out = open_output(project, s)?;
+    #[cfg(windows)]
+    let gpu = video
+        .filter(|v| can_pack_on_card(project, (v.width, v.height), s.options.fit()))
+        .and_then(|_| painter.gpu());
+    let out = open_output_with_gpu(
+        project,
+        s,
+        #[cfg(windows)]
+        gpu.as_deref(),
+        #[cfg(windows)]
+        timing.map(Arc::as_ref),
+    )?;
+    #[cfg(windows)]
+    let shared_nv12 = out.takes_shared_nv12();
     let encoder = out.encoder_name();
     let packed = out.packed_420();
     // Smart rendering (Options › Preferences › File I/O's "Enable
@@ -1155,13 +1211,27 @@ fn run(
         // Frame `n` of the render drawn by `painter`, packed for the encoder
         // or as an image; interlaced, the field shown second half a frame
         // later.
+        #[cfg(windows)]
+        let preview_interval = (rate.as_f64() / 4.0).round().max(1.0) as u64;
         let draw = |n: u64, pool: &mut VideoPool, painter: &mut crate::accel::Painter| {
             let f = first_frame + n as i64;
             let (t, next) = (rate.frame_start(f), rate.frame_start(f + 1));
             let later = (v.field_order != bv_core::FieldOrder::Progressive)
                 .then(|| t + Tick((next - t).0 / 2));
             let start = timing.map(|_| (Instant::now(), pool.waited()));
-            let frame = match packed {
+            #[cfg(windows)]
+            let shared = if shared_nv12
+                && !(shown.on.load(Ordering::Relaxed) && n.is_multiple_of(preview_interval))
+            {
+                painter
+                    .shared_nv12(project, t, size, pool)
+                    .map(|f| Work::SharedNv12(f, n))
+            } else {
+                None
+            };
+            #[cfg(not(windows))]
+            let shared: Option<Work> = None;
+            let frame = shared.unwrap_or_else(|| match packed {
                 Some(ten_bit) => {
                     let mut data = packed_at(project, t, size, fit, ten_bit, pool, painter);
                     if let Some(t2) = later {
@@ -1178,7 +1248,7 @@ fn run(
                     }
                     Work::Image(img, n)
                 }
-            };
+            });
             if let (Some(timing), Some((start, waited))) = (timing, start) {
                 timing.draw(
                     start.elapsed(),
