@@ -6,7 +6,7 @@ all welcome.
 Before you start, read **[AGENTS.md](AGENTS.md)**. Its rules are absolute and
 apply to people and AI agents alike: never crash, open or original assets
 only (each with an attribution sidecar), clean-room code, contributions
-under GPL-3.0-or-later with a `Signed-off-by:` line. The project's
+under GPL-3.0-or-later. The project's
 working conventions are in [CLAUDE.md](CLAUDE.md), its architecture in
 [docs/architecture.md](docs/architecture.md).
 
@@ -113,66 +113,14 @@ Also useful:
 - A blank line, then a body saying what changed and why, wrapped at about 72
   characters.
 - One subject per commit; a pull request may have several commits.
-- Every commit ends with your sign-off (see below). Credit an AI agent that
-  helped with a `Co-Authored-By:` or `Assisted-by:` trailer; agents never
-  sign off for you.
+- Credit an AI agent that helped with a `Co-Authored-By:` or `Assisted-by:` trailer.
 
 ```text
 Keep a trimmed event's fades inside it
 
 Trimming an event shorter than its fades left the fade-out past the
 event's end. The fades now shrink with the event, in the same undo.
-
-Signed-off-by: Your Name <you@example.org>
 ```
-
-## Developer Certificate of Origin
-
-BananaV uses the Developer Certificate of Origin instead of a contributor
-license agreement. Signing off a commit (`git commit -s`, which adds a
-`Signed-off-by: Your Name <your email>` line) means you certify the
-following:
-
-```text
-Developer Certificate of Origin
-Version 1.1
-
-Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
-
-Everyone is permitted to copy and distribute verbatim copies of this
-license document, but changing it is not allowed.
-
-
-Developer's Certificate of Origin 1.1
-
-By making a contribution to this project, I certify that:
-
-(a) The contribution was created in whole or in part by me and I
-    have the right to submit it under the open source license
-    indicated in the file; or
-
-(b) The contribution is based upon previous work that, to the best
-    of my knowledge, is covered under an appropriate open source
-    license and I have the right under that license to submit that
-    work with modifications, whether created in whole or in part
-    by me, under the same open source license (unless I am
-    permitted to submit under a different license), as indicated
-    in the file; or
-
-(c) The contribution was provided directly to me by some other
-    person who certified (a), (b) or (c) and I have not modified
-    it.
-
-(d) I understand and agree that this project and the contribution
-    are public and that a record of the contribution (including all
-    personal information I submit with it, including my sign-off) is
-    maintained indefinitely and may be redistributed consistent with
-    this project or the open source license(s) involved.
-```
-
-Forgot to sign off? `git commit --amend -s` fixes the last commit, and
-`git rebase --signoff main` every commit of your branch (then push with
-`--force-with-lease`).
 
 ## Reporting bugs
 

@@ -178,23 +178,12 @@ from someone else's icon).
    BananaV to plug-ins and in the files it writes, never as another
    program.
 
-## 4. Licensing of contributions: GPL-3.0-or-later with a DCO
+## 4. Licensing of contributions: GPL-3.0-or-later
 
 1. BananaV is licensed under the **GNU General Public License, version 3 or
    (at your option) any later version** ([LICENSE](LICENSE), SPDX
    `GPL-3.0-or-later`). Every contribution is licensed under the same terms.
-2. Instead of a contributor license agreement, BananaV uses the
-   **Developer Certificate of Origin** (DCO, version 1.1; its text is in
-   [CONTRIBUTING.md](CONTRIBUTING.md#developer-certificate-of-origin)). Every
-   commit carries a `Signed-off-by:` line with the author's real name, or a
-   known identity, and an email address that can be reached
-   (`git commit -s`). Signing off certifies that you have the right to
-   submit the change under the project's license.
-3. **An AI agent never signs off.** Only a person can certify the DCO. An
-   agent's commits are reviewed by the person responsible for them, who adds
-   their own `Signed-off-by:` line. The agent may be credited with a
-   `Co-Authored-By:` or `Assisted-by:` trailer.
-4. Copyright stays with each contributor; nobody assigns it to the project.
+2. Copyright stays with each contributor; nobody assigns it to the project.
 
 ## 5. Credits
 
