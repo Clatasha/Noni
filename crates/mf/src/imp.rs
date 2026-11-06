@@ -498,7 +498,17 @@ fn open_sample(u: Unopened) -> Result<RawSample> {
         copy,
     } = u;
     if let Some(c) = copy {
-        return open_copy(c, time, changed).map(|(raw, _)| raw);
+        let (duration, keyframe) = (c.duration, c.keyframe);
+        return open_copy(c, |data, pitch| RawSample {
+            time,
+            duration,
+            data: data.to_vec(),
+            pitch,
+            keyframe,
+            changed,
+            on_card: true,
+        })
+        .map(|(raw, _)| raw);
     }
     let sample = sample.ok_or(Error::Unavailable)?;
     {
@@ -643,16 +653,12 @@ fn start_copy(
     }
 }
 
-/// The picture a copy brought to memory (NV12 or P010: the luma rows,
-/// then the chroma rows), and its staging texture for the next copy.
-fn open_copy(
+/// Read the NV12 or P010 rows while mapped, then return the staging texture
+/// for reuse. The borrowed bytes never outlive the mapping.
+fn open_copy<T>(
     c: Copying,
-    time: i64,
-    changed: bool,
-) -> Result<(
-    RawSample,
-    windows::Win32::Graphics::Direct3D11::ID3D11Texture2D,
-)> {
+    read: impl FnOnce(&[u8], usize) -> T,
+) -> Result<(T, windows::Win32::Graphics::Direct3D11::ID3D11Texture2D)> {
     use windows::Win32::Graphics::Direct3D11::*;
     unsafe {
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
@@ -677,21 +683,11 @@ fn open_copy(
         }
         let pitch = mapped.RowPitch as usize;
         let rows = c.height as usize + c.height as usize / 2;
-        let data = std::slice::from_raw_parts(mapped.pData as *const u8, pitch * rows).to_vec();
+        let bytes = std::slice::from_raw_parts(mapped.pData as *const u8, pitch * rows);
+        let result = read(bytes, pitch);
         c.context.Unmap(&c.staging, 0);
         let _ = c.width;
-        Ok((
-            RawSample {
-                time,
-                duration: c.duration,
-                data,
-                pitch,
-                keyframe: c.keyframe,
-                changed,
-                on_card: true,
-            },
-            c.staging,
-        ))
+        Ok((result, c.staging))
     }
 }
 
@@ -1004,22 +1000,36 @@ impl VideoDecoder {
 
     /// The frame of a sample, as separate Y, U and V planes.
     fn to_frame(&self, s: &RawSample) -> Option<VideoFrame> {
+        self.frame_from_bytes(&s.data, s.pitch, s.time, s.duration)
+    }
+
+    fn frame_from_bytes(
+        &self,
+        data: &[u8],
+        row_pitch: usize,
+        time: i64,
+        duration: i64,
+    ) -> Option<VideoFrame> {
         let (w, h) = (self.width as usize, self.height as usize);
         let bps = self.layout.bytes_per_sample();
-        let pitch = if s.pitch > 0 { s.pitch } else { w * bps };
+        let pitch = if row_pitch > 0 { row_pitch } else { w * bps };
         // The allocated height (with alignment) from the buffer's size.
-        let alloc_h = s.data.len() * 2 / 3 / pitch;
+        let alloc_h = data
+            .len()
+            .checked_mul(2)?
+            .checked_div(3)?
+            .checked_div(pitch)?;
         let (ox, oy) = (self.offset.0 as usize, self.offset.1 as usize);
         if alloc_h < h + oy || pitch < (w + ox) * bps {
             return None;
         }
         if self.layout == Layout::P010 {
-            return self.to_frame_10(s, pitch, alloc_h);
+            return self.to_frame_10(data, pitch, alloc_h, time, duration);
         }
         let mut y = Vec::with_capacity(w * h);
         for row in 0..h {
             let start = (row + oy) * pitch + ox;
-            y.extend_from_slice(&s.data[start..start + w]);
+            y.extend_from_slice(data.get(start..start + w)?);
         }
         let (cw, ch) = (w / 2, h / 2);
         let chroma = pitch * alloc_h;
@@ -1029,7 +1039,7 @@ impl VideoDecoder {
             Layout::Nv12 => {
                 for row in 0..ch {
                     let start = chroma + (row + oy / 2) * pitch + ox;
-                    let line = s.data.get(start..start + cw * 2)?;
+                    let line = data.get(start..start + cw * 2)?;
                     for &[cb, cr] in line.as_chunks::<2>().0 {
                         u.push(cb);
                         v.push(cr);
@@ -1041,8 +1051,8 @@ impl VideoDecoder {
                 let v_base = chroma + cp * (alloc_h / 2);
                 for row in 0..ch {
                     let at = (row + oy / 2) * cp + ox / 2;
-                    u.extend_from_slice(s.data.get(chroma + at..chroma + at + cw)?);
-                    v.extend_from_slice(s.data.get(v_base + at..v_base + at + cw)?);
+                    u.extend_from_slice(data.get(chroma + at..chroma + at + cw)?);
+                    v.extend_from_slice(data.get(v_base + at..v_base + at + cw)?);
                 }
             }
             Layout::P010 => return None,
@@ -1053,8 +1063,8 @@ impl VideoDecoder {
             stride: pw,
             data: PlaneData::U8(data),
         };
-        let duration = if s.duration > 0 {
-            hns_to_tick(s.duration)
+        let duration = if duration > 0 {
+            hns_to_tick(duration)
         } else {
             self.rate.frame_duration()
         };
@@ -1064,19 +1074,26 @@ impl VideoDecoder {
             format: PixelFormat::Yuv420P8,
             color: self.color,
             planes: vec![plane(y, w, h), plane(u, cw, ch), plane(v, cw, ch)],
-            pts: self.snap(hns_to_tick(s.time - self.time_offset)),
+            pts: self.snap(hns_to_tick(time - self.time_offset)),
             duration,
         })
     }
 
     /// A P010 sample as 10-bit planes (the samples' high 10 bits).
-    fn to_frame_10(&self, s: &RawSample, pitch: usize, alloc_h: usize) -> Option<VideoFrame> {
+    fn to_frame_10(
+        &self,
+        data: &[u8],
+        pitch: usize,
+        alloc_h: usize,
+        time: i64,
+        duration: i64,
+    ) -> Option<VideoFrame> {
         let (w, h) = (self.width as usize, self.height as usize);
         let (ox, oy) = (self.offset.0 as usize, self.offset.1 as usize);
         let mut y = Vec::with_capacity(w * h);
         for row in 0..h {
             let start = (row + oy) * pitch + ox * 2;
-            let line = s.data.get(start..start + w * 2)?;
+            let line = data.get(start..start + w * 2)?;
             y.extend(
                 line.as_chunks::<2>()
                     .0
@@ -1090,7 +1107,7 @@ impl VideoDecoder {
         let mut v = Vec::with_capacity(cw * ch);
         for row in 0..ch {
             let start = chroma + (row + oy / 2) * pitch + ox * 2;
-            let line = s.data.get(start..start + cw * 4)?;
+            let line = data.get(start..start + cw * 4)?;
             for b in line.as_chunks::<4>().0 {
                 u.push(u16::from_le_bytes([b[0], b[1]]) >> 6);
                 v.push(u16::from_le_bytes([b[2], b[3]]) >> 6);
@@ -1102,8 +1119,8 @@ impl VideoDecoder {
             stride: pw,
             data: PlaneData::U16(data),
         };
-        let duration = if s.duration > 0 {
-            hns_to_tick(s.duration)
+        let duration = if duration > 0 {
+            hns_to_tick(duration)
         } else {
             self.rate.frame_duration()
         };
@@ -1113,7 +1130,7 @@ impl VideoDecoder {
             format: PixelFormat::Yuv420P10,
             color: self.color,
             planes: vec![plane(y, w, h), plane(u, cw, ch), plane(v, cw, ch)],
-            pts: self.snap(hns_to_tick(s.time - self.time_offset)),
+            pts: self.snap(hns_to_tick(time - self.time_offset)),
             duration,
         })
     }
@@ -1241,15 +1258,18 @@ impl VideoDecoder {
     /// Opens a sample (its copy from the card, or its buffer) into a frame
     /// kept among the recent ones (`None`: a layout not understood).
     fn keep(&mut self, mut u: Unopened) -> Result<Option<std::sync::Arc<VideoFrame>>> {
-        let raw = match u.copy.take() {
+        let frame = match u.copy.take() {
             Some(c) => {
-                let (raw, staging) = open_copy(c, u.time, u.changed)?;
+                let duration = c.duration;
+                let (frame, staging) = open_copy(c, |data, pitch| {
+                    self.frame_from_bytes(data, pitch, u.time, duration)
+                })?;
                 self.spare.push(staging);
-                raw
+                frame
             }
-            None => open_sample(u)?,
+            None => self.to_frame(&open_sample(u)?),
         };
-        let Some(frame) = self.to_frame(&raw) else {
+        let Some(frame) = frame else {
             return Ok(None);
         };
         let f = std::sync::Arc::new(frame);

@@ -95,6 +95,8 @@ pub struct ReadbackTiming {
     pub compose: Duration,
     /// Effect work within composition, including any waits the effect requires.
     pub effects: Duration,
+    /// Host time staging decoded YUV planes for upload.
+    pub source_upload: Duration,
     /// Packing, submitting and synchronizing the shared encoder texture.
     pub shared_output: Duration,
     /// Submission through mapping, including GPU execution and the transfer.
@@ -1392,6 +1394,58 @@ impl Compositor {
         self.upload(None, &Arc::new(img))
     }
 
+    /// Pack the three planes directly into upload staging memory. The shader
+    /// reads words, so each plane starts at a four-byte boundary.
+    fn upload_decoded_planes(&mut self, frame: &VideoFrame) -> (wgpu::Buffer, [u32; 3]) {
+        let mut offsets = [0; 4];
+        for (n, plane) in frame.planes.iter().enumerate() {
+            let bytes = match &plane.data {
+                PlaneData::U8(data) => data.len(),
+                PlaneData::U16(data) => data.len() * 2,
+            };
+            offsets[n + 1] = offsets[n] + bytes.next_multiple_of(4);
+        }
+        let size = offsets[3];
+        let buffer = self.buffer(size as u64);
+        let fill = |write: &mut dyn FnMut(usize, &[u8])| {
+            for (n, plane) in frame.planes.iter().enumerate() {
+                let start = offsets[n];
+                let len = match &plane.data {
+                    PlaneData::U8(data) => {
+                        write(start, data);
+                        data.len()
+                    }
+                    PlaneData::U16(data) => {
+                        #[cfg(target_endian = "little")]
+                        write(start, bytemuck::cast_slice(data));
+                        #[cfg(target_endian = "big")]
+                        for (i, sample) in data.iter().enumerate() {
+                            write(start + 2 * i, &sample.to_le_bytes());
+                        }
+                        data.len() * 2
+                    }
+                };
+                let pad = offsets[n + 1] - (start + len);
+                if pad != 0 {
+                    write(start + len, &[0; 3][..pad]);
+                }
+            }
+        };
+        if let Some(size) = wgpu::BufferSize::new(size as u64) {
+            if let Some(mut staging) = self.gpu.queue.write_buffer_with(&buffer, 0, size) {
+                fill(&mut |at, data| staging.slice(at..at + data.len()).copy_from_slice(data));
+            } else {
+                let mut bytes = vec![0; size.get() as usize];
+                fill(&mut |at, data| bytes[at..at + data.len()].copy_from_slice(data));
+                self.gpu.queue.write_buffer(&buffer, 0, &bytes);
+            }
+        }
+        (
+            buffer,
+            [offsets[0] as u32, offsets[1] as u32, offsets[2] as u32],
+        )
+    }
+
     /// A decoded picture in linear light, reduced as the processor's
     /// readers reduce it for `min_size`; then through `enter` (ACES's
     /// working space) when given.
@@ -1427,25 +1481,11 @@ impl Compositor {
             }
             return up;
         }
-        // The three planes one after another, each from a word boundary.
-        let mut bytes = Vec::new();
-        let mut starts = [0u32; 3];
-        for (n, p) in f.planes.iter().enumerate() {
-            starts[n] = bytes.len() as u32;
-            match &p.data {
-                PlaneData::U8(d) => bytes.extend_from_slice(d),
-                PlaneData::U16(d) => {
-                    for v in d {
-                        bytes.extend_from_slice(&v.to_le_bytes());
-                    }
-                }
-            }
-            while bytes.len() % 4 != 0 {
-                bytes.push(0);
-            }
+        let upload_at = self.readback_timing.as_ref().map(|_| Instant::now());
+        let (planes, starts) = self.upload_decoded_planes(f);
+        if let (Some(timing), Some(start)) = (&mut self.readback_timing, upload_at) {
+            timing.source_upload += start.elapsed();
         }
-        let planes = self.buffer(bytes.len() as u64);
-        self.gpu.queue.write_buffer(&planes, 0, &bytes);
         let lut = self.lut(false, f.color.transfer);
         let (ow, oh) = (f.width.div_ceil(factor), f.height.div_ceil(factor));
         let out = self.image(ow, oh);

@@ -14,6 +14,7 @@ pub(super) enum Stage {
     SceneSetup,
     GpuCompose,
     GpuEffects,
+    SourceUpload,
     SharedOutput,
     GpuWait,
     ReadbackCopy,
@@ -65,6 +66,7 @@ impl Timing {
         self.add(Stage::SceneSetup, scene_setup);
         self.add(Stage::GpuCompose, gpu.compose);
         self.add(Stage::GpuEffects, gpu.effects);
+        self.add(Stage::SourceUpload, gpu.source_upload);
         self.add(Stage::SharedOutput, gpu.shared_output);
         self.add(Stage::GpuWait, gpu.wait);
         self.add(Stage::ReadbackCopy, gpu.copy);
@@ -188,6 +190,11 @@ impl Timing {
         let shared = self.seconds(Stage::SharedOutput);
         writeln!(file, "  GPU scene setup: {setup:.3} s")?;
         writeln!(file, "  GPU composition (host time): {compose:.3} s")?;
+        writeln!(
+            file,
+            "    Decoded YUV upload staging (host time): {:.3} s",
+            self.seconds(Stage::SourceUpload)
+        )?;
         writeln!(
             file,
             "    Effect preparation and synchronous work: {:.3} s",
