@@ -694,31 +694,11 @@ pub(super) fn layers(icon: Icon) -> Vec<Layer> {
             body(d("M22 17A2.5 2.5 0 1 1 17 17 2.5 2.5 0 1 1 22 17Z")),
             line(d("M7.5 7H11A3 3 0 0 1 14 10V14A3 3 0 0 0 17 17")),
         ],
-        // A graduation cap.
-        Icon::Mortarboard => vec![
-            body(d("M2.5 9.5L12 5 21.5 9.5 12 14Z")),
-            line(d("M6.5 12V16C6.5 17.5 9 19 12 19 15 19 17.5 17.5 17.5 16V12")),
-            line(d("M21.5 9.5V15")),
-            solid(d("M22.2 16.4A0.7 0.7 0 1 1 20.8 16.4 0.7 0.7 0 1 1 22.2 16.4Z")),
-        ],
         // A globe.
         Icon::Globe => vec![
             body(d("M21 12A9 9 0 1 1 3 12 9 9 0 1 1 21 12Z")),
             line(d("M12 3A4 9 0 0 1 12 21 4 9 0 0 1 12 3")).dim(),
             line(d("M3 12H21")).dim(),
-        ],
-        // Source code: angle brackets and a slash.
-        Icon::Code => vec![
-            line(d("M8 6.5L2.5 12 8 17.5")),
-            line(d("M16 6.5L21.5 12 16 17.5")),
-            line(d("M14 4.5L10 19.5")).dim(),
-        ],
-        // Two people.
-        Icon::People => vec![
-            body(d("M12 8A3 3 0 1 1 6 8 3 3 0 1 1 12 8Z")),
-            line(d("M3.5 20C3.5 16.5 6 14.5 9 14.5 12 14.5 14.5 16.5 14.5 20")),
-            line(d("M19.3 9A2.3 2.3 0 1 1 14.7 9 2.3 2.3 0 1 1 19.3 9Z")).dim(),
-            line(d("M15.5 14.7C18.2 14.7 20.5 16.5 20.5 20")).dim(),
         ],
         // A speech bubble with a heart.
         Icon::HeartBubble => vec![
@@ -828,7 +808,7 @@ impl Layer {
 }
 
 #[cfg(test)]
-pub(super) const ALL: [Icon; 135] = [
+pub(super) const ALL: [Icon; 132] = [
     Icon::New,
     Icon::Open,
     Icon::Save,
@@ -951,10 +931,7 @@ pub(super) const ALL: [Icon; 135] = [
     Icon::MixingConsole,
     Icon::BusSelect,
     Icon::Routing,
-    Icon::Mortarboard,
     Icon::Globe,
-    Icon::Code,
-    Icon::People,
     Icon::HeartBubble,
     Icon::ShapeWide,
     Icon::ShapeFull,

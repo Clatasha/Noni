@@ -2783,7 +2783,7 @@ impl Chooser {
                                         tr(&p.description)
                                     )
                                 } else if p.description.is_empty() {
-                                    trf!("{} (OFX plug-in, {}).", name, p.grouping)
+                                    trf!("{} (OFX plug-in, {}).", name, crate::ofx::group_name(&p.grouping))
                                 } else {
                                     trf!("{} (OFX plug-in): {}", name, p.description)
                                 }

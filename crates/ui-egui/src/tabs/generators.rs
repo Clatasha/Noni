@@ -153,7 +153,7 @@ impl Kind {
                 (tr("Cyan"), solid(0.0, 1.0, 1.0)),
                 (tr("Magenta"), solid(1.0, 0.0, 1.0)),
                 (tr("Orange"), solid(1.0, 0.5, 0.0)),
-                ("Banana", solid(0.97, 0.79, 0.28)),
+                (tr("Golden Yellow"), solid(0.97, 0.79, 0.28)),
                 (tr("Custom Color…"), None),
             ],
             Kind::TestPattern => vec![("SMPTE 75%", Some(Generator::ColorBars))],
@@ -173,7 +173,7 @@ impl Kind {
                 vec![
                     (tr("Sunset"), g([0.98, 0.6, 0.2], [0.35, 0.1, 0.45], 90.0)),
                     (tr("Ocean"), g([0.1, 0.7, 0.75], [0.03, 0.1, 0.3], 90.0)),
-                    ("Banana", g([1.0, 0.9, 0.4], [0.95, 0.55, 0.1], 45.0)),
+                    (tr("Warm Gold"), g([1.0, 0.9, 0.4], [0.95, 0.55, 0.1], 45.0)),
                     (tr("Grays"), g([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], 0.0)),
                     (tr("Night"), g([0.05, 0.05, 0.15], [0.2, 0.1, 0.35], 135.0)),
                 ]
@@ -439,7 +439,11 @@ fn paint_preset(
 
 pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
     let (id, icon, mut state) = if text_only {
-        ("text-library", Icon::Text, std::mem::take(&mut app.choosers.text))
+        (
+            "text-library",
+            Icon::Text,
+            std::mem::take(&mut app.choosers.text),
+        )
     } else {
         (
             "generators",
@@ -449,7 +453,10 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
     };
     let categories = categories();
     let (kinds, categories) = if text_only {
-        (&[Kind::TitlesAndText, Kind::CreditRoll][..], &categories[1..2])
+        (
+            &[Kind::TitlesAndText, Kind::CreditRoll][..],
+            &categories[1..2],
+        )
     } else {
         (&KINDS[..], &categories[..])
     };
@@ -463,10 +470,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
             if k == Kind::TestTone || k.plugin().is_some() {
                 trf!("{}: Noni, 32-bit floating point", k.name())
             } else {
-                trf!(
-                    "{}: Noni, 32-bit floating point, GPU accelerated",
-                    k.name()
-                )
+                trf!("{}: Noni, 32-bit floating point, GPU accelerated", k.name())
             },
             trf!("Description: {}", k.about()),
         ],
@@ -482,7 +486,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
                 "{}: OFX plug-in {}, group {}",
                 p.name(),
                 p.identifier,
-                p.grouping
+                crate::ofx::group_name(&p.grouping)
             ),
             trf!("Description: {}", p.description),
         ],

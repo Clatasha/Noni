@@ -315,7 +315,7 @@ fn plugins(ofx: &[std::sync::Arc<bv_ofx::PluginInfo>], packages: &[Package]) -> 
                     "{}: OFX plug-in {}, group {}",
                     name,
                     p.identifier,
-                    p.grouping
+                    crate::ofx::group_name(&p.grouping)
                 ),
                 trf!("Description: {}", p.description),
             ],

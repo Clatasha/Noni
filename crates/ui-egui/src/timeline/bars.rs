@@ -7,7 +7,7 @@ use bv_timeline::{MarkerId, Project};
 
 use super::{Layout, TimelineView};
 use crate::app::BananaApp;
-use crate::egui::{self, Align2, CursorIcon, FontId, Rect, Sense, Shape, Stroke, pos2};
+use crate::egui::{self, Align2, CursorIcon, Rect, Sense, Shape, Stroke, pos2};
 use crate::theme;
 
 pub(crate) enum BarDrag {
@@ -673,13 +673,8 @@ pub(crate) fn paint(
                 Stroke::new(1.0, theme::text_dim()),
             );
             if is_major {
-                rp.text(
-                    pos2(x + 3.0, l.ruler.top() + 2.0),
-                    Align2::LEFT_TOP,
-                    app.ruler_text(t),
-                    FontId::monospace(10.5),
-                    theme::text_dim(),
-                );
+                crate::timecode_font::layout(&rp, &app.ruler_text(t), 12.0, theme::text_dim())
+                    .paint(&rp, pos2(x + 3.0, l.ruler.top() + 1.0), theme::text_dim());
             }
             k += minor;
         }
@@ -704,11 +699,9 @@ pub(crate) fn paint(
             Stroke::new(1.0, theme::text_dim()),
         );
         if is_major {
-            rp.text(
-                pos2(x + 3.0, l.ruler.top() + 2.0),
-                Align2::LEFT_TOP,
-                app.ruler_text(t),
-                FontId::monospace(10.5),
+            crate::timecode_font::layout(&rp, &app.ruler_text(t), 12.0, theme::text_dim()).paint(
+                &rp,
+                pos2(x + 3.0, l.ruler.top() + 1.0),
                 theme::text_dim(),
             );
         }

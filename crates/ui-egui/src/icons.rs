@@ -169,13 +169,8 @@ pub enum Icon {
     MixingConsole,
     BusSelect,
     Routing,
-    /// The welcome screen: Getting Started, Language, its channels and the
-    /// shapes of a new project.
-    Mortarboard,
+    /// Home screen language and new-project shapes.
     Globe,
-    /// Source code (BananaV's GitHub).
-    Code,
-    People,
     HeartBubble,
     ShapeWide,
     ShapeFull,

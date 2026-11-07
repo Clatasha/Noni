@@ -1,11 +1,4 @@
-//! The welcome screen, laid out as VEGAS 23's (File › Welcome Screen, and
-//! when BananaV starts): New Project — a banner, the shape of the video
-//! (widescreen, fullscreen, portrait, square, scope), its resolution and
-//! frame rate, then Create Project or Advanced Settings… (Project
-//! Properties); Open Project — Browse… and the recent projects; Getting
-//! Started — BananaV's videos, site, community and social media (to come);
-//! and Language, BananaV's own, for whoever opens it the first time. "Show
-//! Welcome Screen on Startup" at the bottom.
+//! Noni home: project creation, recent projects and language selection.
 
 use bv_core::FrameRate;
 
@@ -17,47 +10,14 @@ use crate::i18n::{Language, tr};
 use crate::icons::{self, Icon};
 use crate::theme;
 
-/// The welcome screen's size, the side bar's width and the header's and
+/// The welcome screen's size and the header's and
 /// footer's heights.
-const SIZE: egui::Vec2 = vec2(830.0, 556.0);
-const SIDE_W: f32 = 100.0;
+const SIZE: egui::Vec2 = vec2(860.0, 650.0);
 const HEADER_H: f32 = 46.0;
 const FOOTER_H: f32 = 30.0;
 /// The New Project banner's height and the shape buttons'.
-const BANNER_H: f32 = 252.0;
-const SHAPE_H: f32 = 72.0;
-
-/// The pages of the side bar.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Page {
-    #[default]
-    New,
-    Open,
-    GettingStarted,
-    Language,
-}
-
-impl Page {
-    const ALL: [Page; 4] = [Page::New, Page::Open, Page::GettingStarted, Page::Language];
-
-    fn name(self) -> &'static str {
-        match self {
-            Page::New => tr("New Project"),
-            Page::Open => tr("Open Project"),
-            Page::GettingStarted => tr("Getting Started"),
-            Page::Language => tr("Language"),
-        }
-    }
-
-    fn icon(self) -> Icon {
-        match self {
-            Page::New => Icon::File,
-            Page::Open => Icon::Folder,
-            Page::GettingStarted => Icon::Mortarboard,
-            Page::Language => Icon::Globe,
-        }
-    }
-}
+const BANNER_H: f32 = 152.0;
+const SHAPE_H: f32 = 56.0;
 
 /// The shape of a new project's frame, as VEGAS's welcome screen offers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -133,95 +93,18 @@ fn rate_label(n: u32, drop_frame: bool) -> String {
     format!("{n}p ({})", crate::fmt::num(r, 3))
 }
 
-/// Getting Started's tabs: where BananaV's videos, help, community and
-/// social media will be.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Channel {
-    #[default]
-    Website,
-    GitHub,
-    Discord,
-    Donate,
-}
-
-impl Channel {
-    const ALL: [Channel; 4] = [
-        Channel::Website,
-        Channel::GitHub,
-        Channel::Discord,
-        Channel::Donate,
-    ];
-
-    /// Its tab's name (GitHub and Discord are names in every language).
-    fn name(self) -> &'static str {
-        match self {
-            Channel::Website => tr("Website"),
-            Channel::GitHub => "GitHub",
-            Channel::Discord => "Discord",
-            Channel::Donate => tr("Donate"),
-        }
-    }
-
-    fn icon(self) -> Icon {
-        match self {
-            Channel::Website => Icon::Globe,
-            Channel::GitHub => Icon::Code,
-            Channel::Discord => Icon::People,
-            Channel::Donate => Icon::HeartBubble,
-        }
-    }
-
-    /// Where it leads: a title, what is there and its address for each of
-    /// its cards — BananaV's own places; donations through Ko-fi from any
-    /// country and through PIX from Brazil.
-    fn places(self) -> Vec<(&'static str, &'static str, &'static str)> {
-        match self {
-            Channel::Website => vec![(
-                tr("Upstream website"),
-                tr("News, downloads and help."),
-                "https://bananav-editor.github.io/",
-            )],
-            Channel::GitHub => vec![(
-                tr("Noni on GitHub"),
-                tr(
-                    "Each version's downloads and what changed in it, and where to tell us about a problem.",
-                ),
-                "https://github.com/Clatasha/Noni",
-            )],
-            Channel::Discord => vec![(
-                tr("Discord community"),
-                tr("Talk with the upstream community and share your work."),
-                "https://discord.gg/vtC7Yasz98",
-            )],
-            Channel::Donate => vec![
-                (
-                    tr("Support the upstream project on Ko-fi"),
-                    tr("Support the upstream project from any country with a donation on Ko-fi."),
-                    "https://ko-fi.com/bananav",
-                ),
-                (
-                    tr("Donate with PIX"),
-                    tr("For donors in Brazil: support the upstream project through PIX."),
-                    "https://pixgg.com/Acaso",
-                ),
-            ],
-        }
-    }
-}
-
-/// The welcome screen's state: open, the page shown and the choices of a
+/// The welcome screen's state: open and the choices of a
 /// new project.
 #[derive(Debug)]
 pub struct Welcome {
     pub open: bool,
-    pub page: Page,
     shape: Shape,
     /// HD, FullHD or UHD.
     size: usize,
     /// One of [`RATES`].
     rate: usize,
     drop_frame: bool,
-    channel: Channel,
+    recent: RecentProjects,
 }
 
 impl Default for Welcome {
@@ -229,12 +112,11 @@ impl Default for Welcome {
     fn default() -> Welcome {
         Welcome {
             open: false,
-            page: Page::New,
             shape: Shape::Widescreen,
             size: 1,
             rate: 2,
             drop_frame: true,
-            channel: Channel::Website,
+            recent: RecentProjects::default(),
         }
     }
 }
@@ -242,6 +124,7 @@ impl Default for Welcome {
 impl Welcome {
     pub fn show(&mut self, ctx: &egui::Context, app: &mut BananaApp) {
         if !self.open {
+            self.recent.paths.clear();
             return;
         }
         let mut open = true;
@@ -271,41 +154,57 @@ impl Welcome {
             pos2(rect.left(), header.bottom()),
             pos2(rect.right(), rect.bottom() - FOOTER_H),
         );
-        // The side bar.
-        let side = Rect::from_min_size(body.min, vec2(SIDE_W, body.height()));
-        painter.rect_filled(side, 0.0, theme::bg());
-        for (i, page) in Page::ALL.into_iter().enumerate() {
-            let r = Rect::from_min_size(
-                pos2(side.left() + 4.0, side.top() + 4.0 + i as f32 * 80.0),
-                vec2(SIDE_W - 8.0, 76.0),
-            );
-            if tile(ui, r, page.icon(), page.name(), self.page == page, 30.0).clicked() {
-                self.page = page;
-            }
+        let content = body.shrink2(vec2(8.0, 0.0));
+        let create = Rect::from_min_size(content.min, vec2(content.width(), 360.0));
+        let mut action = self.new_page(ui, create);
+        let recent = Rect::from_min_max(pos2(content.left(), create.bottom() + 6.0), content.max);
+        if let Some(open) = self.recent.ui(ui, app, recent) {
+            action = Some(open);
         }
-        let content = Rect::from_min_max(pos2(side.right() + 6.0, body.top()), body.max);
-        let action = match self.page {
-            Page::New => self.new_page(ui, content),
-            Page::Open => open_page(ui, app, content),
-            Page::GettingStarted => {
-                self.getting_started(ui, content);
-                None
-            }
-            Page::Language => {
-                language_page(ui, app, content);
-                None
-            }
-        };
         // "Show Welcome Screen on Startup".
         let footer = Rect::from_min_max(pos2(rect.left() + 8.0, body.bottom()), rect.max);
         ui.scope_builder(UiBuilder::new().max_rect(footer), |ui| {
             ui.add_space(6.0);
-            let mut on = app.settings.show_welcome;
-            if crate::widgets::checkbox(ui, &mut on, tr("Show Welcome Screen on Startup")).changed()
-            {
-                app.settings.show_welcome = on;
-                let _ = app.settings.save();
-            }
+            ui.horizontal(|ui| {
+                let mut on = app.settings.show_welcome;
+                if crate::widgets::checkbox(ui, &mut on, tr("Show Welcome Screen on Startup"))
+                    .changed()
+                {
+                    app.settings.show_welcome = on;
+                    let _ = app.settings.save();
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let menu = ui.menu_button("     ", |ui| {
+                        ui.set_min_width(180.0);
+                        for &language in Language::ALL {
+                            if ui
+                                .selectable_label(
+                                    crate::i18n::language() == language,
+                                    language.native_name(),
+                                )
+                                .clicked()
+                            {
+                                app.set_language(language);
+                                let _ = app.settings.save();
+                                ui.close();
+                            }
+                        }
+                    });
+                    icons::paint(
+                        ui.painter(),
+                        menu.response.rect.shrink(3.0),
+                        Icon::Globe,
+                        theme::text(),
+                    );
+                    menu.response.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tr("Language"))
+                    });
+                    menu.response.on_hover_text(tr("Language"));
+                    if ui.button(tr("Open Project")).clicked() {
+                        action = Some(Pending::Open);
+                    }
+                });
+            });
         });
         action
     }
@@ -434,259 +333,209 @@ impl Welcome {
         );
         action
     }
+}
 
-    /// Getting Started: the place of the chosen tab over BananaV's own
-    /// backdrop, the tabs under it.
-    fn getting_started(&mut self, ui: &mut egui::Ui, content: Rect) {
-        let painter = ui.painter_at(content);
-        let tabs_h = 76.0;
-        let art = Rect::from_min_max(
-            content.min,
-            pos2(content.right(), content.bottom() - tabs_h),
-        );
-        paint_backdrop(&painter.with_clip_rect(art), art);
-        // The place's cards, side by side: a click opens one in the browser.
-        let places = self.channel.places();
-        let size = vec2(330.0, 210.0);
-        let gap = 16.0;
-        let n = places.len() as f32;
-        let left = art.center().x - (n * size.x + (n - 1.0) * gap) / 2.0;
-        for (i, (title, about, url)) in places.into_iter().enumerate() {
-            let card = Rect::from_min_size(
-                pos2(
-                    left + i as f32 * (size.x + gap),
-                    art.center().y - size.y / 2.0,
-                ),
-                size,
-            );
-            place_card(ui, &painter, card, self.channel.icon(), [title, about, url]);
+/// Metadata is read off the UI thread. The engine's existing thumbnail queue
+/// decodes the first used picture; missing, audio-only and legacy projects
+/// keep a placeholder and remain openable through the usual unsaved guard.
+#[derive(Debug, Default)]
+struct RecentProjects {
+    paths: Vec<std::path::PathBuf>,
+    pictures:
+        std::collections::HashMap<std::path::PathBuf, (bv_timeline::MediaInfo, bv_core::Tick)>,
+    loading: Option<std::sync::mpsc::Receiver<Vec<RecentPicture>>>,
+}
+
+type RecentPicture = (std::path::PathBuf, bv_timeline::MediaInfo, bv_core::Tick);
+
+impl RecentProjects {
+    fn ui(&mut self, ui: &mut egui::Ui, app: &mut BananaApp, content: Rect) -> Option<Pending> {
+        if self.paths != app.settings.recent {
+            self.paths = app.settings.recent.clone();
+            self.pictures.clear();
+            let paths = self.paths.clone();
+            let ctx = ui.ctx().clone();
+            let (send, receive) = std::sync::mpsc::sync_channel(1);
+            self.loading = std::thread::Builder::new()
+                .name("noni-recent-projects".into())
+                .spawn(move || {
+                    let pictures = paths
+                        .iter()
+                        .filter_map(|path| recent_picture(path))
+                        .collect();
+                    let _ = send.send(pictures);
+                    ctx.request_repaint();
+                })
+                .ok()
+                .map(|_| receive);
         }
-        // The tabs.
-        let tabs = Rect::from_min_max(pos2(content.left(), art.bottom()), content.max);
-        painter.rect_filled(tabs, 0.0, theme::panel());
-        let w = tabs.width() / Channel::ALL.len() as f32;
-        for (i, channel) in Channel::ALL.into_iter().enumerate() {
-            let r = Rect::from_min_size(
-                pos2(tabs.left() + i as f32 * w + 2.0, tabs.top() + 4.0),
-                vec2(w - 4.0, tabs_h - 8.0),
-            );
-            if tile(
-                ui,
-                r,
-                channel.icon(),
-                channel.name(),
-                self.channel == channel,
-                26.0,
-            )
-            .clicked()
-            {
-                self.channel = channel;
+        if let Some(receiver) = &self.loading {
+            match receiver.try_recv() {
+                Ok(pictures) => {
+                    self.pictures = pictures
+                        .into_iter()
+                        .map(|(path, info, at)| (path, (info, at)))
+                        .collect();
+                    self.loading = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.loading = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
             }
         }
-    }
-}
-
-/// A Getting Started card: its picture with the icon, its title, what is
-/// there and its address, shortened; a click opens the address in the
-/// browser.
-fn place_card(
-    ui: &mut egui::Ui,
-    painter: &egui::Painter,
-    card: Rect,
-    icon: Icon,
-    [title, about, url]: [&str; 3],
-) {
-    let resp = ui.interact(
-        card,
-        ui.id().with(("boas-vindas-lugar", title)),
-        Sense::click(),
-    );
-    let lit = resp.hovered();
-    if lit {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    painter.rect_filled(
-        card,
-        6.0,
-        if lit {
-            Color32::from_rgba_unmultiplied(0x30, 0x30, 0x34, 235)
-        } else {
-            Color32::from_rgba_unmultiplied(0x1C, 0x1C, 0x20, 225)
-        },
-    );
-    let picture = Rect::from_min_size(card.min, vec2(card.width(), 112.0));
-    gradient(
-        painter,
-        picture,
-        [
-            Color32::from_rgb(0x2A, 0x33, 0x5C),
-            Color32::from_rgb(0x5A, 0x2E, 0x6E),
-            Color32::from_rgb(0x8A, 0x4A, 0x3A),
-            Color32::from_rgb(0x2E, 0x26, 0x4A),
-        ],
-    );
-    icons::paint(
-        painter,
-        Rect::from_center_size(picture.center(), vec2(54.0, 54.0)),
-        icon,
-        Color32::WHITE,
-    );
-    let text_x = card.left() + 14.0;
-    painter.text(
-        pos2(text_x, picture.bottom() + 12.0),
-        Align2::LEFT_TOP,
-        title,
-        FontId::proportional(15.0),
-        theme::text_strong(),
-    );
-    let wrap = card.width() - 28.0;
-    let galley = painter.layout(
-        about.to_string(),
-        FontId::proportional(12.0),
-        theme::text_dim(),
-        wrap,
-    );
-    painter.galley(
-        pos2(text_x, picture.bottom() + 34.0),
-        galley,
-        theme::text_dim(),
-    );
-    let shown = url.trim_start_matches("https://").trim_end_matches('/');
-    painter.text(
-        pos2(text_x, card.bottom() - 12.0),
-        Align2::LEFT_BOTTOM,
-        shown,
-        FontId::proportional(12.0),
-        theme::banana(),
-    );
-    if resp.clicked() {
-        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-    }
-}
-
-/// Open Project: Browse… and the recent projects (the last one first).
-fn open_page(ui: &mut egui::Ui, app: &BananaApp, content: Rect) -> Option<Pending> {
-    ui.painter_at(content)
-        .rect_filled(content, 0.0, theme::panel());
-    let mut action = None;
-    ui.scope_builder(
-        UiBuilder::new().max_rect(content.shrink2(vec2(14.0, 10.0))),
-        |ui| {
-            ui.label(RichText::new(tr("Open existing project")).strong());
-            if ui
-                .add_sized([128.0, 22.0], egui::Button::new(tr("Browse…")))
-                .clicked()
-            {
-                action = Some(Pending::Open);
-            }
-            ui.add_space(10.0);
-            let recent = &app.settings.recent;
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(tr("Open a recent project:")).strong());
-                ui.add_space(12.0);
-                match recent.first() {
-                    Some(path) => {
-                        if link(ui, tr("Last opened"), path).clicked() {
-                            action = Some(Pending::OpenPath(path.clone()));
-                        }
-                    }
-                    None => {
-                        ui.label(RichText::new(tr("Last opened")).color(theme::text_disabled()));
-                    }
-                }
-            });
-            // The others under it, by name.
-            ui.add_space(4.0);
-            for path in recent.iter().skip(1) {
-                let name = path.file_stem().map_or_else(
-                    || path.display().to_string(),
-                    |n| n.to_string_lossy().to_string(),
+        let mut action = None;
+        ui.scope_builder(UiBuilder::new().max_rect(content), |ui| {
+            ui.label(RichText::new(tr("Recent Projects")).strong());
+            if self.paths.is_empty() {
+                ui.label(
+                    RichText::new(tr("Your recent projects will appear here."))
+                        .color(theme::text_dim()),
                 );
-                ui.horizontal(|ui| {
-                    ui.add_space(4.0);
-                    if link(ui, &name, path).clicked() {
-                        action = Some(Pending::OpenPath(path.clone()));
-                    }
-                });
+                return;
             }
-        },
-    );
-    action
-}
-
-/// Language: the interface's languages by their own names; the one picked
-/// is used at once (Options › Preferences › Language changes it later).
-fn language_page(ui: &mut egui::Ui, app: &mut BananaApp, content: Rect) {
-    ui.painter_at(content)
-        .rect_filled(content, 0.0, theme::panel());
-    ui.scope_builder(
-        UiBuilder::new().max_rect(content.shrink2(vec2(14.0, 10.0))),
-        |ui| {
-            ui.label(RichText::new(tr("Language")).strong().size(15.0));
-            ui.add_space(2.0);
-            ui.label(
-                RichText::new(tr(
-                    "Choose the language of Noni's interface. You can change it later in Options › Preferences › Language.",
-                ))
-                .color(theme::text_dim()),
-            );
-            ui.add_space(10.0);
-            let current = crate::i18n::language();
-            for &lang in Language::ALL {
-                let (r, resp) = ui.allocate_exact_size(vec2(320.0, 48.0), Sense::click());
-                let on = lang == current;
-                let fill = if on {
-                    theme::selection()
-                } else if resp.hovered() {
-                    theme::hover()
-                } else {
-                    theme::panel_dark()
-                };
-                ui.painter().rect_filled(r, 4.0, fill);
-                ui.painter().text(
-                    pos2(r.left() + 16.0, r.center().y),
-                    Align2::LEFT_CENTER,
-                    lang.native_name(),
-                    FontId::proportional(16.0),
-                    if on { Color32::WHITE } else { theme::text() },
-                );
-                if on {
-                    // A check mark at its right end.
-                    let c = pos2(r.right() - 22.0, r.center().y);
-                    ui.painter().add(egui::Shape::line(
-                        vec![c + vec2(-6.0, 0.0), c + vec2(-2.0, 4.0), c + vec2(6.0, -5.0)],
-                        Stroke::new(2.0, Color32::WHITE),
-                    ));
-                }
-                resp.widget_info(|| {
-                    egui::WidgetInfo::selected(egui::WidgetType::RadioButton, true, on, lang.native_name())
+            egui::ScrollArea::vertical()
+                .id_salt("noni-recent-projects")
+                .max_height(188.0)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let width = (ui.available_width() - 24.0) / 4.0;
+                    egui::Grid::new("noni-recent-cards")
+                        .num_columns(4)
+                        .spacing(vec2(8.0, 8.0))
+                        .show(ui, |ui| {
+                            for (index, path) in self.paths.iter().enumerate() {
+                                let (card, response) =
+                                    ui.allocate_exact_size(vec2(width, 90.0), Sense::click());
+                                let painter = ui.painter_at(card);
+                                painter.rect_filled(
+                                    card,
+                                    4.0,
+                                    if response.hovered() {
+                                        theme::hover()
+                                    } else {
+                                        theme::panel()
+                                    },
+                                );
+                                let picture = Rect::from_min_max(
+                                    card.min + vec2(4.0, 4.0),
+                                    pos2(card.right() - 4.0, card.bottom() - 24.0),
+                                );
+                                let thumbnail = self
+                                    .pictures
+                                    .get(path)
+                                    .and_then(|(info, at)| app.engine.thumbnail(info, *at, 96));
+                                if let Some(thumbnail) = thumbnail {
+                                    let texture = app.textures.get(ui.ctx(), &thumbnail);
+                                    let scale = (picture.width() / thumbnail.width as f32)
+                                        .min(picture.height() / thumbnail.height as f32);
+                                    let image = Rect::from_center_size(
+                                        picture.center(),
+                                        vec2(
+                                            thumbnail.width as f32 * scale,
+                                            thumbnail.height as f32 * scale,
+                                        ),
+                                    );
+                                    painter.image(
+                                        texture,
+                                        image,
+                                        Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
+                                        Color32::WHITE,
+                                    );
+                                } else {
+                                    icons::paint(
+                                        &painter,
+                                        Rect::from_center_size(picture.center(), vec2(30.0, 30.0)),
+                                        Icon::File,
+                                        theme::text_dim(),
+                                    );
+                                }
+                                let name = path
+                                    .file_stem()
+                                    .unwrap_or(path.as_os_str())
+                                    .to_string_lossy();
+                                let label = painter.layout_no_wrap(
+                                    name.into_owned(),
+                                    FontId::proportional(12.0),
+                                    theme::text(),
+                                );
+                                let label_painter = painter.with_clip_rect(Rect::from_min_max(
+                                    pos2(card.left() + 6.0, picture.bottom()),
+                                    card.max - vec2(6.0, 0.0),
+                                ));
+                                label_painter.galley(
+                                    pos2(card.left() + 6.0, card.bottom() - 20.0),
+                                    label,
+                                    theme::text(),
+                                );
+                                response.widget_info(|| {
+                                    egui::WidgetInfo::labeled(
+                                        egui::WidgetType::Button,
+                                        true,
+                                        path.file_stem()
+                                            .unwrap_or(path.as_os_str())
+                                            .to_string_lossy(),
+                                    )
+                                });
+                                if response.on_hover_text(path.display().to_string()).clicked() {
+                                    action = Some(Pending::OpenPath(path.clone()));
+                                }
+                                if index % 4 == 3 {
+                                    ui.end_row();
+                                }
+                            }
+                        });
                 });
-                if resp.clicked() && !on {
-                    app.set_language(lang);
-                    let _ = app.settings.save();
-                }
-                ui.add_space(6.0);
-            }
-        },
-    );
+        });
+        action
+    }
 }
 
-/// A link (underlined, as VEGAS's), the file's path in its tip.
-fn link(ui: &mut egui::Ui, text: &str, path: &std::path::Path) -> egui::Response {
-    ui.add(
-        egui::Label::new(
-            RichText::new(text)
-                .underline()
-                .strong()
-                .color(theme::text_strong()),
-        )
-        .sense(Sense::click()),
-    )
-    .on_hover_cursor(egui::CursorIcon::PointingHand)
-    .on_hover_text(path.display().to_string())
+fn recent_picture(path: &std::path::Path) -> Option<RecentPicture> {
+    use std::io::Read;
+    const MAX_BYTES: u64 = 16 * 1024 * 1024;
+    let file = std::fs::File::open(path).ok()?;
+    if file.metadata().ok()?.len() > MAX_BYTES {
+        return None;
+    }
+    let mut json = String::new();
+    file.take(MAX_BYTES + 1).read_to_string(&mut json).ok()?;
+    if json.len() as u64 > MAX_BYTES {
+        return None;
+    }
+    let project = bv_timeline::Project::from_json(&json).ok()?;
+    let (mut info, at) = project
+        .tracks
+        .iter()
+        .flat_map(|track| &track.clips)
+        .filter_map(|clip| {
+            project
+                .media(clip.media)
+                .filter(|info| info.video.is_some())
+                .map(|info| (clip, info))
+        })
+        .min_by_key(|(clip, _)| clip.start)
+        .map(|(clip, info)| (info.clone(), clip.source_in))
+        .or_else(|| {
+            project
+                .media
+                .iter()
+                .find(|info| info.video.is_some())
+                .cloned()
+                .map(|info| (info, bv_core::Tick::ZERO))
+        })?;
+    if let bv_timeline::MediaSource::File { path: source } = &mut info.source {
+        let source_path = std::path::Path::new(source);
+        if source_path.is_relative() {
+            *source = path
+                .parent()?
+                .join(source_path)
+                .to_string_lossy()
+                .into_owned();
+        }
+    }
+    Some((path.to_path_buf(), info, at))
 }
 
-/// A button of the side bar, the shapes or Getting Started's tabs: its
+/// A shape button: its
 /// icon over its name, blue when chosen.
 fn tile(
     ui: &mut egui::Ui,
@@ -724,7 +573,7 @@ fn tile(
     resp
 }
 
-/// BananaV's logo and its name, centered on `center`.
+/// Noni's logo and its name, centered on `center`.
 fn paint_logo(painter: &egui::Painter, center: Pos2, icon: f32, text: f32, color: Color32) {
     let galley = painter.layout_no_wrap("Noni".to_string(), FontId::proportional(text), color);
     let width = icon + 8.0 + galley.size().x;
@@ -774,7 +623,7 @@ fn glow(painter: &egui::Painter, center: Pos2, radius: f32, color: Color32, stre
     }
 }
 
-/// The New Project banner, BananaV's own: a dusk sky, warm lights, a
+/// The New Project banner, Noni's own: a dusk sky, warm lights, a
 /// timeline's events rising to the right and the logo.
 fn paint_banner(painter: &egui::Painter, r: Rect) {
     gradient(
@@ -864,53 +713,121 @@ fn paint_banner(painter: &egui::Painter, r: Rect) {
     );
 }
 
-/// Getting Started's backdrop, BananaV's own: a dark sky with warm and
-/// cold lights.
-fn paint_backdrop(painter: &egui::Painter, r: Rect) {
-    gradient(
-        painter,
-        r,
-        [
-            Color32::from_rgb(0x1A, 0x1C, 0x30),
-            Color32::from_rgb(0x3A, 0x1F, 0x48),
-            Color32::from_rgb(0x5A, 0x2A, 0x2E),
-            Color32::from_rgb(0x16, 0x18, 0x28),
-        ],
-    );
-    glow(
-        painter,
-        r.right_top() + vec2(-140.0, 90.0),
-        220.0,
-        Color32::from_rgb(0xFF, 0x7A, 0x50),
-        0.3,
-    );
-    glow(
-        painter,
-        r.left_bottom() + vec2(130.0, -70.0),
-        200.0,
-        Color32::from_rgb(0x50, 0x70, 0xFF),
-        0.25,
-    );
-}
-
 impl BananaApp {
     /// The welcome screen open on `page` ("closed": not shown, whatever
     /// the user's settings say), for screen tests.
     pub fn welcome_for_review(&mut self, page: &str) {
         let w = &mut self.menu_dialogs.welcome;
         w.open = page != "closed";
-        w.page = match page {
-            "open" => Page::Open,
-            "getting started" => Page::GettingStarted,
-            "language" => Page::Language,
-            _ => Page::New,
-        };
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn home_buttons_return_guarded_project_actions() {
+        use egui_kittest::kittest::Queryable;
+        let mut app = BananaApp::new(egui::Context::default());
+        app.settings.recent = vec![std::path::PathBuf::from("/missing/Recent edit.noniproj")];
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(vec2(900.0, 700.0))
+            .build_ui_state(
+                |ui, (app, welcome, action): &mut (BananaApp, Welcome, Option<Pending>)| {
+                    if let Some(pending) = welcome.ui(ui, app) {
+                        *action = Some(pending);
+                    }
+                },
+                (app, Welcome::default(), None),
+            );
+        harness.get_by_label("Open Project").click();
+        harness.run();
+        assert!(matches!(harness.state_mut().2.take(), Some(Pending::Open)));
+        harness.get_by_label("Recent edit").click();
+        harness.run();
+        assert!(
+            matches!(harness.state_mut().2.take(), Some(Pending::OpenPath(path)) if path.ends_with("Recent edit.noniproj"))
+        );
+        harness.get_by_label("Create Project").click();
+        harness.run();
+        assert!(matches!(
+            harness.state_mut().2.take(),
+            Some(Pending::NewSized {
+                width: 1920,
+                height: 1080,
+                advanced: false,
+                ..
+            })
+        ));
+        harness.get_by_label("Advanced Settings…").click();
+        harness.run();
+        assert!(matches!(
+            harness.state_mut().2.take(),
+            Some(Pending::NewSized { advanced: true, .. })
+        ));
+    }
+
+    #[test]
+    fn home_layout_review() {
+        let mut app = BananaApp::new(egui::Context::default());
+        let mut welcome = Welcome::default();
+        crate::patch_review::capture("home-empty", vec2(900.0, 700.0), |ui| {
+            welcome.ui(ui, &mut app);
+        });
+        app.settings.recent = (1..=12)
+            .map(|n| std::path::PathBuf::from(format!("/missing/Project {n}.noniproj")))
+            .collect();
+        crate::patch_review::capture("home-recent", vec2(900.0, 700.0), |ui| {
+            welcome.ui(ui, &mut app);
+        });
+    }
+
+    #[test]
+    fn recent_thumbnail_metadata_handles_bad_files_and_resolves_sources() {
+        let dir = std::env::temp_dir().join(format!("noni-home-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("project.noniproj");
+        assert!(recent_picture(&path).is_none());
+        std::fs::write(&path, "broken project").unwrap();
+        assert!(recent_picture(&path).is_none());
+        let mut app = BananaApp::new(egui::Context::default());
+        app.load_demo();
+        let mut project = app.project().clone();
+        let first = project
+            .tracks
+            .iter()
+            .flat_map(|track| &track.clips)
+            .find(|clip| {
+                project
+                    .media(clip.media)
+                    .is_some_and(|info| info.video.is_some())
+            })
+            .unwrap()
+            .clone();
+        let info = project
+            .media
+            .iter_mut()
+            .find(|info| info.id == first.media)
+            .unwrap();
+        info.source = bv_timeline::MediaSource::File {
+            path: "clip.mp4".into(),
+        };
+        std::fs::write(&path, project.to_json()).unwrap();
+        let (_, info, at) = recent_picture(&path).unwrap();
+        assert_eq!(at, first.source_in);
+        assert_eq!(
+            info.source,
+            bv_timeline::MediaSource::File {
+                path: dir.join("clip.mp4").to_string_lossy().into_owned()
+            }
+        );
+        project.tracks.clear();
+        project.media.clear();
+        std::fs::write(&path, project.to_json()).unwrap();
+        assert!(recent_picture(&path).is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn the_shapes_offer_vegas_sizes_and_rates() {

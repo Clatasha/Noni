@@ -95,7 +95,9 @@ fn paint_group(ui: &mut egui::Ui, app: &mut BananaApp, room: Rect, id: &str, but
 }
 
 fn listening_volume(ui: &mut egui::Ui, app: &mut BananaApp, rect: Rect) {
-    let response = ui.put(rect.shrink2(vec2(1.0, 3.0)), egui::Button::new(""));
+    let response = ui
+        .put(rect.shrink2(vec2(1.0, 3.0)), egui::Button::new(""))
+        .on_hover_text(tr("Volume"));
     crate::icons::paint(
         ui.painter(),
         rect.shrink2(vec2(3.0, 5.0)),
@@ -116,12 +118,11 @@ fn listening_volume(ui: &mut egui::Ui, app: &mut BananaApp, rect: Rect) {
         .fade_in(false)
         .movable(false)
         .constrain(true)
-        .fixed_pos(pos2(rect.center().x - 70.0, rect.top() - 230.0))
+        .fixed_pos(pos2(rect.center().x - 30.0, rect.top() - 204.0))
         .show(ui.ctx(), |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
-                ui.set_width(128.0);
+                ui.set_width(44.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(tr("Listening Volume"));
                     ui.spacing_mut().slider_width = 164.0;
                     let (fader, _) = ui.allocate_exact_size(vec2(26.0, 164.0), Sense::hover());
                     let mut slider = ui.new_child(

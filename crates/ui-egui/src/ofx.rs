@@ -3424,6 +3424,17 @@ pub fn overlay_ui(ui: &Ui, app: &mut BananaApp, nav: &egui::Response, frame: Rec
     paint_marks(&painter, &drawn.marks, to_screen);
 }
 
+/// Display branding for built-in groups, retaining their stored OFX identities.
+pub(crate) fn group_name(group: &str) -> std::borrow::Cow<'_, str> {
+    if group == "BananaV" {
+        "Noni".into()
+    } else if let Some(rest) = group.strip_prefix("BananaV/") {
+        format!("Noni/{rest}").into()
+    } else {
+        group.into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

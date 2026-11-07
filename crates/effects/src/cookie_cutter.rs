@@ -438,7 +438,7 @@ fn describe_in_context(fx: Fx) {
     p.set_int(kOfxParamPropEnabled, 0);
     p.set_str(
         kOfxParamPropHint,
-        c"The left and right eyes' views apart, in stereoscopic 3D projects (coming to BananaV).",
+        c"The left and right eyes' views apart, in stereoscopic 3D projects (coming to Noni).",
     );
 }
 

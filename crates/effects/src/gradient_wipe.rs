@@ -480,7 +480,7 @@ fn describe_in_context(fx: Fx) {
     p.set_int(kOfxParamPropDefault, 1);
     p.set_str(
         kOfxParamPropHint,
-        c"The gradient: the image Search… picked, or one of BananaV's shapes.",
+        c"The gradient: the image Search… picked, or one of Noni's shapes.",
     );
     let p = fx.define_param(kOfxParamTypePushButton, SEARCH, c"Search…");
     p.set_str(kBananaVParamPropPicture, c"File");

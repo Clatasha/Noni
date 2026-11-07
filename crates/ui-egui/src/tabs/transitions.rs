@@ -410,10 +410,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         category: k.category(),
         ready: true,
         about: [
-            trf!(
-                "{}: Noni, 32-bit floating point, GPU accelerated",
-                k.name()
-            ),
+            trf!("{}: Noni, 32-bit floating point, GPU accelerated", k.name()),
             trf!("Description: {}", k.about()),
         ],
         provider: None,
@@ -442,7 +439,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                 "{}: OFX plug-in {}, group {}",
                 p.name(),
                 p.identifier,
-                p.grouping
+                crate::ofx::group_name(&p.grouping)
             ),
             trf!("Description: {}", p.description),
         ],

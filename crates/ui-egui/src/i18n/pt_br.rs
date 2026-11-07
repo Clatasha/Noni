@@ -1746,10 +1746,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Choose its MIDI ports", "Escolha as portas MIDI dele"),
     (
-        "Choose the language of Noni's interface. You can change it later in Options › Preferences › Language.",
-        "Escolha o idioma da interface do Noni. Você pode mudá-lo depois em Opções › Preferências › Idioma.",
-    ),
-    (
         "Choose the MIDI input for timecode in Options › Preferences › Sync.",
         "Escolha a entrada MIDI do código de tempo em Opções › Preferências › Sincronização.",
     ),
@@ -2827,7 +2823,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Disc-at-Once Audio CD…", "CD de áudio Disc-at-Once…"),
     ("Disc:", "Disco:"),
     ("Discard", "Descartar"),
-    ("Discord community", "Comunidade no Discord"),
     ("Disk usage:", "Uso do disco:"),
     ("Displacement Map", "Displacement Map"),
     ("Display", "Exibição"),
@@ -2886,7 +2881,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Don't Show Waveforms", "Não mostrar formas de onda"),
     ("Donate", "Doação"),
-    ("Donate with PIX", "Doe com PIX"),
     ("Done", "Concluído"),
     ("Doom Screen", "Tela derretendo"),
     ("Doorway", "Portas"),
@@ -3129,10 +3123,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Each pixel worked out from its neighbours by a matrix of weights: blurs, embossing, sharpening.",
         "Cada pixel calculado a partir dos vizinhos por uma matriz de pesos: desfoques, relevo, nitidez.",
-    ),
-    (
-        "Each version's downloads and what changed in it, and where to tell us about a problem.",
-        "Os downloads de cada versão e o que mudou nela, e onde nos contar um problema.",
     ),
     ("Ear Sugar", "Açúcar para os ouvidos"),
     ("Early out", "Saída das primeiras reflexões"),
@@ -3783,10 +3773,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Segue o objeto mascarado a partir do cursor, criando quadros-chave da posição da máscara (e do ângulo e do tamanho, como diz o Modo).",
     ),
     ("Font", "Fonte"),
-    (
-        "For donors in Brazil: support the upstream project through PIX.",
-        "Para doadores no Brasil: apoie o projeto original via PIX.",
-    ),
     ("Foreground", "Primeiro plano"),
     (
         "Foreground Left, No Shadow",
@@ -4004,6 +3990,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Go To…", "Ir para tempo…"),
     ("Golden Hour", "Hora dourada"),
+    ("Golden Yellow", "Amarelo dourado"),
     ("Good", "Boa"),
     (
         "GPU acceleration of video processing:",
@@ -5517,7 +5504,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Large Title", "Título grande"),
     ("Last image:", "Última imagem:"),
     ("Last Keyframe", "Último quadro-chave"),
-    ("Last opened", "Último aberto"),
     ("Latch", "Trava"),
     ("Lateral", "Lateral"),
     (
@@ -6558,7 +6544,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Novos quadros-chave de movimento de vídeo:",
     ),
     ("New Video Track", "Nova trilha de vídeo"),
-    ("News, downloads and help.", "Novidades, downloads e ajuda."),
     ("Newspaper", "Jornal"),
     ("Newspaper Zoomed", "Jornal com zoom"),
     ("Newsprint", "Impressão de jornal"),
@@ -6733,7 +6718,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Noni now opens its project files (.noniproj).",
         "Agora o Noni abre os seus arquivos de projeto (.noniproj).",
     ),
-    ("Noni on GitHub", "Noni no GitHub"),
     ("Noni Preferences", "Preferências do Noni"),
     ("Noni Preferences.json", "Preferências Noni.json"),
     ("Noni Project", "Projeto Noni"),
@@ -6905,7 +6889,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Opacity 5", "Opacidade 5"),
     ("Opacity is {} %", "Opacidade: {} %"),
     ("Open", "Abrir"),
-    ("Open a recent project:", "Abrir um projeto recente:"),
     (
         "Open Copy in Audio Editor",
         "Abrir cópia no editor de áudio",
@@ -6919,7 +6902,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Open editor when new loudness log is generated",
         "Abrir o editor quando um novo log de loudness for gerado",
     ),
-    ("Open existing project", "Abrir projeto existente"),
     ("Open Folder", "Abrir pasta"),
     (
         "Open folder when rendering is complete",
@@ -7578,6 +7560,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Rebuild Offline Nested Audio",
         "Reconstruir áudio aninhado offline",
     ),
+    ("Recent Projects", "Projetos recentes"),
     (
         "Recently used project list:",
         "Lista de projetos usados recentemente:",
@@ -9315,14 +9298,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Sunday", "domingo"),
     ("Sunset", "Pôr do sol"),
     ("Supersampling", "Superamostragem"),
-    (
-        "Support the upstream project from any country with a donation on Ko-fi.",
-        "Apoie o projeto original de qualquer país com uma doação no Ko-fi.",
-    ),
-    (
-        "Support the upstream project on Ko-fi",
-        "Apoie o projeto original no Ko-fi",
-    ),
     ("Suppression", "Supressão"),
     ("Surround / Ext Monitor", "Surround / Monitor externo"),
     ("Surround Master", "Surround mestre"),
@@ -9494,10 +9469,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Takes the target image from the picture at the cursor, as it is before this effect.",
         "Pega a imagem de destino da imagem no cursor, como ela é antes deste efeito.",
-    ),
-    (
-        "Talk with the upstream community and share your work.",
-        "Converse com a comunidade do projeto original e compartilhe seu trabalho.",
     ),
     (
         "Talkback Drum Treatment",
@@ -9964,8 +9935,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "A metade de cima do gradiente refletida embaixo.",
     ),
     (
-        "The gradient: the image Search… picked, or one of BananaV's shapes.",
-        "O gradiente: a imagem escolhida em Procurar… ou uma das formas do BananaV.",
+        "The gradient: the image Search… picked, or one of Noni's shapes.",
+        "O gradiente: a imagem escolhida em Procurar… ou uma das formas do Noni.",
     ),
     (
         "The graphics card failed ({}); the processor composites video.",
@@ -10020,8 +9991,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "A menor saturação escolhida (162: a do vermelho puro).",
     ),
     (
-        "The left and right eyes' views apart, in stereoscopic 3D projects (coming to BananaV).",
-        "O afastamento entre as imagens do olho esquerdo e do direito, em projetos 3D estereoscópicos (em breve no BananaV).",
+        "The left and right eyes' views apart, in stereoscopic 3D projects (coming to Noni).",
+        "O afastamento entre as imagens do olho esquerdo e do direito, em projetos 3D estereoscópicos (em breve no Noni).",
     ),
     ("The left edge bent.", "A borda esquerda curvada."),
     (
@@ -11562,7 +11533,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Upper-Right Glow", "Brilho superior direito"),
     ("Upside Down", "De cabeça para baixo"),
-    ("Upstream website", "Site do projeto original"),
     (
         "Use All Streams and Channels",
         "Usar todos os fluxos e canais",
@@ -11927,6 +11897,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Warm", "Quente"),
     ("Warm Ambience", "Ambiente quente"),
     ("Warm Colors", "Cores quentes"),
+    ("Warm Gold", "Dourado quente"),
     ("Warm Light", "Luz quente"),
     ("Warm Space", "Espaço quente"),
     ("Warm Summer", "Verão quente"),
@@ -11957,7 +11928,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Weak Proportional", "Proporcional fraco"),
     ("Weak Radial", "Radial fraco"),
     ("Web & Streaming", "Web e streaming"),
-    ("Website", "Site"),
     ("Wednesday", "quarta-feira"),
     ("Weird 1", "Estranho 1"),
     ("Welcome Screen", "Tela de boas-vindas"),
@@ -12337,6 +12307,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Your graphics card is not compatible with GL Transitions.",
         "Sua placa de vídeo não é compatível com as Transições GL.",
+    ),
+    (
+        "Your recent projects will appear here.",
+        "Seus projetos recentes aparecerão aqui.",
     ),
     (
         "Your video card (or driver) cannot perform this GL transition.",
