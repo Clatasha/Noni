@@ -1,0 +1,8 @@
+asset:        Oswald-Medium.ttf
+title:        Oswald Medium for the timeline time display
+author:       The Oswald Project Authors
+source:       https://github.com/google/fonts/tree/main/ofl/oswald
+license:      OFL-1.1
+license-file: crates/ui-egui/assets/fonts/Oswald-OFL.txt
+added:        2026-11-07 by Clatasha
+notes:        Static weight 500 instance of Oswald[wght].ttf made with fontTools.varLib.instancer. Name-table style set to Medium. Full glyph coverage retained. Upstream SHA-256: 5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817. Original copyright and license preserved. No Reserved Font Name is declared in the upstream license.

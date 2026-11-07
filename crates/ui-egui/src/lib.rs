@@ -95,6 +95,7 @@ mod sync;
 mod tabs;
 mod takes;
 mod theme;
+mod timecode_font;
 mod timefmt;
 mod timeline;
 mod title_bar;
@@ -127,8 +128,7 @@ pub use eframe::egui;
 /// Wayland's own windows all the same.
 #[cfg(target_os = "linux")]
 fn event_loop_builder() -> Option<eframe::EventLoopBuilderHook> {
-    let x11 =
-        std::env::var_os("DISPLAY").is_some() && std::env::var_os("NONI_WAYLAND").is_none();
+    let x11 = std::env::var_os("DISPLAY").is_some() && std::env::var_os("NONI_WAYLAND").is_none();
     x11.then(|| -> eframe::EventLoopBuilderHook {
         Box::new(|builder| {
             use winit::platform::x11::EventLoopBuilderExtX11;

@@ -94,6 +94,9 @@ pub struct DirectNvenc {
     // Drop the session before its registered textures and device.
     session: Session,
     textures: Vec<ID3D11Texture2D>,
+    // Retain compositor allocations until the corresponding encoder event,
+    // including after an input-copy or submit error (session drops first).
+    source_leases: Vec<Option<Box<dyn FnOnce() + Send>>>,
     device: Device,
     width: u32,
     height: u32,
@@ -164,6 +167,7 @@ impl DirectNvenc {
         Ok(Self {
             session,
             textures,
+            source_leases: (0..SLOTS).map(|_| None).collect(),
             device,
             width: s.width,
             height: s.height,
@@ -176,24 +180,31 @@ impl DirectNvenc {
         &mut self,
         handle: BorrowedHandle<'_>,
         completion: Option<(BorrowedHandle<'_>, u64)>,
+        source_lease: Box<dyn FnOnce() + Send>,
         time: i64,
         duration: i64,
         timing: Option<&mut SharedNv12Timing>,
     ) -> Result<Vec<Packet>> {
         let (width, height) = (self.width, self.height);
-        self.encode(time, duration, timing, |device, texture| {
-            let source = device.shared_nv12(handle, width, height)?;
-            if let Some((fence, value)) = completion {
-                device.wait_shared_fence(fence, value)?;
-            }
-            device.copy_nv12(texture, &source);
-            Ok(())
-        })
+        self.encode(
+            time,
+            duration,
+            timing,
+            Some(source_lease),
+            |device, texture| {
+                let source = device.shared_nv12(handle, width, height)?;
+                if let Some((fence, value)) = completion {
+                    device.wait_shared_fence(fence, value)?;
+                }
+                device.copy_nv12(texture, &source);
+                Ok(())
+            },
+        )
     }
 
     pub fn encode_packed(&mut self, data: &[u8], time: i64, duration: i64) -> Result<Vec<Packet>> {
         let (width, height) = (self.width, self.height);
-        self.encode(time, duration, None, |device, texture| {
+        self.encode(time, duration, None, None, |device, texture| {
             device.upload_nv12(data, width, height, texture)
         })
     }
@@ -203,6 +214,7 @@ impl DirectNvenc {
         time: i64,
         duration: i64,
         timing: Option<&mut SharedNv12Timing>,
+        source_lease: Option<Box<dyn FnOnce() + Send>>,
         prepare_input: impl FnOnce(&mut Device, &ID3D11Texture2D) -> Result<()>,
     ) -> Result<Vec<Packet>> {
         let started = timing.as_ref().map(|_| Instant::now());
@@ -214,6 +226,7 @@ impl DirectNvenc {
             self.receive(true, &mut out, timing.is_some().then_some(&mut event_wait))?;
         }
         let index = (self.oldest + self.pending) % SLOTS;
+        self.source_leases[index as usize] = source_lease;
         let copy_started = timing.as_ref().map(|_| Instant::now());
         prepare_input(&mut self.device, &self.textures[index as usize])?;
         let prepare = copy_started
@@ -271,6 +284,9 @@ impl DirectNvenc {
         check("releasing NVENC slot", unsafe {
             noni_nvenc_release(self.session.raw(), self.oldest)
         })?;
+        if let Some(completed) = self.source_leases[self.oldest as usize].take() {
+            completed();
+        }
         self.oldest = (self.oldest + 1) % SLOTS;
         self.pending -= 1;
         out.push(Packet {

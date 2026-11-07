@@ -48,6 +48,8 @@ pub(crate) struct Timing {
     readbacks: AtomicU64,
     readback_bytes: AtomicU64,
     shared_nv12_frames: AtomicU64,
+    shared_surfaces_reused: AtomicU64,
+    shared_surfaces_created: AtomicU64,
     #[cfg(windows)]
     shared_nv12_pooled: AtomicU64,
     shared_nv12_status: std::sync::OnceLock<String>,
@@ -108,6 +110,16 @@ impl Timing {
         }
         self.readbacks.fetch_add(gpu.frames, Ordering::Relaxed);
         self.readback_bytes.fetch_add(gpu.bytes, Ordering::Relaxed);
+    }
+
+    #[cfg(windows)]
+    pub(super) fn shared_surface(&self, reused: bool) {
+        let counter = if reused {
+            &self.shared_surfaces_reused
+        } else {
+            &self.shared_surfaces_created
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
     }
 
     #[cfg(windows)]
@@ -211,6 +223,12 @@ impl Timing {
                 self.shared_nv12_frames.load(Ordering::Relaxed)
             )?;
         }
+        writeln!(
+            file,
+            "Shared GPU output surfaces: {} reused, {} newly allocated",
+            self.shared_surfaces_reused.load(Ordering::Relaxed),
+            self.shared_surfaces_created.load(Ordering::Relaxed)
+        )?;
         let painters = self.painters.load(Ordering::Relaxed);
         writeln!(file, "Video drawing workers: {painters}")?;
         let prepared = self.prepared_frames.load(Ordering::Relaxed);

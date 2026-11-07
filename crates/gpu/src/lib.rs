@@ -13,6 +13,8 @@ mod compositor;
 mod kernels;
 #[cfg(windows)]
 mod nv12;
+#[cfg(windows)]
+mod recycle;
 mod shared;
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

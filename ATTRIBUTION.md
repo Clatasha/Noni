@@ -14,6 +14,7 @@ logo as marks are covered by [TRADEMARKS.md](TRADEMARKS.md) (a draft).
 
 | Asset | Author | Source | License |
 |---|---|---|---|
+| `crates/ui-egui/assets/fonts/Oswald-Medium.ttf` | The Oswald Project Authors | [Google Fonts Oswald](https://github.com/google/fonts/tree/main/ofl/oswald), static weight 500 instance | OFL-1.1 (`crates/ui-egui/assets/fonts/Oswald-OFL.txt`) |
 | `crates/ui-egui/assets/stickers/derspawn-mascot.zip` | Clatasha | Original DERSPAWN Mascot sticker artwork | GPL-3.0-or-later |
 | `packaging/icons/noni.svg`, `noni.png`, `noni.ico` | Clatasha (original illustration) | ImageGen-assisted refinement of the original illustration and derived app icons | GPL-3.0-or-later |
 | `packaging/icons/noni-mark.png` | Clatasha (original illustration) | Transparent sculpted fruit mark for the in-app wordmark | GPL-3.0-or-later |

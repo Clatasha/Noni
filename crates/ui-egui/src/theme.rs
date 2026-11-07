@@ -423,6 +423,7 @@ pub fn apply(ctx: &egui::Context) {
 
 /// Sets egui's style from the interface type `kind`.
 pub fn apply_kind(ctx: &egui::Context, kind: Interface) {
+    crate::timecode_font::install(ctx);
     let p = kind.palette();
     // One style slot, holding the visuals of the interface type.
     ctx.set_theme(egui::Theme::Dark);

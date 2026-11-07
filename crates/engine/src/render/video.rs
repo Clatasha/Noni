@@ -399,6 +399,9 @@ impl Output for Mp4Out {
     ) -> Result<(), String> {
         use super::timing::{Stage, Timing};
 
+        if let Some(timing) = timing {
+            timing.shared_surface(frame.reused_surface());
+        }
         let (t, d) = self.video_time(n);
         let mut details = timing.map(|_| bv_mf::SharedNv12Timing::default());
         let packets = match &mut self.video {
@@ -411,7 +414,14 @@ impl Output for Mp4Out {
             }
             #[cfg(all(windows, target_arch = "x86_64"))]
             Mp4Video::Direct(encoder) => encoder
-                .encode_shared_nv12(frame.handle(), frame.completion(), t, d, details.as_mut())
+                .encode_shared_nv12(
+                    frame.handle(),
+                    frame.completion(),
+                    frame.encoder_lease(),
+                    t,
+                    d,
+                    details.as_mut(),
+                )
                 .map_err(direct_error),
         }?;
         if let (Some(timing), Some(details)) = (timing, details) {

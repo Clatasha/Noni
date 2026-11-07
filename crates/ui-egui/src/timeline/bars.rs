@@ -585,28 +585,25 @@ pub(crate) fn paint(
     // As VEGAS's: smaller when the track list is narrow, none at the color
     // bars' width.
     let full = if app.time_display == TimeDisplay::Cursor {
-        22.0
+        24.0
     } else {
         16.0
     };
     let room = l.tc_box.width() - 16.0;
     let fits = |size: f32| {
-        painter
-            .layout_no_wrap(shown.clone(), FontId::proportional(size), tc_text)
-            .size()
+        crate::timecode_font::layout(painter, &shown, size, tc_text)
+            .size
             .x
             <= room
     };
-    if let Some(size) = [full, 13.0, 11.0].into_iter().find(|&s| fits(s)) {
-        crate::widgets::fit_text(
-            painter,
-            pos2(l.tc_box.right() - 8.0, l.tc_box.center().y),
-            Align2::RIGHT_CENTER,
-            shown,
-            FontId::proportional(size),
-            tc_text,
-            room,
-        );
+    if let Some(size) = [full, 20.0, 16.0, 13.0, 11.0]
+        .into_iter()
+        .find(|&s| fits(s))
+    {
+        let text = crate::timecode_font::layout(painter, &shown, size, tc_text);
+        let rect = Align2::RIGHT_CENTER
+            .anchor_size(pos2(l.tc_box.right() - 8.0, l.tc_box.center().y), text.size);
+        text.paint(painter, rect.min, tc_text);
     }
     ui.interact(l.tc_box, ui.id().with("caixa-tempo"), egui::Sense::hover())
         .on_hover_text(trf!(

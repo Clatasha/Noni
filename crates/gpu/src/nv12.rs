@@ -21,6 +21,7 @@ use windows::Win32::Graphics::Dxgi::{
 };
 use windows::core::{Interface, PCWSTR};
 
+use crate::recycle::Surface;
 use crate::{Gpu, GpuError};
 
 fn stage(step: &'static str) -> impl FnOnce(windows::core::Error) -> GpuError {
@@ -40,6 +41,7 @@ pub(crate) struct Nv12Device {
     ready: ID3D11Fence,
     ready_on_dx12: ID3D12Fence,
     value: u64,
+    surfaces: Vec<Arc<Nv12Surface>>,
 }
 
 impl Nv12Device {
@@ -91,11 +93,32 @@ impl Nv12Device {
                 ready,
                 ready_on_dx12: ready_on_dx12.ok_or(GpuError::NoAdapter)?,
                 value: 0,
+                surfaces: Vec::new(),
             })
         }
     }
 
     fn create(&mut self, dx12: &ID3D12Device, w: u32, h: u32) -> Result<SharedNv12, GpuError> {
+        static POOL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let pool =
+            *POOL.get_or_init(|| std::env::var("NONI_NV12_SURFACE_POOL").as_deref() != Ok("0"));
+        // Only NVENC's completion path arms recycling. MFT frames and probes
+        // remain single-use. Both the native-copy callback and encoder slot
+        // retain an Arc, so a sole pool reference proves every GPU user ended.
+        if pool {
+            self.surfaces.retain(Surface::retainable);
+            if let Some(surface) = self
+                .surfaces
+                .iter()
+                .find(|s| s.width == w && s.height == h && Surface::available(s))
+            {
+                return Ok(SharedNv12 {
+                    surface: Surface::checkout(surface),
+                    completion: None,
+                    reused: true,
+                });
+            }
+        }
         // SAFETY: this factory is locked by the caller so its D3D11
         // context and monotonically increasing fence are used in order.
         unsafe {
@@ -152,14 +175,30 @@ impl Nv12Device {
                 .Signal(&self.ready, self.value)
                 .map_err(stage("signaling D3D11 texture initialization"))?;
             self.context.Flush();
-            Ok(SharedNv12 {
+            let surface = Arc::new(Surface::new(Nv12SurfaceInner {
                 handle,
                 resource,
                 _texture: texture,
                 planes,
                 ready: self.ready_on_dx12.clone(),
                 value: self.value,
+                width: w,
+                height: h,
+            }));
+            if self.surfaces.len() == 24
+                && let Some(i) = self.surfaces.iter().position(|s| Arc::strong_count(s) == 1)
+            {
+                self.surfaces.swap_remove(i);
+            }
+            // A cap across sizes and painters bounds retained GPU allocations.
+            // If all are busy, a single-use allocation preserves progress.
+            if pool && self.surfaces.len() < 24 {
+                self.surfaces.push(surface.clone());
+            }
+            Ok(SharedNv12 {
+                surface,
                 completion: None,
+                reused: false,
             })
         }
     }
@@ -170,22 +209,45 @@ impl Nv12Device {
 /// Frames are never overwritten.
 #[derive(Debug)]
 pub struct SharedNv12 {
+    surface: Arc<Nv12Surface>,
+    completion: Option<Completion>,
+    reused: bool,
+}
+
+type Nv12Surface = Surface<Nv12SurfaceInner>;
+
+#[derive(Debug)]
+struct Nv12SurfaceInner {
     handle: OwnedHandle,
     resource: ID3D12Resource,
     _texture: ID3D11Texture2D,
     ready: ID3D12Fence,
     value: u64,
     planes: [D3D12_PLACED_SUBRESOURCE_FOOTPRINT; 2],
-    completion: Option<Completion>,
+    width: u32,
+    height: u32,
 }
 
 impl SharedNv12 {
     pub(crate) fn pitch(&self) -> u32 {
-        self.planes[0].Footprint.RowPitch
+        self.surface.planes[0].Footprint.RowPitch
     }
 
     pub fn handle(&self) -> BorrowedHandle<'_> {
-        self.handle.as_handle()
+        self.surface.handle.as_handle()
+    }
+
+    /// Retain this source until the consuming encoder's GPU completion event.
+    /// Invoke the callback only after successful completion; dropping it after
+    /// an error frees the lease without making this allocation reusable.
+    /// The native copy's completion callback retains a separate lease. Both
+    /// must finish before the pool can hand the allocation out again.
+    pub fn encoder_lease(&self) -> Box<dyn FnOnce() + Send> {
+        Surface::completion(&self.surface)
+    }
+
+    pub fn reused_surface(&self) -> bool {
+        self.reused
     }
 
     /// Fence and value for a D3D11 GPU-side wait. None for an empty probe.
@@ -281,8 +343,7 @@ struct CopyLease {
     _allocator: ID3D12CommandAllocator,
     _list: ID3D12GraphicsCommandList,
     _source: wgpu::Buffer,
-    _destination: ID3D12Resource,
-    _texture: ID3D11Texture2D,
+    _destination: Arc<Nv12Surface>,
     _fence: Arc<CopyFence>,
 }
 
@@ -394,11 +455,11 @@ impl CopyNv12 {
             slot.allocator.Reset().map_err(error)?;
             slot.list.Reset(&slot.allocator, None).map_err(error)?;
             slot.list.ResourceBarrier(&[transition(
-                &dst.resource,
+                &dst.surface.resource,
                 D3D12_RESOURCE_STATE_COMMON,
                 D3D12_RESOURCE_STATE_COPY_DEST,
             )]);
-            for (i, plane) in dst.planes.iter().enumerate() {
+            for (i, plane) in dst.surface.planes.iter().enumerate() {
                 // The copy locations borrow the resources. ManuallyDrop
                 // prevents the temporary COM wrappers from releasing them.
                 let src = D3D12_TEXTURE_COPY_LOCATION {
@@ -410,7 +471,7 @@ impl CopyNv12 {
                 };
                 let target = D3D12_TEXTURE_COPY_LOCATION {
                     pResource: ManuallyDrop::new(Some(ID3D12Resource::from_raw(
-                        dst.resource.as_raw(),
+                        dst.surface.resource.as_raw(),
                     ))),
                     Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
                     Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
@@ -420,13 +481,13 @@ impl CopyNv12 {
                 slot.list.CopyTextureRegion(&target, 0, 0, 0, &src, None);
             }
             slot.list.ResourceBarrier(&[transition(
-                &dst.resource,
+                &dst.surface.resource,
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 D3D12_RESOURCE_STATE_COMMON,
             )]);
             slot.list.Close().map_err(error)?;
             self.queue
-                .Wait(&dst.ready, dst.value)
+                .Wait(&dst.surface.ready, dst.surface.value)
                 .map_err(stage("waiting for D3D11 NV12 initialization"))?;
             self.queue
                 .ExecuteCommandLists(&[Some(slot.command.clone())]);
@@ -440,8 +501,7 @@ impl CopyNv12 {
             _allocator: slot.allocator.clone(),
             _list: slot.list.clone(),
             _source: words.clone(),
-            _destination: dst.resource.clone(),
-            _texture: dst._texture.clone(),
+            _destination: dst.surface.clone(),
             _fence: self.fence.clone(),
         };
         gpu.queue.on_submitted_work_done(move || drop(lease));
@@ -483,6 +543,32 @@ mod tests {
     use bv_render::VideoPool;
     use bv_timeline::{Project, ProjectSettings};
 
+    #[test]
+    #[ignore = "requires Windows D3D12 with shared NV12 support"]
+    fn only_successfully_completed_encoder_leases_allow_reuse() {
+        let gpu = Gpu::open(None).unwrap();
+        let first = gpu.shared_nv12((64, 32)).unwrap();
+        let original = Arc::downgrade(&first.surface);
+        let completed = first.encoder_lease();
+        drop(first);
+        let busy = gpu.shared_nv12((64, 32)).unwrap();
+        assert!(!Arc::ptr_eq(&busy.surface, &original.upgrade().unwrap()));
+        // Successful encoder completion releases its reference and arms reuse.
+        completed();
+        let reused = gpu.shared_nv12((64, 32)).unwrap();
+        assert!(reused.reused_surface());
+        assert!(Arc::ptr_eq(&reused.surface, &original.upgrade().unwrap()));
+        let abandoned = reused.encoder_lease();
+        drop(reused);
+        // A submit failure or cancellation drops the callback without invoking
+        // it. An allocation still read by the GPU can never be handed out again.
+        drop(abandoned);
+        let next = gpu.shared_nv12((64, 32)).unwrap();
+        assert!(!next.reused_surface());
+        assert!(original.upgrade().is_none());
+        drop(busy);
+    }
+
     fn read_frame(gpu: &Gpu, frame: &SharedNv12) -> Vec<u8> {
         let factory = gpu.nv12_device.lock().unwrap();
         let factory = factory.as_ref().unwrap();
@@ -497,7 +583,7 @@ mod tests {
                 .unwrap();
             factory.context.Wait(&fence.unwrap(), value).unwrap();
             let mut desc = D3D11_TEXTURE2D_DESC::default();
-            frame._texture.GetDesc(&mut desc);
+            frame.surface._texture.GetDesc(&mut desc);
             desc.Usage = D3D11_USAGE_STAGING;
             desc.BindFlags = 0;
             desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
@@ -508,7 +594,9 @@ mod tests {
                 .CreateTexture2D(&desc, None, Some(&mut staging))
                 .unwrap();
             let staging = staging.unwrap();
-            factory.context.CopyResource(&staging, &frame._texture);
+            factory
+                .context
+                .CopyResource(&staging, &frame.surface._texture);
             let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
             factory
                 .context
