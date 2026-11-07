@@ -48,9 +48,15 @@ impl<W> std::fmt::Debug for Counted<W> {
 
 type Mp4File = Writer<Counted<BufWriter<File>>>;
 
+enum Mp4Video {
+    System(VideoEncoder),
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    Direct(bv_mf::DirectNvenc),
+}
+
 pub(super) struct Mp4Out {
     writer: Option<Mp4File>,
-    video: VideoEncoder,
+    video: Mp4Video,
     #[cfg(windows)]
     shared_nv12: bool,
     audio: Option<AudioEncoder>,
@@ -134,25 +140,16 @@ pub(super) fn mp4(
         field_order: v.field_order,
     };
     #[cfg(windows)]
-    let direct =
-        if std::env::var_os("NONI_FAST_NVENC").as_deref() == Some(std::ffi::OsStr::new("1")) {
-            let attempt = open_shared_nv12(encoder_settings, gpu);
-            if let Some(timing) = timing {
-                timing.set_shared_nv12_status(match &attempt {
-                    Ok(_) => "enabled (shared Direct3D 11 NV12 texture)".to_string(),
-                    Err(e) => format!("unavailable, using packed input: {e}"),
-                });
-            }
-            attempt.ok()
-        } else {
-            None
-        };
+    let shared = open_shared_encoder(encoder_settings, gpu, timing);
     #[cfg(not(windows))]
-    let direct = None;
+    let shared = None;
     #[cfg(windows)]
-    let shared_nv12 = direct.is_some();
-    let video = direct
-        .map_or_else(|| VideoEncoder::new(encoder_settings), Ok)
+    let shared_nv12 = shared.is_some();
+    let video = shared
+        .map_or_else(
+            || VideoEncoder::new(encoder_settings).map(Mp4Video::System),
+            Ok,
+        )
         .map_err(|e| {
             format!(
                 "{} ({}): {e}",
@@ -212,7 +209,12 @@ pub(super) fn mp4(
         Mp4File::reserve_for(frames, packets),
     )
     .map_err(|e| e.to_string())?;
-    if let Some(h) = video.sequence_header() {
+    let sequence_header = match &video {
+        Mp4Video::System(encoder) => encoder.sequence_header(),
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        Mp4Video::Direct(_) => None, // NVENC includes SPS and PPS in the first IDR.
+    };
+    if let Some(h) = sequence_header {
         writer.add_parameter_sets(&h);
     }
     writer.set_metadata(metadata(project, s));
@@ -238,10 +240,60 @@ pub(super) fn mp4(
 }
 
 #[cfg(windows)]
-fn open_shared_nv12(
+fn open_shared_encoder(
     settings: bv_mf::VideoEncoderSettings,
     gpu: Option<&bv_gpu::Gpu>,
-) -> Result<VideoEncoder, String> {
+    timing: Option<&super::timing::Timing>,
+) -> Option<Mp4Video> {
+    let enabled = |name| std::env::var_os(name).as_deref() == Some(std::ffi::OsStr::new("1"));
+    let direct = enabled("NONI_DIRECT_NVENC");
+    if !direct && !enabled("NONI_FAST_NVENC") {
+        return None;
+    }
+    let set_status = |status| {
+        if let Some(timing) = timing {
+            timing.set_shared_nv12_status(status);
+        }
+    };
+    let (adapter, probe) = match shared_nv12_probe(settings, gpu) {
+        Ok(probe) => probe,
+        Err(e) => {
+            set_status(format!("unavailable, using packed input: {e}"));
+            return None;
+        }
+    };
+    let mut fallback = String::new();
+    if direct {
+        #[cfg(all(windows, target_arch = "x86_64"))]
+        match bv_mf::DirectNvenc::new(settings, adapter, probe.handle()) {
+            Ok(encoder) => {
+                set_status("enabled (direct NVENC, shared Direct3D 11 NV12 texture)".into());
+                return Some(Mp4Video::Direct(encoder));
+            }
+            Err(e) => fallback = format!("direct NVENC unavailable ({e}), "),
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        fallback.push_str("direct NVENC requires Windows x64, ");
+    }
+    match VideoEncoder::new_shared_nv12(settings, adapter, probe.handle()) {
+        Ok(encoder) => {
+            set_status(format!(
+                "{fallback}enabled (shared Direct3D 11 NV12 texture)"
+            ));
+            Some(Mp4Video::System(encoder))
+        }
+        Err(e) => {
+            set_status(format!("{fallback}unavailable, using packed input: {e}"));
+            None
+        }
+    }
+}
+
+#[cfg(windows)]
+fn shared_nv12_probe(
+    settings: bv_mf::VideoEncoderSettings,
+    gpu: Option<&bv_gpu::Gpu>,
+) -> Result<((u32, i32), bv_gpu::SharedNv12), String> {
     if settings.codec != Codec::H264
         || settings.vendor != bv_mf::Vendor::Nvidia
         || settings.ten_bit
@@ -256,7 +308,12 @@ fn open_shared_nv12(
     let probe = gpu
         .shared_nv12((settings.width, settings.height))
         .map_err(|e| e.to_string())?;
-    VideoEncoder::new_shared_nv12(settings, adapter, probe.handle()).map_err(|e| e.to_string())
+    Ok((adapter, probe))
+}
+
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn direct_error(error: bv_mf::Error) -> String {
+    format!("Direct NVENC failed: {error}. Turn off NONI_DIRECT_NVENC and retry.")
 }
 
 impl Mp4Out {
@@ -315,10 +372,13 @@ impl Output for Mp4Out {
 
     fn video_packed(&mut self, data: &[u8], n: u64) -> Result<(), String> {
         let (t, d) = self.video_time(n);
-        let packets = self
-            .video
-            .encode_packed(data, t, d)
-            .map_err(|e| e.to_string())?;
+        let packets = match &mut self.video {
+            Mp4Video::System(encoder) => {
+                encoder.encode_packed(data, t, d).map_err(|e| e.to_string())
+            }
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            Mp4Video::Direct(encoder) => encoder.encode_packed(data, t, d).map_err(direct_error),
+        }?;
         self.put_video(packets)
     }
 
@@ -338,10 +398,15 @@ impl Output for Mp4Out {
 
         let (t, d) = self.video_time(n);
         let mut details = timing.map(|_| bv_mf::SharedNv12Timing::default());
-        let packets = self
-            .video
-            .encode_shared_nv12(frame.handle(), t, d, details.as_mut())
-            .map_err(|e| format!("Fast NVENC failed: {e}. Turn off NONI_FAST_NVENC and retry."))?;
+        let packets = match &mut self.video {
+            Mp4Video::System(encoder) => encoder
+                .encode_shared_nv12(frame.handle(), t, d, details.as_mut())
+                .map_err(|e| format!("Fast NVENC failed: {e}. Turn off NONI_FAST_NVENC and NONI_DIRECT_NVENC and retry.")),
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            Mp4Video::Direct(encoder) => encoder
+                .encode_shared_nv12(frame.handle(), t, d, details.as_mut())
+                .map_err(direct_error),
+        }?;
         if let (Some(timing), Some(details)) = (timing, details) {
             timing.record_shared_writer(details);
         }
@@ -365,7 +430,11 @@ impl Output for Mp4Out {
     }
 
     fn encoder_name(&self) -> String {
-        self.video.name().to_string()
+        match &self.video {
+            Mp4Video::System(encoder) => encoder.name().to_string(),
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            Mp4Video::Direct(_) => "NVIDIA H.264 (direct NVENC)".into(),
+        }
     }
 
     fn bytes(&self) -> u64 {
@@ -373,7 +442,11 @@ impl Output for Mp4Out {
     }
 
     fn finish(mut self: Box<Self>) -> Result<Vec<PathBuf>, String> {
-        let rest = self.video.finish().map_err(|e| e.to_string())?;
+        let rest = match &mut self.video {
+            Mp4Video::System(encoder) => encoder.finish().map_err(|e| e.to_string()),
+            #[cfg(all(windows, target_arch = "x86_64"))]
+            Mp4Video::Direct(encoder) => encoder.finish().map_err(direct_error),
+        }?;
         self.put_video(rest)?;
         if let Some(enc) = &mut self.audio {
             let rest = enc.finish().map_err(|e| e.to_string())?;

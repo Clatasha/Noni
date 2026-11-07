@@ -405,6 +405,10 @@ mod encode;
 #[allow(unsafe_code)]
 mod d3d;
 
+#[cfg(all(windows, target_arch = "x86_64"))]
+#[allow(unsafe_code)]
+mod nvenc;
+
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod dxva;
@@ -537,6 +541,8 @@ pub use encode::{AudioEncoder, SharedNv12Timing, VideoEncoder};
 pub use encoders::encoders;
 #[cfg(windows)]
 pub use imp::{AudioDecoder, PacketReader, VideoDecoder, probe};
+#[cfg(all(windows, target_arch = "x86_64"))]
+pub use nvenc::DirectNvenc;
 #[cfg(windows)]
 pub use writer::AsfWriter;
 

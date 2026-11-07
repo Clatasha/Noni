@@ -142,6 +142,25 @@ impl Device {
         tex.ok_or(Error::Unavailable)
     }
 
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn raw_device(&self) -> &ID3D11Device {
+        &self.device
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn encoder_nv12(&self, width: u32, height: u32) -> Result<ID3D11Texture2D> {
+        self.texture(width, height, DXGI_FORMAT_NV12, false)
+    }
+
+    pub(crate) fn copy_nv12(&self, destination: &ID3D11Texture2D, source: &ID3D11Texture2D) {
+        // SAFETY: both textures are opened on this device and validated
+        // against the same NV12 dimensions. Submit the copy before encoding.
+        unsafe {
+            self.context.CopyResource(destination, source);
+            self.context.Flush();
+        }
+    }
+
     /// Opens the compositor's completed texture on the encoder's device.
     pub(crate) fn shared_nv12(
         &self,
@@ -273,14 +292,7 @@ impl Device {
                 (crate::encode::sample_from_buffer(&buffer)?, frame, false)
             }
         };
-        // SAFETY: both textures belong to this device and have the same
-        // shape and format. Its context orders the copy before encoding.
-        unsafe {
-            self.context.CopyResource(&frame, &shared);
-            // NVIDIA's MFT can read the surface from its own context.
-            // Submit our pending write before handing the surface to it.
-            self.context.Flush();
-        }
+        self.copy_nv12(&frame, &shared);
         Ok((sample, pooled))
     }
 
@@ -312,32 +324,58 @@ impl Device {
         } else {
             DXGI_FORMAT_NV12
         };
-        let row = (width * if ten_bit { 2 } else { 1 }) as usize;
+        // A new texture per frame: the encoder may still be reading the last.
+        let frame = self.texture(width, height, format, false)?;
+        self.upload_to(data, width, height, format, &frame)?;
+        Self::media_buffer(&frame)
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn upload_nv12(
+        &mut self,
+        data: &[u8],
+        width: u32,
+        height: u32,
+        frame: &ID3D11Texture2D,
+    ) -> Result<()> {
+        self.upload_to(data, width, height, DXGI_FORMAT_NV12, frame)
+    }
+
+    fn upload_to(
+        &mut self,
+        data: &[u8],
+        width: u32,
+        height: u32,
+        format: DXGI_FORMAT,
+        frame: &ID3D11Texture2D,
+    ) -> Result<()> {
+        let row = width as usize * if format == DXGI_FORMAT_P010 { 2 } else { 1 };
+        let rows = height as usize + height as usize / 2;
+        if row.checked_mul(rows).is_none_or(|size| data.len() < size) {
+            return Err(Error::Windows("incomplete packed encoder frame".into()));
+        }
         if self.staging.is_none() {
             self.staging = Some(self.texture(width, height, format, true)?);
         }
-        let staging = self.staging.clone().ok_or(Error::Unavailable)?;
-        // A new texture per frame: the encoder may still be reading the last.
-        let frame = self.texture(width, height, format, false)?;
+        let staging = self.staging.as_ref().ok_or(Error::Unavailable)?;
         unsafe {
             let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
             self.context
-                .Map(&staging, 0, D3D11_MAP_WRITE, 0, Some(&mut mapped))
+                .Map(staging, 0, D3D11_MAP_WRITE, 0, Some(&mut mapped))
                 .map_err(win)?;
             let pitch = mapped.RowPitch as usize;
             let dst = mapped.pData as *mut u8;
             // Luma rows, then the interleaved chroma rows right after them.
-            let rows = height as usize + height as usize / 2;
             for r in 0..rows {
                 let src = &data[r * row..(r + 1) * row];
                 std::ptr::copy_nonoverlapping(src.as_ptr(), dst.add(r * pitch), row);
             }
-            self.context.Unmap(&staging, 0);
-            self.context.CopyResource(&frame, &staging);
+            self.context.Unmap(staging, 0);
+            self.context.CopyResource(frame, staging);
             if self.nvenc_input {
                 self.context.Flush();
             }
         }
-        Self::media_buffer(&frame)
+        Ok(())
     }
 }

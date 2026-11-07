@@ -94,6 +94,11 @@ def main():
         with open(openfx, encoding="utf-8") as f:
             out.write("-" * 78 + "\nOpenFX 1.5 headers (vendor/openfx)\nLicense: BSD-3-Clause\n")
             out.write(f"Source: https://github.com/AcademySoftwareFoundation/openfx\n\n--- LICENSE.md ---\n{f.read().strip()}\n\n")
+    if target == "x86_64-pc-windows-msvc" or target == "x86_64-pc-windows-gnu":
+        nvenc = os.path.join(meta["workspace_root"], "vendor", "nv-codec-headers", "LICENSE")
+        with open(nvenc, encoding="utf-8") as f:
+            out.write("-" * 78 + "\nNVIDIA Video Codec API header (n12.1.14.0)\nLicense: MIT\n")
+            out.write(f"Source: https://github.com/FFmpeg/nv-codec-headers\n\n--- LICENSE ---\n{f.read().strip()}\n\n")
     for p in pkgs:
         out.write("-" * 78 + "\n")
         out.write(f"{p['name']} {p['version']}\n")

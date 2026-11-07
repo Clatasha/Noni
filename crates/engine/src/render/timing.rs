@@ -253,10 +253,13 @@ impl Timing {
             if shared_frames != 0 {
                 let pooled = self.shared_nv12_pooled.load(Ordering::Relaxed);
                 writeln!(file, "Fast NVENC writer breakdown ({shared_frames} frames)")?;
-                writeln!(file, "  Pooled encoder samples: {pooled} / {shared_frames}")?;
+                writeln!(
+                    file,
+                    "  Pooled encoder surfaces: {pooled} / {shared_frames}"
+                )?;
                 for (label, stage) in [
                     ("Open, copy and flush encoder texture", Stage::SharedPrepare),
-                    ("Wait for Media Foundation events", Stage::SharedEventWait),
+                    ("Wait for encoder events", Stage::SharedEventWait),
                     ("Submit frames and retrieve packets", Stage::SharedEncode),
                     ("Write encoded video to MP4", Stage::SharedMux),
                 ] {
