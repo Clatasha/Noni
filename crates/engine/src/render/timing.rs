@@ -10,6 +10,7 @@ use crate::GpuStatus;
 #[derive(Clone, Copy)]
 pub(super) enum Stage {
     Draw,
+    SourcePrepare,
     DecodeWait,
     SceneSetup,
     GpuCompose,
@@ -39,6 +40,10 @@ pub(super) enum Stage {
 pub(crate) struct Timing {
     nanos: [AtomicU64; Stage::Finish as usize + 1],
     draws: AtomicU64,
+    painters: AtomicU64,
+    prepared_frames: AtomicU64,
+    prepared_pictures: AtomicU64,
+    reused_pictures: AtomicU64,
     gpu_draws: AtomicU64,
     readbacks: AtomicU64,
     readback_bytes: AtomicU64,
@@ -64,6 +69,21 @@ impl Timing {
         let result = f();
         timing.add(stage, start.elapsed());
         result
+    }
+
+    pub(super) fn set_painters(&self, count: usize) {
+        self.painters.store(count as u64, Ordering::Relaxed);
+    }
+
+    pub(super) fn reused_sources(&self, count: u64) {
+        self.reused_pictures.fetch_add(count, Ordering::Relaxed);
+    }
+
+    pub(super) fn prepared_sources(&self, elapsed: Duration, pictures: usize) {
+        self.add(Stage::SourcePrepare, elapsed);
+        self.prepared_frames.fetch_add(1, Ordering::Relaxed);
+        self.prepared_pictures
+            .fetch_add(pictures as u64, Ordering::Relaxed);
     }
 
     pub(super) fn draw(
@@ -191,6 +211,34 @@ impl Timing {
                 self.shared_nv12_frames.load(Ordering::Relaxed)
             )?;
         }
+        let painters = self.painters.load(Ordering::Relaxed);
+        writeln!(file, "Video drawing workers: {painters}")?;
+        let prepared = self.prepared_frames.load(Ordering::Relaxed);
+        if prepared != 0 {
+            writeln!(
+                file,
+                "Shared source decoding: enabled (ordered producer, bounded frame queues)"
+            )?;
+            writeln!(file, "Frames prepared by shared decoder: {prepared}")?;
+            writeln!(
+                file,
+                "Source pictures prepared: {}",
+                self.prepared_pictures.load(Ordering::Relaxed)
+            )?;
+            writeln!(
+                file,
+                "Prepared source picture requests reused: {}",
+                self.reused_pictures.load(Ordering::Relaxed)
+            )?;
+        }
+        if prepared == 0 {
+            let mode = if painters <= 1 {
+                "single drawing worker"
+            } else {
+                "per-worker readers"
+            };
+            writeln!(file, "Source decoding mode: {mode}")?;
+        }
         writeln!(file, "Output units: {} / {}", progress.done, progress.total)?;
         writeln!(
             file,
@@ -241,6 +289,10 @@ impl Timing {
             (draw - setup - compose - shared - gpu - copy).max(0.0)
         )?;
         for (label, stage) in [
+            (
+                "Shared source preparation (overlaps drawing)",
+                Stage::SourcePrepare,
+            ),
             ("Video encoding and writing", Stage::VideoWrite),
             ("Audio mixing", Stage::AudioMix),
             ("Audio encoding and writing", Stage::AudioWrite),

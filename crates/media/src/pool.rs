@@ -184,6 +184,9 @@ fn stretch_behind(last: Ask, ask: Ask) -> Vec<Ask> {
 pub struct VideoPool {
     /// Media with a proxy are read from it (previews below full size).
     proxies: bool,
+    /// Exact source pictures prepared by an export's single decode stage.
+    prepared: Vec<Prepared>,
+    prepared_hits: u64,
     slots: Vec<Slot>,
     errors: HashMap<MediaId, MediaError>,
     /// Counts frames ([`begin_frame`](Self::begin_frame)): a reader used in
@@ -205,6 +208,15 @@ impl std::fmt::Debug for VideoPool {
             .field("errors", &self.errors)
             .finish()
     }
+}
+
+/// A frame-scoped reference; no pixel buffer is copied between painters.
+struct Prepared {
+    owner: Owner,
+    media: MediaId,
+    video: Option<bv_timeline::VideoStreamInfo>,
+    ask: Ask,
+    picture: Result<Picture>,
 }
 
 struct Slot {
@@ -503,6 +515,52 @@ impl VideoPool {
         VideoPool::default()
     }
 
+    /// Decode a frame's needs once, in timeline order, and give a drawing
+    /// worker references to those exact pictures. Keep this source pool on
+    /// one producer thread; drop each returned pool after drawing its frame.
+    /// Other requests (CPU fallback, motion blur, different sizes) still use
+    /// ordinary readers, so no nearby frame ever substitutes for an exact one.
+    pub fn prepare(&mut self, needs: &[Need<'_>]) -> VideoPool {
+        self.begin_frame();
+        self.prefetch(needs);
+        let mut prepared = Vec::with_capacity(needs.len());
+        for n in needs {
+            let picture = self.picture(n.owner, n.info, n.ask);
+            prepared.push(Prepared {
+                owner: n.owner,
+                media: n.info.id,
+                video: n.info.video,
+                ask: n.ask,
+                picture,
+            });
+        }
+        VideoPool {
+            prepared,
+            ..VideoPool::default()
+        }
+    }
+
+    /// Install the next frame's prepared sources, retaining this painter's
+    /// ordinary still/generator/fallback readers between output frames.
+    pub fn use_prepared(&mut self, frame: VideoPool) {
+        self.prepared = frame.prepared;
+        self.prepared_hits = 0;
+    }
+
+    /// Exact prepared-picture requests served in the current output frame.
+    pub fn prepared_hits(&self) -> u64 {
+        self.prepared_hits
+    }
+
+    fn prepared(&self, owner: Owner, info: &MediaInfo, ask: Ask) -> Option<&Result<Picture>> {
+        self.prepared
+            .iter()
+            .find(|p| {
+                p.owner == owner && p.media == info.id && p.video == info.video && p.ask == ask
+            })
+            .map(|p| &p.picture)
+    }
+
     /// Whether media with a proxy are read from it (previews below full
     /// size); the readers open again when this changes.
     pub fn set_proxies(&mut self, on: bool) {
@@ -558,6 +616,9 @@ impl VideoPool {
             }
         }
         for n in needs {
+            if self.prepared(n.owner, n.info, n.ask).is_some() {
+                continue;
+            }
             if self.errors.contains_key(&n.info.id) {
                 continue;
             }
@@ -604,6 +665,10 @@ impl VideoPool {
 
     /// The picture of `owner`'s media at `ask.time` (waits for it).
     pub fn picture(&mut self, owner: Owner, info: &MediaInfo, ask: Ask) -> Result<Picture> {
+        if let Some(picture) = self.prepared(owner, info, ask).cloned() {
+            self.prepared_hits += 1;
+            return picture;
+        }
         if let Some(e) = self.errors.get(&info.id) {
             return Err(e.clone());
         }
@@ -680,6 +745,8 @@ impl VideoPool {
 
     /// Forgets readers and errors (after a media is reconnected, say).
     pub fn clear(&mut self) {
+        self.prepared.clear();
+        self.prepared_hits = 0;
         self.slots.clear();
         self.errors.clear();
     }
@@ -789,6 +856,147 @@ impl VideoPool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepared_pictures_are_exact_shared_references_without_new_readers() {
+        let settings = bv_timeline::ProjectSettings::default();
+        let info = MediaInfo::generated(bv_timeline::Generator::ColorBars, &settings);
+        let ask = Ask {
+            time: Tick::ZERO,
+            min_size: (32, 18),
+            want: Want::Linear,
+            span: None,
+            video_levels: false,
+        };
+        let needs = [Need {
+            owner: 1,
+            info: &info,
+            ask,
+        }];
+        let mut source = VideoPool::new();
+        let frame = source.prepare(&needs);
+        let expected = frame.prepared(1, &info, ask).unwrap().clone().unwrap();
+        let mut painter = VideoPool::new();
+        painter.use_prepared(frame);
+        painter.begin_frame();
+        painter.prefetch(&needs);
+        let actual = painter.picture(1, &info, ask).unwrap();
+        match (expected, actual) {
+            (Picture::Linear(a), Picture::Linear(b)) => assert!(Arc::ptr_eq(&a, &b)),
+            _ => panic!("expected linear pictures"),
+        }
+        assert_eq!(painter.open_readers(), 0);
+        assert_eq!(painter.prepared_hits(), 1);
+        // An altered size, time, owner or decoding mode cannot reuse it.
+        assert!(painter.prepared(2, &info, ask).is_none());
+        assert!(
+            painter
+                .prepared(
+                    1,
+                    &info,
+                    Ask {
+                        time: Tick(1),
+                        ..ask
+                    }
+                )
+                .is_none()
+        );
+        assert!(
+            painter
+                .prepared(
+                    1,
+                    &info,
+                    Ask {
+                        min_size: (64, 36),
+                        ..ask
+                    }
+                )
+                .is_none()
+        );
+        assert!(
+            painter
+                .prepared(
+                    1,
+                    &info,
+                    Ask {
+                        want: Want::Decoded,
+                        ..ask
+                    }
+                )
+                .is_none()
+        );
+        painter.clear();
+        assert!(painter.prepared(1, &info, ask).is_none());
+    }
+
+    #[test]
+    fn source_reads_once_per_frame_and_painters_can_finish_out_of_order() {
+        struct Counted(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+        impl VideoReader for Counted {
+            fn frame_at(&mut self, t: Tick) -> Result<Arc<ImageRgbaF32>> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Ok(Arc::new(ImageRgbaF32::filled(1, 1, [t.0 as f32; 4])))
+            }
+        }
+        let info = MediaInfo::generated(
+            bv_timeline::Generator::ColorBars,
+            &bv_timeline::ProjectSettings::default(),
+        );
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mut source = VideoPool::new();
+        source.slots.push(Slot {
+            media: info.id,
+            video: info.video,
+            owner: 1,
+            at: None,
+            used: 0,
+            reader: Reader::Here(Box::new(Counted(count.clone()))),
+        });
+        let ask = |n| Ask {
+            time: Tick(n),
+            min_size: (1, 1),
+            want: Want::Linear,
+            span: None,
+            video_levels: false,
+        };
+        let mut frames: Vec<_> = (0..8)
+            .map(|n| {
+                source.prepare(&[Need {
+                    owner: 1,
+                    info: &info,
+                    ask: ask(n),
+                }])
+            })
+            .collect();
+        for n in (0..8).rev() {
+            let Picture::Linear(p) = frames[n].picture(1, &info, ask(n as i64)).unwrap() else {
+                panic!("expected linear picture")
+            };
+            assert_eq!(p.data[0][0], n as f32);
+            assert_eq!(frames[n].open_readers(), 0);
+        }
+        assert_eq!(count.load(Ordering::Relaxed), 8);
+        assert_eq!(source.open_readers(), 1);
+    }
+
+    #[test]
+    fn installing_prepared_frames_keeps_painters_ordinary_readers() {
+        let settings = bv_timeline::ProjectSettings::default();
+        let info = MediaInfo::generated(bv_timeline::Generator::ColorBars, &settings);
+        let ask = Ask {
+            time: Tick::ZERO,
+            min_size: (32, 18),
+            want: Want::Linear,
+            span: None,
+            video_levels: false,
+        };
+        let mut painter = VideoPool::new();
+        painter.begin_frame();
+        painter.picture(1, &info, ask).unwrap();
+        assert_eq!(painter.open_readers(), 1);
+        painter.use_prepared(VideoPool::new());
+        assert_eq!(painter.open_readers(), 1);
+    }
 
     /// Played backward a frame at a time, the eight frames before are
     /// planned from the first; forward, or a jump, plans nothing.

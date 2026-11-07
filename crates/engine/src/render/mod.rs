@@ -27,6 +27,7 @@ mod mpeg;
 #[cfg(all(windows, target_arch = "x86_64"))]
 mod native;
 mod smart;
+mod source;
 mod timing;
 use timing::{Stage, Timing};
 mod video;
@@ -1338,6 +1339,9 @@ fn run(
             crate::accel::has_plugins(project),
             smart.is_some(),
         );
+        if let Some(timing) = timing {
+            timing.set_painters(painters);
+        }
         let mut cancelled = false;
         if painters <= 1 {
             let mut pool = VideoPool::new();
@@ -1360,6 +1364,79 @@ fn run(
                     sent = Err(e);
                     break;
                 }
+            }
+        } else if painter.on_the_card()
+            && packed.is_some()
+            && can_pack_on_card(project, size, fit)
+            && v.field_order == bv_core::FieldOrder::Progressive
+            && std::env::var("NONI_SHARED_DECODE").as_deref() != Ok("0")
+        {
+            // Decode in timeline order, once per event. Drawing workers keep
+            // separate plug-in/GPU state but receive Arc references to source
+            // pictures instead of each decoding every other source frame.
+            // One queued input and two queued outputs per painter bound memory.
+            let mine: Vec<_> = (0..painters)
+                .map(|_| {
+                    (
+                        painter.another(crate::plugins::Purpose::File),
+                        VideoPool::new(),
+                    )
+                })
+                .collect();
+            let mut source = VideoPool::new();
+            let (w, h) = if project.settings.rotation.is_quarter_turn() {
+                (size.1, size.0)
+            } else {
+                size
+            };
+            let outcome = source::draw_frames(
+                mine,
+                frames,
+                cancel,
+                |n| {
+                    let start = timing.map(|_| Instant::now());
+                    let t = rate.frame_start(first_frame + n as i64);
+                    let scene = bv_timeline::scene::frame_scene(project, t, w, h);
+                    // Still images and generators stay on their painters;
+                    // only video files need the shared decoder stage.
+                    let can_prepare = project.motion_blur_at(t).is_none()
+                        && scene
+                            .tracks
+                            .iter()
+                            .all(|track| track.space.is_none() && track.parent_space.is_none())
+                        && scene
+                            .media_layers()
+                            .all(|(_, m)| !m.flow || m.blend.is_none());
+                    let needs: Vec<_> = scene
+                        .media_layers()
+                        .filter(|(_, m)| {
+                            can_prepare
+                                && !m.info.still
+                                && matches!(m.info.source, bv_timeline::MediaSource::File { .. })
+                        })
+                        .flat_map(|(clip, m)| {
+                            bv_media::needs_of(clip.0, m, bv_media::Want::Decoded)
+                        })
+                        .collect();
+                    let pool = source.prepare(&needs);
+                    if let (Some(timing), Some(start)) = (timing, start) {
+                        timing.prepared_sources(start.elapsed(), needs.len());
+                    }
+                    pool
+                },
+                |n, prepared, (own, pool)| {
+                    pool.use_prepared(prepared);
+                    let frame = draw(n, pool, own);
+                    if let Some(timing) = timing {
+                        timing.reused_sources(pool.prepared_hits());
+                    }
+                    frame
+                },
+                &mut hand_on,
+            );
+            match outcome {
+                Ok(c) => cancelled = c,
+                Err(e) => sent = Err(e),
             }
         } else {
             // Painters of their own — plug-in instances, readers — each
