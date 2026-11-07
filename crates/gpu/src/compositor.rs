@@ -300,7 +300,7 @@ impl Compositor {
             timing.compose += start.elapsed();
         }
         #[cfg(windows)]
-        if let (Output::SharedNv12 { video_levels }, Some(frame)) = (output, shared) {
+        if let (Output::SharedNv12 { video_levels }, Some(mut frame)) = (output, shared) {
             let output_at = self.readback_timing.as_ref().map(|_| Instant::now());
             let pitch = frame.pitch();
             let (words, _) = self.pack_420(&mut enc, &out, false, video_levels, pitch / 4);
@@ -319,7 +319,7 @@ impl Compositor {
                 self.nv12_copy
                     .as_mut()
                     .ok_or(GpuError::Lost)?
-                    .copy(&gpu, &words, &frame)?;
+                    .copy(&gpu, &words, &mut frame)?;
                 Ok(Rendered::SharedNv12(frame))
             })();
             if result.is_err() {

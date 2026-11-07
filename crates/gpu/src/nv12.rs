@@ -6,6 +6,8 @@
 
 use std::mem::ManuallyDrop;
 use std::os::windows::io::{AsHandle, AsRawHandle, BorrowedHandle, FromRawHandle, OwnedHandle};
+use std::sync::Arc;
+use std::time::Duration;
 
 use wgpu::hal::api::Dx12;
 use windows::Win32::Foundation::{GENERIC_ALL, HANDLE, HMODULE};
@@ -157,13 +159,15 @@ impl Nv12Device {
                 planes,
                 ready: self.ready_on_dx12.clone(),
                 value: self.value,
+                completion: None,
             })
         }
     }
 }
 
-/// One completed frame. Its resource is kept alive until the writer has
-/// opened the handle and recorded its copy. Frames are never overwritten.
+/// One submitted frame. The writer waits for its completion before using
+/// the texture, either on the CPU or through a shared GPU fence.
+/// Frames are never overwritten.
 #[derive(Debug)]
 pub struct SharedNv12 {
     handle: OwnedHandle,
@@ -172,6 +176,7 @@ pub struct SharedNv12 {
     ready: ID3D12Fence,
     value: u64,
     planes: [D3D12_PLACED_SUBRESOURCE_FOOTPRINT; 2],
+    completion: Option<Completion>,
 }
 
 impl SharedNv12 {
@@ -182,6 +187,40 @@ impl SharedNv12 {
     pub fn handle(&self) -> BorrowedHandle<'_> {
         self.handle.as_handle()
     }
+
+    /// Fence and value for a D3D11 GPU-side wait. None for an empty probe.
+    pub fn completion(&self) -> Option<(BorrowedHandle<'_>, u64)> {
+        self.completion
+            .as_ref()
+            .map(|c| (c.fence.handle.as_handle(), c.value))
+    }
+
+    /// CPU fallback for an encoder that cannot wait on a shared fence.
+    pub fn wait(&self) -> Result<(), GpuError> {
+        if let Some(c) = &self.completion {
+            c.device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(c.submitted.clone()),
+                    timeout: Some(Duration::from_secs(30)),
+                })
+                .map_err(|e| GpuError::Failed(e.to_string()))?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct CopyFence {
+    fence: ID3D12Fence,
+    handle: OwnedHandle,
+}
+
+#[derive(Debug)]
+struct Completion {
+    fence: Arc<CopyFence>,
+    value: u64,
+    device: wgpu::Device,
+    submitted: wgpu::SubmissionIndex,
 }
 
 impl Gpu {
@@ -216,14 +255,57 @@ impl Gpu {
     }
 }
 
-/// A private command list for one compositor. The source buffer decays
-/// to COMMON after the shader submission and promotes for the copy.
-/// The shared texture is explicitly returned to COMMON for D3D11.
+/// A small ring of native copy command lists. A slot is reset only after
+/// its previous submission completes. The source buffer decays to COMMON
+/// after the shader submission, and the texture is returned to COMMON.
 pub(crate) struct CopyNv12 {
+    slots: Vec<CopySlot>,
+    next: usize,
+    fence: Arc<CopyFence>,
+    value: u64,
+    queue: ID3D12CommandQueue,
+    device: wgpu::Device,
+    last: Option<wgpu::SubmissionIndex>,
+}
+
+struct CopySlot {
     allocator: ID3D12CommandAllocator,
     list: ID3D12GraphicsCommandList,
     command: ID3D12CommandList,
-    queue: ID3D12CommandQueue,
+    submitted: Option<wgpu::SubmissionIndex>,
+}
+
+// Kept by the queue's completion callback even if export is cancelled or
+// the compositor is dropped. D3D12 does not retain command-list resources.
+struct CopyLease {
+    _allocator: ID3D12CommandAllocator,
+    _list: ID3D12GraphicsCommandList,
+    _source: wgpu::Buffer,
+    _destination: ID3D12Resource,
+    _texture: ID3D11Texture2D,
+    _fence: Arc<CopyFence>,
+}
+
+impl CopySlot {
+    fn new(device: &ID3D12Device) -> Result<Self, GpuError> {
+        // SAFETY: these command objects belong exclusively to one compositor.
+        unsafe {
+            let allocator: ID3D12CommandAllocator = device
+                .CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)
+                .map_err(error)?;
+            let list: ID3D12GraphicsCommandList = device
+                .CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &allocator, None)
+                .map_err(error)?;
+            list.Close().map_err(error)?;
+            let command = list.cast().map_err(error)?;
+            Ok(Self {
+                allocator,
+                list,
+                command,
+                submitted: None,
+            })
+        }
+    }
 }
 
 fn transition(
@@ -232,7 +314,7 @@ fn transition(
     after: D3D12_RESOURCE_STATES,
 ) -> D3D12_RESOURCE_BARRIER {
     // SAFETY: the command records this borrowed pointer while the frame
-    // owns its resource, which stays alive through the submission wait.
+    // owns its resource, retained by the lease until submission completes.
     let resource = unsafe { ID3D12Resource::from_raw(resource.as_raw()) };
     D3D12_RESOURCE_BARRIER {
         Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
@@ -250,25 +332,27 @@ fn transition(
 
 impl CopyNv12 {
     pub(crate) fn new(gpu: &Gpu) -> Result<Self, GpuError> {
-        // SAFETY: an independent command list on wgpu's D3D12 device and
-        // direct queue. No wgpu-owned list or allocator is modified.
+        // SAFETY: the fence belongs to wgpu's D3D12 device and is shared
+        // with D3D11 through an owned, unnamed handle.
         unsafe {
             let hal = gpu.device.as_hal::<Dx12>().ok_or(GpuError::NoAdapter)?;
             let device = hal.raw_device();
-            let allocator: ID3D12CommandAllocator = device
-                .CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)
-                .map_err(error)?;
-            let list: ID3D12GraphicsCommandList = device
-                .CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &allocator, None)
-                .map_err(error)?;
-            list.Close().map_err(error)?;
-            let command = list.cast().map_err(error)?;
+            let fence: ID3D12Fence = device
+                .CreateFence(0, D3D12_FENCE_FLAG_SHARED)
+                .map_err(stage("creating NV12 completion fence"))?;
+            let handle = device
+                .CreateSharedHandle(&fence, None, GENERIC_ALL.0, PCWSTR::null())
+                .map_err(stage("sharing NV12 completion fence"))?;
+            let handle = OwnedHandle::from_raw_handle(handle.0);
             let queue = gpu.queue.as_hal::<Dx12>().ok_or(GpuError::NoAdapter)?;
             Ok(Self {
-                allocator,
-                list,
-                command,
+                slots: Vec::new(),
+                next: 0,
+                fence: Arc::new(CopyFence { fence, handle }),
+                value: 0,
                 queue: queue.as_raw().clone(),
+                device: gpu.device.clone(),
+                last: None,
             })
         }
     }
@@ -277,17 +361,39 @@ impl CopyNv12 {
         &mut self,
         gpu: &Gpu,
         words: &wgpu::Buffer,
-        dst: &SharedNv12,
+        dst: &mut SharedNv12,
     ) -> Result<(), GpuError> {
-        // SAFETY: the shader was already submitted to the same direct
-        // queue. Both resources outlive the completion wait below. The
-        // previous use of this list and allocator was also waited on.
+        if self.slots.len() < 3 {
+            // SAFETY: creating a private command list on the live device.
+            let slot = unsafe {
+                let hal = gpu.device.as_hal::<Dx12>().ok_or(GpuError::NoAdapter)?;
+                CopySlot::new(hal.raw_device())?
+            };
+            self.slots.push(slot);
+        }
+        let slot = &mut self.slots[self.next];
+        if let Some(submitted) = slot.submitted.take() {
+            // Backpressure only when reusing an in-flight command allocator.
+            gpu.device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: Some(submitted),
+                    timeout: Some(Duration::from_secs(30)),
+                })
+                .map_err(|e| GpuError::Failed(e.to_string()))?;
+        }
+        self.value = self
+            .value
+            .checked_add(1)
+            .ok_or_else(|| GpuError::Failed("NV12 fence counter exhausted".into()))?;
+        // SAFETY: shader and copy use the same direct queue. The slot's
+        // previous work is complete, and the completion callback below
+        // retains the command objects and both resources until this copy ends.
         unsafe {
             let hal = words.as_hal::<Dx12>().ok_or(GpuError::NoAdapter)?;
             let source = hal.raw_resource();
-            self.allocator.Reset().map_err(error)?;
-            self.list.Reset(&self.allocator, None).map_err(error)?;
-            self.list.ResourceBarrier(&[transition(
+            slot.allocator.Reset().map_err(error)?;
+            slot.list.Reset(&slot.allocator, None).map_err(error)?;
+            slot.list.ResourceBarrier(&[transition(
                 &dst.resource,
                 D3D12_RESOURCE_STATE_COMMON,
                 D3D12_RESOURCE_STATE_COPY_DEST,
@@ -311,32 +417,175 @@ impl CopyNv12 {
                         SubresourceIndex: i as u32,
                     },
                 };
-                self.list.CopyTextureRegion(&target, 0, 0, 0, &src, None);
+                slot.list.CopyTextureRegion(&target, 0, 0, 0, &src, None);
             }
-            self.list.ResourceBarrier(&[transition(
+            slot.list.ResourceBarrier(&[transition(
                 &dst.resource,
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 D3D12_RESOURCE_STATE_COMMON,
             )]);
-            self.list.Close().map_err(error)?;
+            slot.list.Close().map_err(error)?;
             self.queue
                 .Wait(&dst.ready, dst.value)
                 .map_err(stage("waiting for D3D11 NV12 initialization"))?;
             self.queue
-                .ExecuteCommandLists(&[Some(self.command.clone())]);
+                .ExecuteCommandLists(&[Some(slot.command.clone())]);
         }
-        // A wgpu queue marker after the native list gives its completion
-        // index. D3D11 may only open/use the texture after that wait.
+        // Signal the shared fence after the copy. D3D11 waits for this
+        // value before touching the texture. Always retain native objects
+        // through a wgpu marker, including if signaling the fence fails.
+        let signaled = unsafe { self.queue.Signal(&self.fence.fence, self.value) };
         let submitted = gpu.queue.submit([]);
-        gpu.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: Some(submitted),
-                timeout: None,
-            })
-            .map_err(|e| GpuError::Failed(e.to_string()))?;
+        let lease = CopyLease {
+            _allocator: slot.allocator.clone(),
+            _list: slot.list.clone(),
+            _source: words.clone(),
+            _destination: dst.resource.clone(),
+            _texture: dst._texture.clone(),
+            _fence: self.fence.clone(),
+        };
+        gpu.queue.on_submitted_work_done(move || drop(lease));
+        slot.submitted = Some(submitted.clone());
+        self.last = Some(submitted.clone());
+        self.next = (self.next + 1) % 3;
+        signaled.map_err(stage("signaling NV12 completion"))?;
+        dst.completion = Some(Completion {
+            fence: self.fence.clone(),
+            value: self.value,
+            device: gpu.device.clone(),
+            submitted,
+        });
         if gpu.is_lost() {
             return Err(GpuError::Lost);
         }
         Ok(())
+    }
+}
+
+impl Drop for CopyNv12 {
+    fn drop(&mut self) {
+        // Retire the final callbacks when a compositor closes. On a device
+        // error, the queue still owns the leases for any outstanding work.
+        if let Some(submitted) = self.last.take() {
+            let _ = self.device.poll(wgpu::PollType::Wait {
+                submission_index: Some(submitted),
+                timeout: Some(Duration::from_secs(30)),
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Compositor, Output, Rendered};
+    use bv_core::{ImageRgbaF32, Tick};
+    use bv_render::VideoPool;
+    use bv_timeline::{Project, ProjectSettings};
+
+    fn read_frame(gpu: &Gpu, frame: &SharedNv12) -> Vec<u8> {
+        let factory = gpu.nv12_device.lock().unwrap();
+        let factory = factory.as_ref().unwrap();
+        let device: ID3D11Device5 = factory.device.cast().unwrap();
+        let (handle, value) = frame.completion().unwrap();
+        // SAFETY: the original texture and completion handle remain live.
+        // The D3D11 copy waits on the compositor's fence before reading it.
+        unsafe {
+            let mut fence: Option<ID3D11Fence> = None;
+            device
+                .OpenSharedFence(HANDLE(handle.as_raw_handle()), &mut fence)
+                .unwrap();
+            factory.context.Wait(&fence.unwrap(), value).unwrap();
+            let mut desc = D3D11_TEXTURE2D_DESC::default();
+            frame._texture.GetDesc(&mut desc);
+            desc.Usage = D3D11_USAGE_STAGING;
+            desc.BindFlags = 0;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+            desc.MiscFlags = 0;
+            let mut staging = None;
+            factory
+                .device
+                .CreateTexture2D(&desc, None, Some(&mut staging))
+                .unwrap();
+            let staging = staging.unwrap();
+            factory.context.CopyResource(&staging, &frame._texture);
+            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+            factory
+                .context
+                .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+                .unwrap();
+            let mut bytes = Vec::new();
+            for row in 0..(desc.Height + desc.Height / 2) as usize {
+                let source = (mapped.pData as *const u8).add(row * mapped.RowPitch as usize);
+                bytes.extend_from_slice(std::slice::from_raw_parts(source, desc.Width as usize));
+            }
+            factory.context.Unmap(&staging, 0);
+            bytes
+        }
+    }
+
+    #[test]
+    #[ignore = "requires Windows D3D12 with shared NV12 and fence support"]
+    fn queued_nv12_frames_survive_command_reuse_and_compositor_drop() {
+        let gpu = Gpu::open(None).unwrap();
+        assert_eq!(gpu.adapter().backend, "Dx12");
+        let mut compositor = Compositor::new(gpu.clone());
+        let project = Project::new(ProjectSettings::default());
+        let scene = bv_timeline::scene::frame_scene(&project, Tick::ZERO, 64, 32);
+        let mut pool = VideoPool::new();
+        let colors = [
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.0, 1.0],
+            [0.0, 1.0, 0.0, 1.0],
+        ];
+        let frames: Vec<_> = colors
+            .iter()
+            .map(|&color| {
+                let Rendered::SharedNv12(frame) = compositor
+                    .render(
+                        &scene,
+                        project.settings.rotation,
+                        &mut pool,
+                        color,
+                        Output::SharedNv12 {
+                            video_levels: false,
+                        },
+                    )
+                    .unwrap()
+                else {
+                    panic!("expected a shared NV12 frame");
+                };
+                frame
+            })
+            .collect();
+        // Exercise the CPU fallback, then read the other queued frames
+        // through GPU waits after all three command slots have been reused.
+        frames[0].wait().unwrap();
+        for (frame, color) in frames[..4].iter().zip(&colors) {
+            let expected = bv_color::linear_to_420(&ImageRgbaF32::filled(64, 32, *color), false);
+            assert!(
+                read_frame(&gpu, frame)
+                    .iter()
+                    .zip(&expected)
+                    .all(|(a, b)| a.abs_diff(*b) <= 1)
+            );
+        }
+        drop(compositor);
+        for (frame, color) in frames[4..].iter().zip(&colors[4..]) {
+            let expected = bv_color::linear_to_420(&ImageRgbaF32::filled(64, 32, *color), false);
+            let actual = read_frame(&gpu, frame);
+            assert_eq!(actual.len(), expected.len());
+            assert!(
+                actual
+                    .iter()
+                    .zip(&expected)
+                    .all(|(a, b)| a.abs_diff(*b) <= 1)
+            );
+        }
     }
 }

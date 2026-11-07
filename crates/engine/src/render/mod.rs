@@ -1239,8 +1239,9 @@ fn run(
                 mapped_planar(&mapped, buf.channels, &busses, file_channels)
             }
         });
-        Timing::measure(timing, Stage::QueueWait, || work.send(Work::Audio(planar)))
-            .map_err(|_| gone())
+        Timing::measure(timing, Stage::QueueWait, || {
+            work.send(Work::Audio(planar)).map_err(|_| gone())
+        })
     };
     let mut sent: Result<(), String> = Ok(());
 
@@ -1317,7 +1318,9 @@ fn run(
                     last_shown = Some(Instant::now());
                 }
             }
-            Timing::measure(timing, Stage::QueueWait, || work.send(job)).map_err(|_| gone())?;
+            Timing::measure(timing, Stage::QueueWait, || {
+                work.send(job).map_err(|_| gone())
+            })?;
             if audio.is_some() {
                 let a0 = sr.sample_at(t).max(first_sample);
                 let a1 = if n + 1 == frames {

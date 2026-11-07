@@ -134,6 +134,7 @@ impl DirectNvenc {
         crate::imp::init()?;
         let device = Device::new(s.vendor, Some(adapter))?;
         device.shared_nv12(probe, s.width, s.height)?;
+        device.check_shared_fence_support()?;
         let textures: Vec<_> = (0..SLOTS)
             .map(|_| device.encoder_nv12(s.width, s.height))
             .collect::<Result<_>>()?;
@@ -174,6 +175,7 @@ impl DirectNvenc {
     pub fn encode_shared_nv12(
         &mut self,
         handle: BorrowedHandle<'_>,
+        completion: Option<(BorrowedHandle<'_>, u64)>,
         time: i64,
         duration: i64,
         timing: Option<&mut SharedNv12Timing>,
@@ -181,6 +183,9 @@ impl DirectNvenc {
         let (width, height) = (self.width, self.height);
         self.encode(time, duration, timing, |device, texture| {
             let source = device.shared_nv12(handle, width, height)?;
+            if let Some((fence, value)) = completion {
+                device.wait_shared_fence(fence, value)?;
+            }
             device.copy_nv12(texture, &source);
             Ok(())
         })

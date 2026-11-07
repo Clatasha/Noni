@@ -26,6 +26,8 @@ pub(super) enum Stage {
     #[cfg(windows)]
     SharedEventWait,
     #[cfg(windows)]
+    SharedCpuWait,
+    #[cfg(windows)]
     SharedMux,
     AudioMix,
     AudioWrite,
@@ -259,6 +261,7 @@ impl Timing {
                 )?;
                 for (label, stage) in [
                     ("Open, copy and flush encoder texture", Stage::SharedPrepare),
+                    ("CPU wait for compositor output", Stage::SharedCpuWait),
                     ("Wait for encoder events", Stage::SharedEventWait),
                     ("Submit frames and retrieve packets", Stage::SharedEncode),
                     ("Write encoded video to MP4", Stage::SharedMux),

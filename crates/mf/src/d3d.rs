@@ -161,7 +161,33 @@ impl Device {
         }
     }
 
-    /// Opens the compositor's completed texture on the encoder's device.
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn check_shared_fence_support(&self) -> Result<()> {
+        self.device.cast::<ID3D11Device5>().map_err(win)?;
+        self.context.cast::<ID3D11DeviceContext4>().map_err(win)?;
+        Ok(())
+    }
+
+    /// Order the encoder's texture copy after the compositor's D3D12 work.
+    /// Microsoft Learn, ID3D11DeviceContext4::Wait describes this GPU wait
+    /// for D3D11/D3D12 interop. The CPU can continue preparing frames.
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn wait_shared_fence(&self, handle: BorrowedHandle<'_>, value: u64) -> Result<()> {
+        let device = self.device.cast::<ID3D11Device5>().map_err(win)?;
+        let context = self.context.cast::<ID3D11DeviceContext4>().map_err(win)?;
+        // SAFETY: the borrowed handle is a live shared D3D12 fence. The
+        // immediate context retains the dependency for its queued work.
+        unsafe {
+            let mut fence: Option<ID3D11Fence> = None;
+            device
+                .OpenSharedFence(HANDLE(handle.as_raw_handle()), &mut fence)
+                .map_err(win)?;
+            let fence = fence.ok_or(Error::Unavailable)?;
+            context.Wait(&fence, value).map_err(win)
+        }
+    }
+
+    /// Opens the compositor's texture on the encoder's device.
     pub(crate) fn shared_nv12(
         &self,
         handle: BorrowedHandle<'_>,
@@ -170,7 +196,7 @@ impl Device {
     ) -> Result<ID3D11Texture2D> {
         let device = self.device.cast::<ID3D11Device1>().map_err(win)?;
         // SAFETY: the handle is borrowed from the live shared texture.
-        // The caller waits for the compositor before encoding.
+        // The caller orders a CPU or GPU wait before reading its pixels.
         unsafe {
             let texture: ID3D11Texture2D = device
                 .OpenSharedResource1(HANDLE(handle.as_raw_handle()))

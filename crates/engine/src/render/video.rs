@@ -267,7 +267,10 @@ fn open_shared_encoder(
         #[cfg(all(windows, target_arch = "x86_64"))]
         match bv_mf::DirectNvenc::new(settings, adapter, probe.handle()) {
             Ok(encoder) => {
-                set_status("enabled (direct NVENC, shared Direct3D 11 NV12 texture)".into());
+                set_status(
+                    "enabled (direct NVENC, shared Direct3D 11 NV12 texture, GPU fence handoff)"
+                        .into(),
+                );
                 return Some(Mp4Video::Direct(encoder));
             }
             Err(e) => fallback = format!("direct NVENC unavailable ({e}), "),
@@ -399,12 +402,16 @@ impl Output for Mp4Out {
         let (t, d) = self.video_time(n);
         let mut details = timing.map(|_| bv_mf::SharedNv12Timing::default());
         let packets = match &mut self.video {
-            Mp4Video::System(encoder) => encoder
-                .encode_shared_nv12(frame.handle(), t, d, details.as_mut())
-                .map_err(|e| format!("Fast NVENC failed: {e}. Turn off NONI_FAST_NVENC and NONI_DIRECT_NVENC and retry.")),
+            Mp4Video::System(encoder) => {
+                Timing::measure(timing, Stage::SharedCpuWait, || frame.wait())
+                    .map_err(|e| e.to_string())?;
+                encoder
+                    .encode_shared_nv12(frame.handle(), t, d, details.as_mut())
+                    .map_err(|e| format!("Fast NVENC failed: {e}. Turn off NONI_FAST_NVENC and NONI_DIRECT_NVENC and retry."))
+            }
             #[cfg(all(windows, target_arch = "x86_64"))]
             Mp4Video::Direct(encoder) => encoder
-                .encode_shared_nv12(frame.handle(), t, d, details.as_mut())
+                .encode_shared_nv12(frame.handle(), frame.completion(), t, d, details.as_mut())
                 .map_err(direct_error),
         }?;
         if let (Some(timing), Some(details)) = (timing, details) {
