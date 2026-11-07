@@ -28,44 +28,52 @@ pub(crate) fn ui(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp
     });
     let clocks = time_boxes(view, ui, app, l, l.toolbar.right() - 8.0);
     let buttons = toolbar_buttons::current(app, ToolbarKind::Timeline);
-    let (editing, controls) = if app.settings.timeline_toolbar.is_none() {
-        let split = buttons
-            .iter()
-            .position(|button| *button == TbButton::Record)
-            .unwrap_or(buttons.len());
-        buttons.split_at(split)
-    } else {
-        (&buttons[..], &[][..])
-    };
+    let controls: Vec<_> = [
+        TbButton::Record,
+        TbButton::CanvasRatio,
+        TbButton::SaveSnapshot,
+        TbButton::EnableSnapping,
+        TbButton::AutomaticCrossfades,
+        TbButton::AutoRipple,
+        TbButton::LockEnvelopesToEvents,
+    ]
+    .into_iter()
+    .filter(|b| buttons.contains(b))
+    .collect();
+    let editing: Vec<_> = buttons
+        .iter()
+        .copied()
+        .filter(|b| !controls.contains(b))
+        .collect();
+    ui.painter().line_segment(
+        [
+            pos2(clocks - 8.0, l.toolbar.top() + 6.0),
+            pos2(clocks - 8.0, l.toolbar.bottom() - 6.0),
+        ],
+        Stroke::new(1.0, theme::separator()),
+    );
     let volume = Rect::from_min_max(
-        pos2(clocks - 49.0, l.toolbar.top()),
-        pos2(clocks - 8.0, l.toolbar.bottom()),
+        pos2(clocks - 44.0, l.toolbar.top()),
+        pos2(clocks - 20.0, l.toolbar.bottom()),
     );
     listening_volume(ui, app, volume);
     let controls_right = volume.left() - 8.0;
-    let controls_left = controls_right - controls.len() as f32 * 24.0;
-    let edit_room = Rect::from_min_max(
-        l.toolbar.min,
-        pos2(controls_left - 8.0, l.toolbar.bottom()),
-    );
-    paint_group(ui, app, edit_room, "timeline-edit-tools", editing);
+    let controls_left =
+        controls_right - (controls.len() as f32 * (crate::widgets::BUTTON.x + 1.0) + 6.0);
+    let edit_room =
+        Rect::from_min_max(l.toolbar.min, pos2(controls_left - 8.0, l.toolbar.bottom()));
+    paint_group(ui, app, edit_room, "timeline-edit-tools", &editing);
 
-    if !controls.is_empty() {
+    {
         let control_room = Rect::from_min_max(
             pos2(controls_left, l.toolbar.top()),
             pos2(controls_right, l.toolbar.bottom()),
         );
-        paint_group(ui, app, control_room, "timeline-controls", controls);
+        paint_group(ui, app, control_room, "timeline-controls", &controls);
     }
 }
 
-fn paint_group(
-    ui: &mut egui::Ui,
-    app: &mut BananaApp,
-    room: Rect,
-    id: &str,
-    buttons: &[TbButton],
-) {
+fn paint_group(ui: &mut egui::Ui, app: &mut BananaApp, room: Rect, id: &str, buttons: &[TbButton]) {
     if room.width() <= 12.0 {
         return;
     }
@@ -87,26 +95,55 @@ fn paint_group(
 }
 
 fn listening_volume(ui: &mut egui::Ui, app: &mut BananaApp, rect: Rect) {
-    ui.scope_builder(
-        egui::UiBuilder::new()
-            .max_rect(rect)
-            .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        |ui| {
-            ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-            ui.spacing_mut().item_spacing.x = 2.0;
-            ui.spacing_mut().interact_size.x = 18.0;
-            ui.spacing_mut().slider_width = 24.0;
-            let (icon, response) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
-            crate::icons::paint(
-                ui.painter(),
-                icon,
-                crate::icons::Icon::Speaker,
-                theme::text(),
-            );
-            response.on_hover_text(tr("Listening Volume"));
-            crate::tabs::master::listening_slider(ui, app, true);
-        },
+    let response = ui.put(rect.shrink2(vec2(1.0, 3.0)), egui::Button::new(""));
+    crate::icons::paint(
+        ui.painter(),
+        rect.shrink2(vec2(3.0, 5.0)),
+        crate::icons::Icon::Speaker,
+        theme::text(),
     );
+    let id = ui.id().with("listening-volume-hover");
+    let now = ui.input(|i| i.time);
+    if response.hovered() || response.clicked() {
+        ui.ctx().data_mut(|d| d.insert_temp(id, now));
+    }
+    let last = ui.ctx().data_mut(|d| d.get_temp::<f64>(id));
+    if !last.is_some_and(|last| now - last < 0.45) {
+        return;
+    }
+    let popup = egui::Area::new(id.with("panel"))
+        .order(egui::Order::Foreground)
+        .fade_in(false)
+        .movable(false)
+        .constrain(true)
+        .fixed_pos(pos2(rect.center().x - 70.0, rect.top() - 230.0))
+        .show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.set_width(128.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(tr("Listening Volume"));
+                    ui.spacing_mut().slider_width = 164.0;
+                    let (fader, _) = ui.allocate_exact_size(vec2(26.0, 164.0), Sense::hover());
+                    let mut slider = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(fader)
+                            .layout(egui::Layout::top_down(egui::Align::Center)),
+                    );
+                    let volume = crate::tabs::master::listening_slider(&mut slider, app, true);
+                    ui.label(format!("{volume}%"));
+                });
+            });
+        });
+    let over = ui.input(|i| {
+        i.pointer
+            .hover_pos()
+            .is_some_and(|p| popup.response.rect.expand(8.0).contains(p))
+    });
+    if over || ui.input(|i| i.pointer.any_down()) {
+        ui.ctx().data_mut(|d| d.insert_temp(id, now));
+    }
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_millis(40));
 }
 
 const ZOOM_BUTTON_W: f32 = 24.0;
@@ -191,12 +228,11 @@ fn time_boxes(
     };
     // Each as wide as a long time of the ruler's format, so they keep their
     // places as the times change.
-    let font = FontId::proportional(12.5);
+    let font = crate::timecode_font::font(14.0);
     let painter = ui.painter().clone();
     let measure = |t: &str| {
-        painter
-            .layout_no_wrap(t.to_string(), font.clone(), theme::text())
-            .size()
+        crate::timecode_font::layout(&painter, t, 14.0, theme::text())
+            .size
             .x
     };
     let widest = boxes
@@ -245,13 +281,11 @@ fn time_boxes(
             } else {
                 theme::text_disabled()
             };
-            painter.text(
-                field.left_center(),
-                Align2::LEFT_CENTER,
-                text,
-                font.clone(),
-                color,
-            );
+            let text = crate::timecode_font::layout(&painter, text, 14.0, color);
+            let origin = Align2::LEFT_CENTER
+                .anchor_size(field.left_center(), text.size)
+                .min;
+            text.paint(&painter, origin, color);
         }
         let area = Rect::from_min_max(pos2(icon.left(), field.top()), field.max);
         let resp = ui.interact(area, ui.id().with(("caixa-de-tempo", kind)), Sense::click());
@@ -650,6 +684,20 @@ pub(crate) fn scrollbars(
 mod tests {
     use super::*;
     use bv_core::TimeRange;
+
+    #[test]
+    fn approved_toolbar_layout_review() {
+        let mut app = BananaApp::new(egui::Context::default());
+        app.load_demo();
+        app.welcome_for_review("closed");
+        crate::patch_review::capture("toolbar", vec2(1600.0, 960.0), |ui| app.frame(ui));
+        crate::patch_review::capture_with_pointer(
+            "volume",
+            vec2(1600.0, 960.0),
+            Some(pos2(1240.0, 546.0)),
+            |ui| app.frame(ui),
+        );
+    }
 
     /// Typed into, the time boxes set the cursor or the time selection's
     /// ends and length, as VEGAS's: a time in the ruler's format, or a

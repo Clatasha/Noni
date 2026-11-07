@@ -115,6 +115,10 @@ pub(super) fn layers(icon: Icon) -> Vec<Layer> {
             solid(d("M12.44 12L4.6 6.64V17.36Z")),
         ],
         // The pointer.
+        Icon::Pencil => vec![
+            body(d("M5 15L15 5 19 9 9 19 4 20Z")),
+            line(d("M13 7L17 11M5 15L9 19")),
+        ],
         Icon::EditTool => vec![
             body(d("M6 3V19L10.5 14.8 13.5 21 16.3 19.7 13.5 13.8H19.5Z")),
         ],
@@ -824,10 +828,11 @@ impl Layer {
 }
 
 #[cfg(test)]
-pub(super) const ALL: [Icon; 134] = [
+pub(super) const ALL: [Icon; 135] = [
     Icon::New,
     Icon::Open,
     Icon::Save,
+    Icon::Pencil,
     Icon::Render,
     Icon::Settings,
     Icon::Cut,

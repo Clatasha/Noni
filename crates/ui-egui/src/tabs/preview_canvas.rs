@@ -19,7 +19,7 @@ const RATIOS: [(&str, u32, u32); 6] = [
     ("21:9", 2520, 1080),
 ];
 
-pub(super) fn ratio_menu(ui: &mut egui::Ui, app: &mut BananaApp) {
+pub(crate) fn ratio_menu(ui: &mut egui::Ui, app: &mut BananaApp) {
     let settings = app.project().settings;
     let button = crate::widgets::icon_button_ex(
         ui,
@@ -64,8 +64,8 @@ fn resize_canvas(project: &mut Project, width: u32, height: u32) {
     if before == after {
         return;
     }
-    let old_ratio = f64::from(before.width) * f64::from(before.pixel_aspect.ratio())
-        / f64::from(before.height);
+    let old_ratio =
+        f64::from(before.width) * f64::from(before.pixel_aspect.ratio()) / f64::from(before.height);
     let new_ratio = f64::from(after.width) / f64::from(after.height);
     if (old_ratio / new_ratio - 1.0).abs() > 1e-6 {
         let media: std::collections::HashMap<_, _> =
@@ -85,8 +85,8 @@ fn resize_canvas(project: &mut Project, width: u32, height: u32) {
                 let old = pancrop::place_in(&before, info, true, true);
                 let new = pancrop::place_in(&after, info, true, true);
                 let stored_par = if pan.size[0] > 0 && pan.size[1] > 0 {
-                    old.media_aspect * old.media[0] / old.media[1]
-                        * f64::from(pan.size[1]) / f64::from(pan.size[0])
+                    old.media_aspect * old.media[0] / old.media[1] * f64::from(pan.size[1])
+                        / f64::from(pan.size[0])
                 } else {
                     old.media_aspect
                 };
@@ -321,7 +321,13 @@ pub(super) fn clip_handles(
                 let _ = project.set_clip_box_at(id, drag.edit_at, next, preferences);
             });
         }
-        if let Some(next) = outline(&pancrop::place(&next, &place), &place, rotation, frame, slide) {
+        if let Some(next) = outline(
+            &pancrop::place(&next, &place),
+            &place,
+            rotation,
+            frame,
+            slide,
+        ) {
             corners = next;
         }
     }
@@ -431,7 +437,10 @@ fn source_point(
     slide: f64,
 ) -> Pos2 {
     let [x, y] = placement.on_frame_point(point);
-    let (u, v) = ((x / place.frame[0]) as f32, (y / place.frame[1] + slide) as f32);
+    let (u, v) = (
+        (x / place.frame[0]) as f32,
+        (y / place.frame[1] + slide) as f32,
+    );
     let (u, v) = match rotation {
         OutputRotation::None => (u, v),
         OutputRotation::Clockwise90 => (1.0 - v, u),

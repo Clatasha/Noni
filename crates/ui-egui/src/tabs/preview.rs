@@ -5,7 +5,7 @@
 //! the frame shown).
 
 #[path = "preview_canvas.rs"]
-mod canvas;
+pub(crate) mod canvas;
 
 use crate::i18n::{tr, trc};
 use bv_core::Tick;
@@ -436,7 +436,7 @@ impl std::fmt::Debug for PreviewState {
     }
 }
 
-fn save_snapshot(app: &mut BananaApp) {
+pub(crate) fn save_snapshot(app: &mut BananaApp) {
     let t = app.display_time();
     if let Some(path) = rfd::FileDialog::new()
         .set_title(tr("Save Snapshot"))
@@ -945,7 +945,6 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             if icon_button(ui, Icon::Settings, tr("Project Properties")).clicked() {
                 app.open_project_settings();
             }
-            canvas::ratio_menu(ui, app);
             let external = app.external.is_some();
             if icon_toggle(
                 ui,
@@ -986,9 +985,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                     None => app.report_error(tr("Could not draw the snapshot.")),
                 }
             }
-            if icon_button(ui, Icon::Save, tr("Save Snapshot to File…")).clicked() {
-                save_snapshot(app);
-            }
+
             // The 360° View, for 360° projects; never on by itself: the
             // flat frame shows how the sphere is stitched.
             let is_360 = app.project().settings.output_360;

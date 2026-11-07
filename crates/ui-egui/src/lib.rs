@@ -76,6 +76,8 @@ mod otio_ui;
 mod pancrop;
 mod pancrop_keys;
 mod pancrop_mask;
+#[cfg(test)]
+mod patch_review;
 mod preferences;
 mod prerender_ui;
 mod presets;

@@ -76,6 +76,8 @@ pub struct RenderPrefs {
     #[serde(default)]
     simple: simple::SimpleSettings,
     #[serde(default)]
+    simple_presets: Vec<simple::NamedPreset>,
+    #[serde(default)]
     pub favorites: Vec<String>,
     #[serde(default)]
     pub custom: Vec<CustomTemplate>,
@@ -263,6 +265,11 @@ pub(crate) fn place_new_track(app: &mut BananaApp) {
 #[derive(Debug)]
 pub struct RenderDialog {
     simple: simple::SimpleSettings,
+    simple_presets: Vec<simple::NamedPreset>,
+    simple_preset: Option<String>,
+    preset_edit: Option<simple::PresetEdit>,
+    preset_error: Option<String>,
+    simple_details: bool,
     node: Node,
     expanded: [bool; 3],
     search: String,
@@ -343,6 +350,11 @@ impl RenderDialog {
         };
         RenderDialog {
             simple: app.settings.render.simple,
+            simple_presets: app.settings.render.simple_presets.clone(),
+            simple_preset: None,
+            preset_edit: None,
+            preset_error: None,
+            simple_details: false,
             node,
             expanded: [false; 3],
             search: String::new(),
@@ -473,6 +485,7 @@ impl RenderDialog {
                 .open(&mut open)
                 .show(ctx, |ui| action = self.show_simple(ui, app));
         }
+        self.simple_windows(ctx, app);
         if let Some(c) = &mut self.customize {
             match c.show(ctx, app) {
                 customize::Outcome::Open => {}
@@ -526,7 +539,12 @@ impl RenderDialog {
             }
             Action::None => {}
         }
-        if open { Outcome::Open } else { Outcome::Closed }
+        if open {
+            Outcome::Open
+        } else {
+            self.remember(app);
+            Outcome::Closed
+        }
     }
 
     /// The dialog's choices go into the settings.

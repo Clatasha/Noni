@@ -1006,3 +1006,27 @@ fn encoder_bytes() {
         }
     }
 }
+
+#[test]
+fn decoded_upload_staging_reuses_memory_without_stale_frames() {
+    let Some(mut compositor) = gpu() else {
+        return;
+    };
+    for format in [PixelFormat::Yuv420P8, PixelFormat::Yuv420P10] {
+        for n in 0..12 {
+            let mut f = frame(format, ColorInfo::default(), 64, 32);
+            for plane in &mut f.planes {
+                match &mut plane.data {
+                    PlaneData::U8(p) => p.iter_mut().for_each(|v| *v = v.wrapping_add(n)),
+                    PlaneData::U16(p) => p.iter_mut().for_each(|v| *v = (*v + u16::from(n)) % 1024),
+                }
+            }
+            let expected = bv_color::frame_to_linear(&f);
+            let actual = compositor.linear(&f, (64, 32)).unwrap();
+            assert!(
+                max_diff(&actual, &expected) < 0.015,
+                "stale upload in frame {n}"
+            );
+        }
+    }
+}

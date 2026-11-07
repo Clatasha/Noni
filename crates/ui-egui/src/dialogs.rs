@@ -136,6 +136,7 @@ impl Dialogs {
                 .open(&mut self.about)
                 .show(ctx, |ui| {
                     ui.heading(RichText::new("Noni Video Editor").color(theme::banana()));
+                    ui.label(RichText::new(tr("Developed by Clatasha")).strong());
                     ui.label(tr("Video editor written in Rust."));
                     ui.label(tr("Compositing in linear light, 32-bit float."));
                     ui.label(tr("Time in ticks: 254,016,000,000 per second."));

@@ -40,6 +40,8 @@ pub(super) enum Stage {
 pub(crate) struct Timing {
     nanos: [AtomicU64; Stage::Finish as usize + 1],
     draws: AtomicU64,
+    source_uploads: AtomicU64,
+    belt_uploads: AtomicU64,
     painters: AtomicU64,
     prepared_frames: AtomicU64,
     prepared_pictures: AtomicU64,
@@ -101,6 +103,10 @@ impl Timing {
         self.add(Stage::GpuCompose, gpu.compose);
         self.add(Stage::GpuEffects, gpu.effects);
         self.add(Stage::SourceUpload, gpu.source_upload);
+        self.source_uploads
+            .fetch_add(gpu.source_uploads, Ordering::Relaxed);
+        self.belt_uploads
+            .fetch_add(gpu.belt_uploads, Ordering::Relaxed);
         self.add(Stage::SharedOutput, gpu.shared_output);
         self.add(Stage::GpuWait, gpu.wait);
         self.add(Stage::ReadbackCopy, gpu.copy);
@@ -228,6 +234,12 @@ impl Timing {
             "Shared GPU output surfaces: {} reused, {} newly allocated",
             self.shared_surfaces_reused.load(Ordering::Relaxed),
             self.shared_surfaces_created.load(Ordering::Relaxed)
+        )?;
+        writeln!(
+            file,
+            "Reusable decoded upload staging: {} / {} uploads",
+            self.belt_uploads.load(Ordering::Relaxed),
+            self.source_uploads.load(Ordering::Relaxed)
         )?;
         let painters = self.painters.load(Ordering::Relaxed);
         writeln!(file, "Video drawing workers: {painters}")?;

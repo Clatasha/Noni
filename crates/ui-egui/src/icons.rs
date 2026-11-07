@@ -31,6 +31,7 @@ pub enum Icon {
     New,
     Open,
     Save,
+    Pencil,
     Render,
     Settings,
     Cut,

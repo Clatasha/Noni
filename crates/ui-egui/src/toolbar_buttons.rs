@@ -71,6 +71,8 @@ pub enum TbButton {
     Script(u8),
     // VEGAS's default timeline toolbar.
     Record,
+    CanvasRatio,
+    SaveSnapshot,
     LoopPlayback,
     PlayFromStart,
     Play,
@@ -269,11 +271,12 @@ pub const DEFAULT: &[TbButton] = &[
     B::OpenNestedTimeline,
     B::CreateNestedTimeline,
     B::Record,
+    B::CanvasRatio,
+    B::SaveSnapshot,
     B::EnableSnapping,
     B::AutomaticCrossfades,
     B::AutoRipple,
     B::LockEnvelopesToEvents,
-    B::IgnoreEventGrouping,
 ];
 
 /// Every button, in the order of the "Available toolbar buttons" list
@@ -304,6 +307,8 @@ pub const ALL: &[TbButton] = &[
     B::MotionTracking,
     B::DetectScenesAndSplit,
     B::Record,
+    B::CanvasRatio,
+    B::SaveSnapshot,
     B::LoopPlayback,
     B::PlayFromStart,
     B::Play,
@@ -390,6 +395,8 @@ impl TbButton {
             B::WelcomeScreen => "Welcome Screen",
             B::Script(i) => SCRIPTS.get(i as usize).copied().unwrap_or("Script"),
             B::Record => "Record",
+            B::CanvasRatio => "Canvas Ratio",
+            B::SaveSnapshot => "Save Snapshot to File…",
             B::LoopPlayback => "Loop Playback",
             B::PlayFromStart => "Play From Start",
             B::Play => "Play",
@@ -487,6 +494,8 @@ impl TbButton {
             | B::WelcomeScreen
             | B::Script(_) => Icon::Script,
             B::Record => Icon::Microphone,
+            B::CanvasRatio => Icon::ShapeWide,
+            B::SaveSnapshot => Icon::Camera,
             B::LoopPlayback => Icon::Loop,
             B::PlayFromStart => Icon::PlayFromStart,
             B::Play => Icon::Play,
@@ -588,6 +597,7 @@ impl TbButton {
             B::LoopPlayback => Does::Cmd(Cmd::LoopPlayback),
             B::Metronome => Does::Cmd(Cmd::Metronome),
             B::Record => Does::Cmd(Cmd::Record),
+            B::CanvasRatio | B::SaveSnapshot => Does::Own,
             B::PlayFromStart | B::Play | B::Pause | B::Stop => Does::Own,
             B::GoToStart | B::GoToEnd | B::PreviousFrame | B::NextFrame => Does::Own,
             B::NormalTool => Does::Cmd(Cmd::UseTool(Tool::Edit)),
@@ -679,6 +689,7 @@ impl TbButton {
                 B::PreviousFrame => app.step_frames(-1),
                 B::NextFrame => app.step_frames(1),
                 B::StartCapture => app.open_screen_capture(),
+                B::SaveSnapshot => crate::tabs::preview::save_snapshot(app),
                 _ => {}
             },
             Does::Soon => {}
@@ -756,6 +767,10 @@ pub fn paint(ui: &mut crate::egui::Ui, app: &mut BananaApp, kind: ToolbarKind) {
 
 pub(crate) fn paint_buttons(ui: &mut crate::egui::Ui, app: &mut BananaApp, buttons: &[TbButton]) {
     for &b in buttons {
+        if b == B::CanvasRatio {
+            crate::tabs::preview::canvas::ratio_menu(ui, app);
+            continue;
+        }
         let Some(icon) = b.icon() else {
             crate::widgets::toolbar_separator(ui);
             continue;
@@ -794,6 +809,6 @@ mod tests {
         for b in DEFAULT.iter().filter(|b| **b != B::Separator) {
             assert!(seen.contains(b), "{b:?} missing from ALL");
         }
-        assert_eq!(DEFAULT.iter().filter(|b| **b != B::Separator).count(), 25);
+        assert_eq!(DEFAULT.iter().filter(|b| **b != B::Separator).count(), 26);
     }
 }

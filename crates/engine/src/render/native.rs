@@ -95,6 +95,9 @@ fn request(
 ) -> Result<Request, &'static str> {
     let v = settings.video.ok_or("Video output is disabled.")?;
     let a = settings.audio.ok_or("Audio output is disabled.")?;
+    if v.rate_mode == super::RateMode::Cbr {
+        return Err("CBR output uses the Noni encoder.");
+    }
     let range = settings.range;
     let p = &project.settings;
     if !matches!(settings.format, FileFormat::AvcMp4 | FileFormat::HevcMp4)
@@ -478,6 +481,12 @@ mod tests {
         let job = request(&project, &settings, path.clone()).expect("both streams are aligned");
         assert_eq!(job.clips.len(), 1);
         assert!(job.clips[0].audio);
+        let mut cbr = settings.clone();
+        cbr.video.as_mut().unwrap().rate_mode = super::super::RateMode::Cbr;
+        assert_eq!(
+            request(&project, &cbr, path.clone()).err().unwrap(),
+            "CBR output uses the Noni encoder."
+        );
 
         let second = project
             .tracks

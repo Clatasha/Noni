@@ -355,6 +355,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Uma placa, sala ou salão, com tamanho, tempo e amortecimento.",
     ),
     (
+        "A preset with that name already exists.",
+        "Já existe uma predefinição com esse nome.",
+    ),
+    (
         "A project can't be nested in itself",
         "Um projeto não pode ser aninhado nele mesmo",
     ),
@@ -1036,7 +1040,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Assignable FX", "FX atribuível"),
     ("Assignable FX Busses", "Barramentos de FX atribuíveis"),
     ("Assignable FX Vol {}", "Vol. de FX atribuível {}"),
-    ("at {}", "em {}"),
     ("ATSC A 85 Mode", "Modo ATSC A 85"),
     ("ATSC A/85", "ATSC A/85"),
     ("Attack", "Ataque"),
@@ -1311,6 +1314,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Bit rate mode: {}", "Modo da taxa de bits: {}"),
     ("Bit rate:", "Taxa de bits:"),
     ("Bit rate: {} bps", "Taxa de bits: {} bps"),
+    ("Bitrate Mode", "Modo de taxa de bits"),
     ("Black", "Preto"),
     ("Black and White", "Preto e branco"),
     (
@@ -1648,7 +1652,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Change cursor and selected event color when in Auto Ripple mode",
         "Mudar a cor do cursor e dos eventos selecionados no modo Ondulação automática",
     ),
-    ("Changes speaker and headphone volume only.", "Altera apenas o volume dos alto-falantes e fones de ouvido."),
+    (
+        "Changes speaker and headphone volume only.",
+        "Altera apenas o volume dos alto-falantes e fones de ouvido.",
+    ),
     (
         "Changes the colors' saturation by how saturated they are: a range of saturations, and the colors below and above it.",
         "Muda a saturação das cores conforme o quanto elas são saturadas: uma faixa de saturações, e as cores abaixo e acima dela.",
@@ -1726,6 +1733,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Choose a color: it goes to the cursor.",
         "Escolha uma cor: ela vai para o cursor.",
+    ),
+    (
+        "Choose a preset name other than Custom.",
+        "Escolha um nome de predefinição diferente de Personalizado.",
     ),
     ("Choose Active…", "Escolher ativo…"),
     ("Choose its MIDI input", "Escolha a entrada MIDI dele"),
@@ -1989,7 +2000,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Color Grading is not available.",
         "A matização de cores não está disponível.",
     ),
-    ("Color Grading plug-in unavailable.", "Plug-in de matização de cores indisponível."),
+    (
+        "Color Grading plug-in unavailable.",
+        "Plug-in de matização de cores indisponível.",
+    ),
     ("Color H", "Cor H"),
     ("Color Levels", "Níveis de cor"),
     ("Color Match", "Correspondência de cores"),
@@ -2232,10 +2246,13 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Could not export: {}", "Não foi possível exportar: {}"),
     (
+        "Could not import sticker: {}",
+        "Não foi possível importar o adesivo: {}",
+    ),
+    (
         "Could not import {}: {}",
         "Não foi possível importar {}: {}",
     ),
-    ("Could not import sticker: {}", "Não foi possível importar o adesivo: {}"),
     ("Could not import: {}", "Não foi possível importar: {}"),
     (
         "Could not make Noni open its project files: {}",
@@ -2248,6 +2265,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Could not move it to the Recycle Bin: {}",
         "Não foi possível mandar para a Lixeira: {}",
+    ),
+    (
+        "Could not open sticker: {}",
+        "Não foi possível abrir o adesivo: {}",
     ),
     (
         "Could not open the editor: {}",
@@ -2281,7 +2302,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Could not read the target event's sound: {}",
         "Não foi possível ler o som do evento-alvo: {}",
     ),
-    ("Could not open sticker: {}", "Não foi possível abrir o adesivo: {}"),
     ("Could not read {}: {}", "Não foi possível ler {}: {}"),
     (
         "Could not record into {}: {}",
@@ -2298,6 +2318,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Could not replace the media file: {}",
         "Não foi possível substituir o arquivo de mídia: {}",
+    ),
+    (
+        "Could not save presets: {}",
+        "Não foi possível salvar as predefinições: {}",
     ),
     (
         "Could not save the filter package: {}",
@@ -2755,6 +2779,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Determines how strongly an adjustment to one mesh point affects all other points.  Hold Shift to limit the effect to only directly neighboring points.",
         "Determina quanto um ajuste em um ponto da malha afeta todos os outros pontos. Segure Shift para limitar o efeito apenas aos pontos vizinhos diretos.",
     ),
+    ("Developed by Clatasha", "Desenvolvido por Clatasha"),
     ("Device", "Dispositivo"),
     ("Device connected", "Dispositivo conectado"),
     ("Device Defaults", "Padrões do dispositivo"),
@@ -3046,6 +3071,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Duplicate Track", "Duplicar trilha"),
     ("Duration", "Duração"),
     ("Duration: {}", "Duração: {}"),
+    (
+        "Duration: {} · Size: {} MB (estimated)",
+        "Duração: {} · Tamanho: {} MB (estimado)",
+    ),
     ("Dust", "Poeira"),
     ("DVD & Blu-ray", "DVD e Blu-ray"),
     ("DVD Camcorder Disc…", "Disco de câmera DVD…"),
@@ -3217,11 +3246,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Ativar o redimensionamento automático da janela de FX",
     ),
     ("Enable autosave", "Ativar o salvamento automático"),
+    ("Enable Color Grading", "Ativar matização de cores"),
     (
         "Enable direct GPU import path",
         "Ativar o caminho direto de importação pela GPU",
     ),
-    ("Enable Color Grading", "Ativar matização de cores"),
     ("Enable enhancement", "Habilitar aprimoramento"),
     ("Enable hard clipping", "Corte duro"),
     (
@@ -3327,6 +3356,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Enter a lens model name to search for.",
         "Digite o nome de um modelo de lente para procurar.",
     ),
+    (
+        "Enter a preset name of 1–80 characters.",
+        "Digite um nome de predefinição com 1 a 80 caracteres.",
+    ),
     ("Enter default label", "Digite o rótulo padrão"),
     (
         "Enter Expanded Edit Mode",
@@ -3430,11 +3463,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Explorer", "Explorador"),
     ("Explorer…", "Explorador…"),
-    ("Export engine: {}", "Motor de exportação: {}"),
     ("Export", "Exportar"),
     ("Export Chapters", "Exportar capítulos"),
     ("Export Closed Captioning", "Exportar legendas ocultas"),
     ("Export EDL", "Exportar EDL"),
+    ("Export engine: {}", "Motor de exportação: {}"),
     ("Export Final Cut Pro X", "Exportar Final Cut Pro X"),
     ("Export LUT", "Exportar LUT"),
     ("Export LUT…", "Exportar LUT…"),
@@ -3447,6 +3480,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Export Regions as Subtitles",
         "Exportar regiões como legendas",
     ),
+    ("Export Settings", "Configurações de exportação"),
     ("Export Text", "Exportar texto"),
     ("Export VEG Project", "Exportar projeto VEG"),
     (
@@ -4156,11 +4190,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("High-pass", "Passa-altas"),
     ("High-pass contour", "Contorno passa-altas"),
     ("High-shelf", "Prateleira de agudos"),
+    ("Higher quality", "Qualidade maior"),
     (
         "Higher: also splits on soft scene changes.",
         "Mais alta: divide também em mudanças suaves de cena.",
     ),
-    ("Higher quality", "Qualidade maior"),
     ("Highest", "Máxima"),
     ("Highlight", "Destaque"),
     ("Highlight Motion Blur Area", "Destacar a área desfocada"),
@@ -5172,7 +5206,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Import Stickers…", "Importar adesivos…"),
     ("Import Text", "Importar texto"),
     ("Import to:", "Importar para:"),
-    ("Import transparent PNG files to add your own stickers.", "Importe arquivos PNG transparentes para adicionar seus adesivos."),
+    (
+        "Import transparent PNG files to add your own stickers.",
+        "Importe arquivos PNG transparentes para adicionar seus adesivos.",
+    ),
     ("Import VEG Project", "Importar projeto VEG"),
     (
         "Import XML (Final Cut Pro 7 / DaVinci Resolve)",
@@ -5180,7 +5217,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Imported", "Importado"),
     ("In", "Para dentro"),
-    ("In animation", "Animação de entrada"),
     ("In color", "Colorido"),
     ("In use: {}", "Em uso: {}"),
     (
@@ -5503,11 +5539,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Distribuir em trilhas pelo timecode da mídia",
     ),
     ("Layer Dimensionality", "Dimensionalidade da camada"),
-    ("Layout ({})", "Layout ({})"),
     (
         "Layout \"{}\" saved (Alt+D, {}).",
         "Layout \"{}\" salvo (Alt+D, {}).",
     ),
+    ("Layout ({})", "Layout ({})"),
     ("Layout {}", "Layout {}"),
     ("Leading region", "Região à frente"),
     ("Learn", "Aprender"),
@@ -6734,10 +6770,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("North and South Pole", "Pólo Norte e Sul"),
     ("Not Active", "Inativo"),
-    (
-        "Not available in Noni yet",
-        "Ainda não disponível no Noni",
-    ),
+    ("Not available in Noni yet", "Ainda não disponível no Noni"),
     ("Not supported ({})", "Não suportado ({})"),
     (
         "Notch frequencies around 450 Hz",
@@ -6948,7 +6981,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Original resolution", "Resolução original"),
     ("Other metadata", "Outros metadados"),
     ("Out", "Para fora"),
-    ("Out animation", "Animação de saída"),
     ("Out: {}, in: {}", "Saída: {}, entrada: {}"),
     ("Outer", "Por fora"),
     (
@@ -7241,8 +7273,6 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Position tabs at top of docked windows",
         "Posicionar as abas no topo das janelas encaixadas",
     ),
-    ("Position X", "Posição X"),
-    ("Position Y", "Posição Y"),
     ("Position:", "Posição:"),
     ("Positive", "Positiva"),
     ("Positive half", "Metade positiva"),
@@ -7295,7 +7325,9 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Preserve pitch when stretching audio events",
         "Manter o tom ao esticar eventos de áudio",
     ),
+    ("Preset", "Predefinição"),
     ("Preset \"{}\" saved.", "Predefinição \"{}\" salva."),
+    ("Preset name", "Nome da predefinição"),
     ("Preset:", "Predefinição:"),
     ("Presets", "Predefinições"),
     ("PreSonus FaderPort Driver", "Driver PreSonus FaderPort"),
@@ -7525,6 +7557,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Raios de força desigual em volta da luz, em porcentagem.",
     ),
     ("Re-Analyze Auto Ducking", "Reanalisar o ducking automático"),
+    (
+        "Reaction Station skipped: {}",
+        "Reaction Station ignorado: {}",
+    ),
     ("Read", "Leitura"),
     ("Read-only", "Somente leitura"),
     ("Reading the sound…", "Lendo o som…"),
@@ -7546,12 +7582,12 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Recently used project list:",
         "Lista de projetos usados recentemente:",
     ),
+    ("Recommended", "Recomendado"),
     ("Recompress edited frames", "Recomprimir quadros editados"),
     (
         "Recomputing audio peaks and thumbnails.",
         "Picos de áudio e miniaturas sendo recalculados.",
     ),
-    ("Recommended", "Recomendado"),
     ("Record", "Gravar"),
     ("Record Input", "Entrada de gravação"),
     (
@@ -7695,11 +7731,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Remover do projeto toda a mídia não usada",
     ),
     ("Remove Assignable FX", "Remover FX atribuível"),
+    ("Remove BG", "Remover fundo"),
     (
         "Remove Current Media from Trimmer History",
         "Remover a mídia atual do histórico da Unidade de corte",
     ),
-    ("Remove BG", "Remover fundo"),
     ("Remove Envelope", "Remover envelope"),
     (
         "Remove frequencies around 1500 Hz by 25 dB",
@@ -7764,12 +7800,9 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Rename Bin", "Renomear compartimento"),
     ("Rename Filter Package", "Renomear pacote de filtros"),
     ("Rename Placeholder", "Renomear espaço reservado"),
+    ("Rename Preset", "Renomear predefinição"),
     ("Rename…", "Renomear…"),
     ("Render", "Renderizar"),
-    (
-        "Reaction Station skipped: {}",
-        "Reaction Station ignorado: {}",
-    ),
     ("Render As…", "Renderizar como…"),
     ("Render Canceled", "Renderização cancelada"),
     ("Render canceled.", "Renderização cancelada."),
@@ -8033,6 +8066,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ),
     ("Save Plug-In Package", "Salvar pacote de plug-ins"),
     ("Save Preset", "Salvar predefinição"),
+    ("Save Preset…", "Salvar predefinição…"),
     ("Save Project", "Salvar projeto"),
     (
         "Save project as path reference in rendered file",
@@ -8184,6 +8218,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Select a part of the media first: it ends at the cursor.",
         "Selecione antes um trecho da mídia: ele termina no cursor.",
+    ),
+    (
+        "Select a preset to rename.",
+        "Selecione uma predefinição para renomear.",
     ),
     (
         "Select a video clip to apply the effect.",
@@ -8795,11 +8833,11 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Small room 1", "Sala pequena 1"),
     ("Small room 2", "Sala pequena 2"),
     ("Small Tiles", "Ladrilhos pequenos"),
+    ("Smaller file", "Arquivo menor"),
     (
         "Smart adaptive (GPU only)",
         "Adaptativo inteligente (só GPU)",
     ),
-    ("Smaller file", "Arquivo menor"),
     ("Smart Bins", "Compartimentos inteligentes"),
     ("Smart release", "Liberação inteligente"),
     ("Smart Split", "Dividir inteligente"),
@@ -9201,7 +9239,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Stereoscopic 3D depth", "Profundidade 3D estereoscópica"),
     ("Stereoscopy", "Estereoscopia"),
     ("Stickers", "Adesivos"),
-    ("Stickers must be PNG files up to 4096 × 4096 pixels and 32 MB.", "Os adesivos devem ser arquivos PNG de até 4096 × 4096 pixels e 32 MB."),
+    (
+        "Stickers must be PNG files up to 4096 × 4096 pixels and 32 MB.",
+        "Os adesivos devem ser arquivos PNG de até 4096 × 4096 pixels e 32 MB.",
+    ),
     ("Still {}", "Imagem {}"),
     (
         "Stitches the two fish-eye circles of a 360° camera into one equirectangular picture.",
@@ -9278,7 +9319,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Support the upstream project from any country with a donation on Ko-fi.",
         "Apoie o projeto original de qualquer país com uma doação no Ko-fi.",
     ),
-    ("Support the upstream project on Ko-fi", "Apoie o projeto original no Ko-fi"),
+    (
+        "Support the upstream project on Ko-fi",
+        "Apoie o projeto original no Ko-fi",
+    ),
     ("Suppression", "Supressão"),
     ("Surround / Ext Monitor", "Surround / Monitor externo"),
     ("Surround Master", "Surround mestre"),
@@ -10547,8 +10591,14 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "The rendered file could not be read: {}",
         "Não foi possível ler o arquivo renderizado: {}",
     ),
-    ("The replacement is too short for this clip's trim.", "A mídia substituta é curta demais para o recorte deste clipe."),
-    ("The replacement needs a compatible media stream.", "A mídia substituta precisa ter um fluxo compatível."),
+    (
+        "The replacement is too short for this clip's trim.",
+        "A mídia substituta é curta demais para o recorte deste clipe.",
+    ),
+    (
+        "The replacement needs a compatible media stream.",
+        "A mídia substituta precisa ter um fluxo compatível.",
+    ),
     ("The right edge bent.", "A borda direita curvada."),
     (
         "The right edge squeezed (above 0) or spread.",
@@ -12261,6 +12311,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Você está tentando cancelar o processo de renderização. Tudo o que foi renderizado até agora será perdido. Tem certeza de que deseja cancelar a renderização?",
     ),
     (
+        "You can save up to 64 export presets.",
+        "Você pode salvar até 64 predefinições de exportação.",
+    ),
+    (
         "You can select a preset for a stereoscopic model.",
         "Você pode selecionar uma predefinição para um modelo estereoscópico.",
     ),
@@ -12346,6 +12400,14 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Zoom:", "Zoom:"),
     ("{0}, {1} {2}, {3} {4}", "{0}, {2} de {1} de {3} {4}"),
     ("{0}, {1} {2}, {3}, {4}", "{0}, {2} de {1} de {3}, {4}"),
+    (
+        "{}\nClick to add at the playhead, or drag to the timeline.",
+        "{}\nClique para adicionar na posição do cursor ou arraste para a linha do tempo.",
+    ),
+    (
+        "{}\nDouble-click: add to the selected events",
+        "{}\nDuplo clique: adiciona aos eventos selecionados",
+    ),
     ("{} % to the bottom color", "{} % para a cor inferior"),
     ("{} % to the top color", "{} % para a cor superior"),
     ("{} (default)", "{} (padrão)"),
@@ -12464,11 +12526,6 @@ Duplo clique: adiciona aos eventos selecionados",
         "{}: {} dB (double-click: 0 dB)",
         "{}: {} dB (clique duplo: 0 dB)",
     ),
-    (
-        "{}\nDouble-click: add to the selected events",
-        "{}\nDuplo clique: adiciona aos eventos selecionados",
-    ),
-    ("{}\nClick to add at the playhead, or drag to the timeline.", "{}\nClique para adicionar na posição do cursor ou arraste para a linha do tempo."),
     ("• {} (bypassed)", "• {} (desativado)"),
 ];
 

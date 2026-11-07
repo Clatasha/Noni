@@ -97,6 +97,8 @@ pub struct ReadbackTiming {
     pub effects: Duration,
     /// Host time staging decoded YUV planes for upload.
     pub source_upload: Duration,
+    pub source_uploads: u64,
+    pub belt_uploads: u64,
     /// Packing, submitting and synchronizing the shared encoder texture.
     pub shared_output: Duration,
     /// Submission through mapping, including GPU execution and the transfer.
@@ -110,6 +112,7 @@ pub struct ReadbackTiming {
 pub struct Compositor {
     gpu: Arc<Gpu>,
     free: Vec<wgpu::Buffer>,
+    upload_belt: Option<wgpu::util::StagingBelt>,
     /// Buffers of the frame being drawn (free again when it is done).
     used: Vec<wgpu::Buffer>,
     /// Pictures uploaded already, by event: stills and generated media
@@ -175,6 +178,8 @@ fn luma(c: [f32; 3]) -> f32 {
 impl Compositor {
     pub fn new(gpu: Arc<Gpu>) -> Compositor {
         Compositor {
+            upload_belt: (std::env::var("NONI_UPLOAD_BELT").as_deref() != Ok("0"))
+                .then(|| wgpu::util::StagingBelt::new(gpu.device.clone(), 8 * 1024 * 1024)),
             gpu,
             free: Vec::new(),
             used: Vec::new(),
@@ -304,6 +309,7 @@ impl Compositor {
             let output_at = self.readback_timing.as_ref().map(|_| Instant::now());
             let pitch = frame.pitch();
             let (words, _) = self.pack_420(&mut enc, &out, false, video_levels, pitch / 4);
+            self.finish_uploads(&enc);
             let submitted = gpu.queue.submit([enc.finish()]);
             let failed = pollster::block_on(validation.pop())
                 .or(pollster::block_on(memory.pop()))
@@ -379,6 +385,7 @@ impl Compositor {
         };
         enc.copy_buffer_to_buffer(&result_buf, 0, &readback, 0, bytes);
         let submitted_at = self.readback_timing.as_ref().map(|_| Instant::now());
+        self.finish_uploads(&enc);
         let submitted = gpu.queue.submit([enc.finish()]);
         let failed = pollster::block_on(validation.pop())
             .or(pollster::block_on(memory.pop()))
@@ -525,6 +532,14 @@ impl Compositor {
             timing.copy += mapped.elapsed();
         }
         Ok(rendered)
+    }
+
+    fn finish_uploads(&mut self, encoder: &wgpu::CommandEncoder) {
+        if let Some(belt) = &mut self.upload_belt {
+            // wgpu 30's submission callback remaps only after GPU completion.
+            // Every encoder consuming belt chunks is submitted immediately.
+            belt.finish_and_recall_on_submit(encoder);
+        }
     }
 
     /// Buffers of the frame are free again; pictures not used are let go.
@@ -1396,7 +1411,11 @@ impl Compositor {
 
     /// Pack the three planes directly into upload staging memory. The shader
     /// reads words, so each plane starts at a four-byte boundary.
-    fn upload_decoded_planes(&mut self, frame: &VideoFrame) -> (wgpu::Buffer, [u32; 3]) {
+    fn upload_decoded_planes(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        frame: &VideoFrame,
+    ) -> (wgpu::Buffer, [u32; 3]) {
         let mut offsets = [0; 4];
         for (n, plane) in frame.planes.iter().enumerate() {
             let bytes = match &plane.data {
@@ -1432,7 +1451,10 @@ impl Compositor {
             }
         };
         if let Some(size) = wgpu::BufferSize::new(size as u64) {
-            if let Some(mut staging) = self.gpu.queue.write_buffer_with(&buffer, 0, size) {
+            if let Some(belt) = &mut self.upload_belt {
+                let mut staging = belt.write_buffer(enc, &buffer, 0, size);
+                fill(&mut |at, data| staging.slice(at..at + data.len()).copy_from_slice(data));
+            } else if let Some(mut staging) = self.gpu.queue.write_buffer_with(&buffer, 0, size) {
                 fill(&mut |at, data| staging.slice(at..at + data.len()).copy_from_slice(data));
             } else {
                 let mut bytes = vec![0; size.get() as usize];
@@ -1482,9 +1504,11 @@ impl Compositor {
             return up;
         }
         let upload_at = self.readback_timing.as_ref().map(|_| Instant::now());
-        let (planes, starts) = self.upload_decoded_planes(f);
+        let (planes, starts) = self.upload_decoded_planes(enc, f);
         if let (Some(timing), Some(start)) = (&mut self.readback_timing, upload_at) {
             timing.source_upload += start.elapsed();
+            timing.source_uploads += 1;
+            timing.belt_uploads += u64::from(self.upload_belt.is_some());
         }
         let lut = self.lut(false, f.color.transfer);
         let (ow, oh) = (f.width.div_ceil(factor), f.height.div_ceil(factor));
@@ -2148,6 +2172,7 @@ impl Compositor {
                 label: Some("frame"),
             });
         let done = std::mem::replace(enc, next);
+        self.finish_uploads(&done);
         let submitted = self.gpu.queue.submit([done.finish()]);
         self.gpu
             .device
@@ -2201,6 +2226,7 @@ impl Compositor {
                 label: Some("frame"),
             });
         let done = std::mem::replace(enc, next);
+        self.finish_uploads(&done);
         let submitted = self.gpu.queue.submit([done.finish()]);
         let picture = match self.read(
             &staging,
