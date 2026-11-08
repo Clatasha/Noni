@@ -31,7 +31,7 @@ use crate::timefmt::{RulerFormat, RulerFormatExt};
 use crate::widgets;
 
 /// Width of the tab pages.
-const PAGE_WIDTH: f32 = 420.0;
+const PAGE_WIDTH: f32 = 520.0;
 /// Width of the drop-down lists in the lower half of the Video tab.
 const LIST_WIDTH: f32 = 218.0;
 /// The labels of the lower half of the Video tab.
@@ -449,10 +449,22 @@ impl ProjectPropertiesDialog {
         crate::floating::Window::new(tr("Project Properties"))
             .id(egui::Id::new("project-properties"))
             .collapsible(false)
-            .resizable(false)
+            // Native fixed-size auto-measurement feeds the computed page width
+            // back into the next frame, causing runaway window growth.
+            // A bounded resizable viewport with an internal scroller keeps
+            // the dialog stable without hiding any project settings.
+            .resizable(true)
+            .default_size(vec2(660.0, 680.0))
+            .min_size(vec2(550.0, 420.0))
             .open(&mut open)
             .show(ctx, |ui| {
                 self.tab_strip(ui);
+                let body_height = (ui.available_height() - 50.0).max(180.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("project-properties-pages")
+                    .max_height(body_height)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
                 egui::Frame::new()
                     .fill(theme::panel())
                     .stroke(Stroke::new(1.0, theme::separator()))
@@ -468,8 +480,10 @@ impl ProjectPropertiesDialog {
                             PropTab::Video => {
                                 self.video(ui, app);
                                 ui.separator();
-                                self.page_height = ui.cursor().top() - top;
-                                self.page_width = ui.min_rect().width().max(PAGE_WIDTH);
+                                self.page_height = (ui.cursor().top() - top).min(560.0);
+                                // Never measure the dialog's own expanded width
+                                // as a new width request on the next frame.
+                                self.page_width = PAGE_WIDTH;
                             }
                             PropTab::Audio => self.audio(ui),
                             PropTab::Ruler => self.ruler(ui),
@@ -498,6 +512,7 @@ impl ProjectPropertiesDialog {
                             );
                         });
                     });
+                });
                 ui.add_space(6.0);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let changed = self.changed(app);
