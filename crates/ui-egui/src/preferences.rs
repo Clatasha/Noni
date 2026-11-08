@@ -2808,29 +2808,29 @@ impl PreferencesDialog {
         });
         ui.add_space(4.0);
         ui.add_enabled_ui(p.theme_variant == ThemeVariant::Classic, |ui| {
-        group(ui, tr("Interface Type"), |ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            // Each type beside a sample of its panels.
-            for kind in Interface::ALL {
-                field_in(
-                    ui,
-                    column - GROUP_INDENT + 30.0,
-                    |ui| {
-                        crate::widgets::radio_value(ui, &mut p.interface, kind, kind.name());
-                    },
-                    |ui| {
-                        let (r, _) = ui.allocate_exact_size(INTERFACE_SAMPLE, egui::Sense::hover());
-                        ui.painter().rect_filled(r, 0.0, kind.palette().panel);
-                        ui.painter().rect_stroke(
-                            r,
-                            0.0,
-                            Stroke::new(1.0, theme::separator()),
-                            egui::StrokeKind::Inside,
-                        );
-                    },
-                );
-            }
-        });
+            group(ui, tr("Interface Type"), |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                // Each Classic type beside a sample of its panels.
+                for kind in Interface::ALL {
+                    field_in(
+                        ui,
+                        column - GROUP_INDENT + 30.0,
+                        |ui| {
+                            crate::widgets::radio_value(ui, &mut p.interface, kind, kind.name());
+                        },
+                        |ui| {
+                            let (r, _) = ui.allocate_exact_size(INTERFACE_SAMPLE, egui::Sense::hover());
+                            ui.painter().rect_filled(r, 0.0, kind.palette().panel);
+                            ui.painter().rect_stroke(
+                                r,
+                                0.0,
+                                Stroke::new(1.0, theme::separator()),
+                                egui::StrokeKind::Inside,
+                            );
+                        },
+                    );
+                }
+            });
         });
         ui.add_space(8.0);
         ui.spacing_mut().item_spacing.y = 3.0;

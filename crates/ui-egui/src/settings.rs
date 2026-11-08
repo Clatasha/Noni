@@ -1282,6 +1282,7 @@ impl Prefs {
         self.snap_colors = d.snap_colors;
         self.icon_strength = d.icon_strength;
         self.button_highlight = d.button_highlight;
+        self.theme_variant = d.theme_variant;
         self.interface = d.interface;
         self.auto_hide_dock = d.auto_hide_dock;
         self.tabs_at_top = d.tabs_at_top;

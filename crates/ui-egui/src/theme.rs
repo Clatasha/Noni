@@ -552,17 +552,19 @@ pub fn apply_kind(ctx: &egui::Context, kind: Interface) {
         v.window_fill = p.panel;
         v.window_stroke = Stroke::new(1.0, p.separator);
         if premium {
+            v.window_corner_radius = CornerRadius::same(12);
+            v.menu_corner_radius = CornerRadius::same(9);
             v.window_shadow = egui::Shadow {
                 offset: [0, 7],
                 blur: 20,
                 spread: 0,
-                color: Color32::from_black_alpha(90),
+                color: Color32::from_black_alpha(if p.light { 45 } else { 90 }),
             };
             v.popup_shadow = egui::Shadow {
                 offset: [0, 4],
                 blur: 12,
                 spread: 0,
-                color: Color32::from_black_alpha(65),
+                color: Color32::from_black_alpha(if p.light { 28 } else { 65 }),
             };
         }
         v.extreme_bg_color = p.panel_dark;
