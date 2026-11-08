@@ -532,7 +532,9 @@ fn header_button(
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
     let painter = ui.painter();
     let back = rect.shrink2(vec2(2.0, 0.0));
-    if on {
+    if theme::premium() && enabled {
+        theme::paint_premium_button(painter, back, on, resp.hovered(), false);
+    } else if on {
         painter.rect_filled(back, 2.0, theme::tab_on());
     } else if resp.hovered() && enabled {
         painter.rect_filled(back, 2.0, theme::hover());
@@ -634,7 +636,9 @@ fn automation_button(ui: &egui::Ui, app: &mut BananaApp, track: &Track, rect: Re
     let lit = auto.controls || open;
     let painter = ui.painter();
     let back = rect.shrink2(vec2(2.0, 0.0));
-    if lit {
+    if theme::premium() {
+        theme::paint_premium_button(painter, back, lit, icon.hovered() || arrow.hovered(), false);
+    } else if lit {
         painter.rect_filled(back, 2.0, theme::selection());
     } else if icon.hovered() || arrow.hovered() {
         painter.rect_filled(back, 2.0, theme::hover());
@@ -747,7 +751,9 @@ fn meter_menu(ui: &mut egui::Ui, app: &mut BananaApp, tid: TrackId) {
 fn arm_button(ui: &egui::Ui, rect: Rect, id: egui::Id, on: bool) -> bool {
     let resp = ui.interact(rect, id, Sense::click());
     let painter = ui.painter();
-    if resp.hovered() {
+    if theme::premium() {
+        theme::paint_premium_button(painter, rect, false, resp.hovered(), false);
+    } else if resp.hovered() {
         painter.rect_filled(rect, 2.0, theme::hover());
     }
     let red = Color32::from_rgb(0xE5, 0x39, 0x35);
@@ -771,7 +777,20 @@ pub(super) fn letter_button(
 ) -> bool {
     let resp = ui.interact(rect, id, Sense::click());
     let painter = ui.painter();
-    if on {
+    if theme::premium() {
+        if on {
+            // Preserve Mute red and Solo gold: they communicate state.
+            painter.rect_filled(rect, 6.0, on_color);
+            painter.rect_stroke(
+                rect,
+                6.0,
+                Stroke::new(1.0, Color32::from_white_alpha(112)),
+                egui::StrokeKind::Inside,
+            );
+        } else {
+            theme::paint_premium_button(painter, rect, false, resp.hovered(), false);
+        }
+    } else if on {
         painter.rect_filled(rect, 2.0, on_color);
     } else if resp.hovered() {
         painter.rect_filled(rect, 2.0, theme::hover());
@@ -1056,7 +1075,8 @@ pub(crate) fn ui(
             (true, false) => theme::header_selected(),
             _ => theme::panel(),
         };
-        painter.rect_filled(r.shrink2(vec2(0.0, 0.5)), 0.0, fill);
+        let header_rect = r.shrink2(vec2(0.0, 0.5));
+        theme::paint_premium_track_header(&painter, header_rect, fill, selected);
         let strip = Rect::from_min_size(r.min, vec2(STRIP_W, r.height() - 1.0));
         painter.rect_filled(strip, 0.0, app.settings.prefs.color_of(track));
         // A compositing child: a bracket for each level it is in.
@@ -1255,10 +1275,18 @@ pub(crate) fn ui(
                 }
                 Spot::TrackLock => {
                     let response = ui.interact(button, id("track-lock"), Sense::click());
-                    if track.locked || response.hovered() {
+                    if theme::premium() && !track.locked {
+                        theme::paint_premium_button(
+                            ui.painter(),
+                            button,
+                            false,
+                            response.hovered(),
+                            false,
+                        );
+                    } else if track.locked || response.hovered() {
                         ui.painter().rect_filled(
                             button,
-                            2.0,
+                            if theme::premium() { 6.0 } else { 2.0 },
                             if track.locked { theme::banana() } else { theme::hover() },
                         );
                     }

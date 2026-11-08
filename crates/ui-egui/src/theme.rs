@@ -645,6 +645,111 @@ pub fn paint_premium_button(
     );
 }
 
+/// A clip background with subtle edge lighting. The timeline's selection,
+/// trim, fade, thumbnail and waveform rendering continues unchanged above it.
+pub fn paint_premium_clip(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    fill: Color32,
+    selected: bool,
+) {
+    if !premium() {
+        painter.rect_filled(rect, 3.0, fill);
+        return;
+    }
+    if rect.width() < 3.0 || rect.height() < 3.0 {
+        painter.rect_filled(rect, 1.0, fill);
+        return;
+    }
+    let round = CornerRadius::same(5);
+    painter.rect_filled(rect, round, fill);
+    if rect.width() >= 10.0 && rect.height() >= 12.0 {
+        // A highlight within the event, not outside its editable bounds.
+        let top = egui::Rect::from_min_max(
+            rect.min + egui::vec2(1.0, 1.0),
+            egui::pos2(rect.right() - 1.0, rect.top() + rect.height().min(12.0)),
+        );
+        painter.rect_filled(
+            top,
+            CornerRadius::same(3),
+            Color32::from_white_alpha(if selected { 42 } else { 25 }),
+        );
+        painter.line_segment(
+            [
+                egui::pos2(rect.left() + 4.0, rect.top() + 1.5),
+                egui::pos2(rect.right() - 4.0, rect.top() + 1.5),
+            ],
+            Stroke::new(1.0, Color32::from_white_alpha(78)),
+        );
+        painter.line_segment(
+            [
+                egui::pos2(rect.left() + 4.0, rect.bottom() - 1.5),
+                egui::pos2(rect.right() - 4.0, rect.bottom() - 1.5),
+            ],
+            Stroke::new(1.0, Color32::from_black_alpha(75)),
+        );
+    }
+    painter.rect_stroke(
+        rect,
+        round,
+        Stroke::new(
+            1.0,
+            if selected {
+                snap().gamma_multiply(0.55)
+            } else {
+                separator().gamma_multiply(0.85)
+            },
+        ),
+        egui::StrokeKind::Inside,
+    );
+}
+
+/// A track header with recessed boundaries and a light-catching top edge.
+/// Caller still draws track color, meters, lock/mute and other controls.
+pub fn paint_premium_track_header(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    fill: Color32,
+    selected: bool,
+) {
+    if !premium() {
+        painter.rect_filled(rect, 0.0, fill);
+        return;
+    }
+    if rect.width() < 8.0 || rect.height() < 8.0 {
+        painter.rect_filled(rect, 0.0, fill);
+        return;
+    }
+    painter.rect_filled(rect, CornerRadius::same(5), fill);
+    painter.rect_stroke(
+        rect,
+        CornerRadius::same(5),
+        Stroke::new(1.0, if selected { snap() } else { separator() }),
+        egui::StrokeKind::Inside,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(rect.left() + 6.0, rect.top() + 1.5),
+            egui::pos2(rect.right() - 6.0, rect.top() + 1.5),
+        ],
+        Stroke::new(
+            1.0,
+            if selected {
+                snap().gamma_multiply(0.70)
+            } else {
+                Color32::from_white_alpha(32)
+            },
+        ),
+    );
+    painter.line_segment(
+        [
+            egui::pos2(rect.left() + 5.0, rect.bottom() - 1.5),
+            egui::pos2(rect.right() - 5.0, rect.bottom() - 1.5),
+        ],
+        Stroke::new(1.0, Color32::from_black_alpha(90)),
+    );
+}
+
 /// A clickable premium button that preserves the normal egui accessibility
 /// label and returns the same Response as a conventional button.
 pub fn premium_button(

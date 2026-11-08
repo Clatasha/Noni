@@ -1408,6 +1408,16 @@ impl TimelineView {
             pos2(l.lanes.left(), l.rate.bottom()),
         );
         ui.painter().rect_filled(edge, 0.0, theme::panel_dark());
+        if theme::premium() && edge.width() > 3.0 {
+            ui.painter().line_segment(
+                [edge.left_top(), edge.left_bottom()],
+                egui::Stroke::new(1.0, theme::separator()),
+            );
+            ui.painter().line_segment(
+                [edge.right_top(), edge.right_bottom()],
+                egui::Stroke::new(1.0, theme::separator()),
+            );
+        }
         let resp = ui.interact(
             edge,
             egui::Id::new("track-list-border"),

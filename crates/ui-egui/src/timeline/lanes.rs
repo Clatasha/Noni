@@ -4796,6 +4796,16 @@ pub(crate) fn paint(
                 lane_color
             },
         );
+        if theme::premium() && lane.height() > 10.0 && lane.width() > 16.0 {
+            // Separate each video/audio lane from the surrounding timeline.
+            painter.line_segment(
+                [
+                    pos2(lane.left() + 2.0, lane.top() + 1.0),
+                    pos2(lane.right() - 2.0, lane.top() + 1.0),
+                ],
+                Stroke::new(1.0, Color32::from_white_alpha(17)),
+            );
+        }
         // The grid under the line between the tracks, as VEGAS's.
         paint_grid(&painter, view, l, app, lane.y_range());
         painter.line_segment(
@@ -4838,7 +4848,7 @@ pub(crate) fn paint(
                 (true, false) => base.gamma_multiply(1.35),
                 _ => base,
             };
-            painter.rect_filled(r, 3.0, fill);
+            theme::paint_premium_clip(&painter, r, fill, selected);
             // Audio: where another event overlaps it (a crossfade), darker,
             // as VEGAS's; its sound and name drawn over.
             if row.kind == TrackKind::Audio && project.auto_crossfade && !clip.muted {

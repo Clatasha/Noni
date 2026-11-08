@@ -542,6 +542,21 @@ pub(crate) fn paint(
     let tc_back = own.background.map_or_else(theme::panel_dark, rgba);
     let tc_text = own.text.map_or_else(theme::text, rgba);
     painter.rect_filled(l.tc_box, 0.0, tc_back);
+    if theme::premium() && l.tc_box.width() > 20.0 && l.tc_box.height() > 12.0 {
+        painter.rect_stroke(
+            l.tc_box.shrink(0.5),
+            7.0,
+            Stroke::new(1.0, theme::separator()),
+            egui::StrokeKind::Inside,
+        );
+        painter.line_segment(
+            [
+                pos2(l.tc_box.left() + 8.0, l.tc_box.top() + 1.5),
+                pos2(l.tc_box.right() - 8.0, l.tc_box.top() + 1.5),
+            ],
+            Stroke::new(1.0, egui::Color32::from_white_alpha(45)),
+        );
+    }
     for i in 0..5 {
         painter.circle_filled(
             pos2(l.tc_box.left() + 6.0, l.tc_box.top() + 8.0 + i as f32 * 4.0),
@@ -614,6 +629,12 @@ pub(crate) fn paint(
 
     // Região de loop.
     painter.rect_filled(l.loop_bar, 0.0, theme::panel_dark());
+    if theme::premium() && l.loop_bar.width() > 10.0 {
+        painter.line_segment(
+            [l.loop_bar.left_bottom(), l.loop_bar.right_bottom()],
+            Stroke::new(1.0, theme::separator()),
+        );
+    }
     if let Some(r) = project.loop_region {
         let x0 = view.x_of(l, r.start).max(l.loop_bar.left());
         let x1 = view.x_of(l, r.end()).min(l.loop_bar.right());
@@ -651,6 +672,17 @@ pub(crate) fn paint(
 
     // Régua.
     painter.rect_filled(l.ruler, 0.0, theme::panel());
+    if theme::premium() && l.ruler.height() > 9.0 {
+        let top = Rect::from_min_max(
+            l.ruler.min,
+            pos2(l.ruler.right(), l.ruler.center().y),
+        );
+        painter.rect_filled(top, 0.0, egui::Color32::from_white_alpha(13));
+        painter.line_segment(
+            [l.ruler.left_bottom(), l.ruler.right_bottom()],
+            Stroke::new(1.0, theme::separator()),
+        );
+    }
     let rp = painter.with_clip_rect(l.ruler);
     let end = view.time_at(l, l.ruler.right());
     if app.effective_ruler_format() == crate::timefmt::RulerFormat::MeasuresBeats {

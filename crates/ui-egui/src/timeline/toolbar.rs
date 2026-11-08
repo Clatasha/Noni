@@ -13,6 +13,13 @@ use crate::toolbar_buttons::{self, TbButton, ToolbarKind};
 pub(crate) fn ui(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaApp, l: &Layout) {
     let painter = ui.painter();
     painter.rect_filled(l.toolbar, 5.0, theme::panel());
+    if theme::premium() {
+        theme::paint_premium_panel(
+            painter,
+            l.toolbar.shrink2(vec2(1.0, 1.0)),
+            true,
+        );
+    }
     // Separate the editing bar from the time ruler.
     painter.line_segment(
         [l.toolbar.left_bottom(), l.toolbar.right_bottom()],
@@ -435,6 +442,9 @@ pub(crate) fn rate(view: &mut TimelineView, ui: &mut egui::Ui, app: &mut BananaA
     let r = l.rate.shrink2(vec2(10.0, 2.0));
     let painter = ui.painter().clone();
     painter.rect_filled(l.rate, 0.0, theme::panel());
+    if theme::premium() && l.rate.width() > 22.0 {
+        theme::paint_premium_panel(&painter, l.rate.shrink(1.0), false);
+    }
     // Apart from the tracks above, as VEGAS's.
     painter.line_segment(
         [l.rate.left_top(), l.rate.right_top()],
@@ -615,6 +625,9 @@ pub(crate) fn scrollbars(
     let painter = ui.painter().clone();
     // Horizontal.
     painter.rect_filled(l.hscroll, 0.0, theme::panel());
+    if theme::premium() && l.hscroll.width() > 22.0 {
+        theme::paint_premium_panel(&painter, l.hscroll.shrink(1.0), false);
+    }
     // VEGAS's: its middle scrolls, its ends zoom, and however long the
     // project its thumb never disappears.
     let lanes = l.lanes.width().max(1.0) as f64;
@@ -649,6 +662,9 @@ pub(crate) fn scrollbars(
     }
     // Vertical.
     painter.rect_filled(l.vscroll, 0.0, theme::panel());
+    if theme::premium() && l.vscroll.height() > 22.0 {
+        theme::paint_premium_panel(&painter, l.vscroll.shrink(1.0), false);
+    }
     let content = l.content_height.max(1.0);
     if content > l.lanes.height() {
         let f0 = view.scroll_y / content;
