@@ -281,8 +281,8 @@ const WHITE: Palette = Palette {
 // Classic retains every original color without modification.
 const PREMIUM_DARK: Palette = Palette {
     light: false,
-    banana: rgb(0x8EE7BA),
-    banana_dim: rgb(0x286E58),
+    banana: rgb(0x6DC2FF),
+    banana_dim: rgb(0x1759B1),
     bg: rgb(0x101722),
     panel: rgb(0x1A2432),
     panel_dark: rgb(0x0C121C),
@@ -303,8 +303,8 @@ const PREMIUM_DARK: Palette = Palette {
     error: rgb(0xFF918B),
     header_selected: rgb(0x26394A),
     header_selected_focused: rgb(0x245D63),
-    tab_on: rgb(0x286D61),
-    selection: rgb(0x297B73),
+    tab_on: rgb(0x146DD3),
+    selection: rgb(0x146DD3),
     check_border: rgb(0x8095A4),
     faint_line: Color32::from_black_alpha(28),
     grid: rgb(0x314354),
@@ -316,8 +316,8 @@ const PREMIUM_DARK: Palette = Palette {
 
 const PREMIUM_LIGHT: Palette = Palette {
     light: true,
-    banana: rgb(0x146747),
-    banana_dim: rgb(0xA5DFC2),
+    banana: rgb(0x125BA9),
+    banana_dim: rgb(0x8EC7F6),
     bg: rgb(0xE7EDF1),
     panel: rgb(0xFBFDFE),
     panel_dark: rgb(0xDCE7E9),
@@ -338,8 +338,8 @@ const PREMIUM_LIGHT: Palette = Palette {
     error: rgb(0xB22F32),
     header_selected: rgb(0xD4EAE1),
     header_selected_focused: rgb(0xB5DCCB),
-    tab_on: rgb(0xB6E4D3),
-    selection: rgb(0x74C4A7),
+    tab_on: rgb(0x9ED0FA),
+    selection: rgb(0x62A8E9),
     check_border: rgb(0x79918D),
     faint_line: Color32::from_black_alpha(16),
     grid: rgb(0xB5C4CC),
@@ -527,6 +527,147 @@ pub fn clip_audio() -> Color32 {
 /// The bar over prerendered parts of the timeline.
 pub fn prerendered() -> Color32 {
     rgb(0x3A86FF)
+}
+
+
+/// Whether the premium Noni widget language is active.
+/// Classic continues to render its original controls and artwork.
+pub fn premium() -> bool {
+    variant() != ThemeVariant::Classic
+}
+
+/// A recessed or raised premium surface: soft drop shadow, glass inset,
+/// subtle rim light and a cool border. Callers retain ownership of layout.
+pub fn paint_premium_panel(painter: &egui::Painter, rect: egui::Rect, raised: bool) {
+    if !premium() || rect.width() < 6.0 || rect.height() < 6.0 {
+        return;
+    }
+    let p = palette();
+    let rounding = CornerRadius::same(10);
+    if raised {
+        painter.rect_filled(
+            rect.translate(egui::vec2(0.0, 4.0)),
+            rounding,
+            Color32::from_black_alpha(if p.light { 22 } else { 76 }),
+        );
+    }
+    painter.rect_filled(rect, rounding, p.panel);
+    let inset = rect.shrink(2.0);
+    if inset.height() > 12.0 {
+        let sheen = egui::Rect::from_min_max(
+            inset.min,
+            egui::pos2(inset.right(), inset.top() + inset.height() * 0.42),
+        );
+        painter.rect_filled(
+            sheen,
+            CornerRadius::same(7),
+            Color32::from_white_alpha(if p.light { 18 } else { 9 }),
+        );
+    }
+    painter.rect_stroke(
+        rect,
+        rounding,
+        Stroke::new(1.0, p.separator),
+        egui::StrokeKind::Inside,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(rect.left() + 12.0, rect.top() + 1.5),
+            egui::pos2(rect.right() - 12.0, rect.top() + 1.5),
+        ],
+        Stroke::new(1.0, Color32::from_white_alpha(if p.light { 72 } else { 41 })),
+    );
+}
+
+/// Draw a distinct, slightly elevated 3D control. Selected or primary
+/// buttons use Noni's luminous blue rather than a flat selection rectangle.
+pub fn paint_premium_button(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    selected: bool,
+    hovered: bool,
+    primary: bool,
+) {
+    if !premium() || rect.width() < 8.0 || rect.height() < 8.0 {
+        return;
+    }
+    let p = palette();
+    let blue = selected || primary;
+    let base = if blue {
+        if hovered { rgb(0x127CF7) } else { rgb(0x075ECB) }
+    } else if hovered {
+        p.hover
+    } else {
+        p.widget
+    };
+    let border = if blue {
+        if hovered { rgb(0x9DE5FF) } else { rgb(0x55ABFF) }
+    } else {
+        p.separator
+    };
+    let radius = CornerRadius::same(8);
+    painter.rect_filled(
+        rect.translate(egui::vec2(0.0, 3.0)),
+        radius,
+        Color32::from_black_alpha(if p.light { 28 } else { 90 }),
+    );
+    if blue {
+        painter.rect_stroke(
+            rect.expand(1.5),
+            CornerRadius::same(9),
+            Stroke::new(2.0, Color32::from_rgba_unmultiplied(29, 143, 255, if selected { 120 } else { 46 })),
+            egui::StrokeKind::Inside,
+        );
+    }
+    painter.rect_filled(rect, radius, base);
+    let interior = rect.shrink(2.0);
+    let upper = egui::Rect::from_min_max(
+        interior.min,
+        egui::pos2(interior.right(), interior.center().y),
+    );
+    painter.rect_filled(
+        upper,
+        CornerRadius::same(6),
+        Color32::from_white_alpha(if blue { 47 } else if p.light { 60 } else { 20 }),
+    );
+    painter.rect_stroke(
+        rect,
+        radius,
+        Stroke::new(if blue { 1.5 } else { 1.0 }, border),
+        egui::StrokeKind::Inside,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(rect.left() + 9.0, rect.top() + 2.0),
+            egui::pos2(rect.right() - 9.0, rect.top() + 2.0),
+        ],
+        Stroke::new(1.0, Color32::from_white_alpha(if blue { 132 } else { 45 })),
+    );
+}
+
+/// A clickable premium button that preserves the normal egui accessibility
+/// label and returns the same Response as a conventional button.
+pub fn premium_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    size: egui::Vec2,
+    primary: bool,
+) -> egui::Response {
+    if !premium() {
+        return ui.add_sized(size, egui::Button::new(label));
+    }
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    paint_premium_button(ui.painter(), rect, false, response.hovered(), primary);
+    let text_color = if primary { Color32::WHITE } else { palette().text };
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(14.0),
+        text_color,
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    response
 }
 
 /// Sets egui's style from the interface type shown.

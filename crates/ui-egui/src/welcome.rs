@@ -13,6 +13,7 @@ use crate::theme;
 /// The welcome screen's size and the header's and
 /// footer's heights.
 const SIZE: egui::Vec2 = vec2(860.0, 650.0);
+const PREMIUM_SIZE: egui::Vec2 = vec2(1020.0, 760.0);
 const HEADER_H: f32 = 46.0;
 const FOOTER_H: f32 = 30.0;
 /// The New Project banner's height and the shape buttons'.
@@ -46,6 +47,17 @@ impl Shape {
             Shape::Portrait => tr("Portrait (9:16)"),
             Shape::Square => tr("Square (1:1)"),
             Shape::Scope => tr("Scope (2.4:1)"),
+        }
+    }
+
+    /// Compact ratio labels, as shown on the premium concept cards.
+    fn premium_name(self) -> &'static str {
+        match self {
+            Shape::Widescreen => "16:9",
+            Shape::Fullscreen => "4:3",
+            Shape::Portrait => "9:16",
+            Shape::Square => "1:1",
+            Shape::Scope => "2.4:1",
         }
     }
 
@@ -144,18 +156,51 @@ impl Welcome {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, app: &mut BananaApp) -> Option<Pending> {
-        let (rect, _) = ui.allocate_exact_size(SIZE, Sense::hover());
+        let premium = theme::premium();
+        let size = if premium { PREMIUM_SIZE } else { SIZE };
+        let header_h = if premium { 54.0 } else { HEADER_H };
+        let footer_h = if premium { 40.0 } else { FOOTER_H };
+        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 0.0, theme::panel_dark());
-        // The header: the logo in the middle.
-        let header = Rect::from_min_size(rect.min, vec2(rect.width(), HEADER_H));
-        paint_logo(&painter, header.center(), 26.0, 20.0, theme::text_strong());
+        painter.rect_filled(rect, if premium { 12.0 } else { 0.0 }, theme::panel_dark());
+        if premium {
+            painter.rect_stroke(
+                rect,
+                12.0,
+                Stroke::new(1.0, theme::separator()),
+                egui::StrokeKind::Inside,
+            );
+        }
+        let header = Rect::from_min_size(rect.min, vec2(rect.width(), header_h));
+        if premium {
+            let bar = Rect::from_min_max(header.min, pos2(header.right(), header.bottom() - 3.0));
+            theme::paint_premium_panel(&painter, bar, false);
+            paint_logo(
+                &painter,
+                pos2(header.left() + 82.0, header.center().y),
+                27.0,
+                22.0,
+                theme::text_strong(),
+            );
+            painter.text(
+                pos2(header.left() + 160.0, header.center().y),
+                Align2::LEFT_CENTER,
+                tr("Video editor"),
+                FontId::proportional(13.0),
+                theme::text_dim(),
+            );
+        } else {
+            paint_logo(&painter, header.center(), 26.0, 20.0, theme::text_strong());
+        }
         let body = Rect::from_min_max(
             pos2(rect.left(), header.bottom()),
-            pos2(rect.right(), rect.bottom() - FOOTER_H),
+            pos2(rect.right(), rect.bottom() - footer_h),
         );
         let content = body.shrink2(vec2(8.0, 0.0));
-        let create = Rect::from_min_size(content.min, vec2(content.width(), 360.0));
+        let create = Rect::from_min_size(
+            content.min,
+            vec2(content.width(), if premium { 390.0 } else { 360.0 }),
+        );
         let mut action = self.new_page(ui, create);
         let recent = Rect::from_min_max(pos2(content.left(), create.bottom() + 6.0), content.max);
         if let Some(open) = self.recent.ui(ui, app, recent) {
@@ -163,6 +208,12 @@ impl Welcome {
         }
         // "Show Welcome Screen on Startup".
         let footer = Rect::from_min_max(pos2(rect.left() + 8.0, body.bottom()), rect.max);
+        if premium {
+            painter.line_segment(
+                [pos2(rect.left() + 8.0, footer.top()), pos2(rect.right() - 8.0, footer.top())],
+                Stroke::new(1.0, theme::separator()),
+            );
+        }
         ui.scope_builder(UiBuilder::new().max_rect(footer), |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -200,7 +251,13 @@ impl Welcome {
                         egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tr("Language"))
                     });
                     menu.response.on_hover_text(tr("Language"));
-                    if ui.button(tr("Open Project")).clicked() {
+                    let opened = if premium {
+                        theme::premium_button(ui, tr("Open Project"), vec2(160.0, 26.0), false)
+                            .clicked()
+                    } else {
+                        ui.button(tr("Open Project")).clicked()
+                    };
+                    if opened {
                         action = Some(Pending::Open);
                     }
                 });
@@ -213,12 +270,19 @@ impl Welcome {
     /// size and rate.
     fn new_page(&mut self, ui: &mut egui::Ui, content: Rect) -> Option<Pending> {
         let painter = ui.painter_at(content);
-        let banner = Rect::from_min_size(content.min, vec2(content.width(), BANNER_H));
-        paint_banner(&painter.with_clip_rect(banner), banner);
+        let premium = theme::premium();
+        let banner_h = if premium { 176.0 } else { BANNER_H };
+        let shape_h = if premium { 66.0 } else { SHAPE_H };
+        let banner = Rect::from_min_size(content.min, vec2(content.width(), banner_h));
+        if premium {
+            paint_premium_banner(&painter.with_clip_rect(banner), banner);
+        } else {
+            paint_banner(&painter.with_clip_rect(banner), banner);
+        }
         // The shapes, side by side.
         let row = Rect::from_min_size(
             pos2(content.left(), banner.bottom() + 4.0),
-            vec2(content.width(), SHAPE_H),
+            vec2(content.width(), shape_h),
         );
         let w = row.width() / Shape::ALL.len() as f32;
         for (i, shape) in Shape::ALL.into_iter().enumerate() {
@@ -226,12 +290,17 @@ impl Welcome {
                 pos2(row.left() + i as f32 * w, row.top()),
                 vec2(w - 4.0, row.height()),
             );
-            if tile(ui, r, shape.icon(), shape.name(), self.shape == shape, 28.0).clicked() {
+            let name = if premium { shape.premium_name() } else { shape.name() };
+            if tile(ui, r, shape.icon(), name, self.shape == shape, 28.0).clicked() {
                 self.shape = shape;
             }
         }
         let form = Rect::from_min_max(pos2(content.left(), row.bottom() + 4.0), content.max);
-        painter.rect_filled(form, 0.0, theme::panel());
+        if premium {
+            theme::paint_premium_panel(&painter, form.shrink2(vec2(0.0, 2.0)), true);
+        } else {
+            painter.rect_filled(form, 0.0, theme::panel());
+        }
         let mut action = None;
         ui.scope_builder(
             UiBuilder::new().max_rect(form.shrink2(vec2(12.0, 8.0))),
@@ -313,18 +382,24 @@ impl Welcome {
                         rate,
                         advanced,
                     };
-                    if ui
-                        .add_sized([128.0, 22.0], egui::Button::new(tr("Create Project")))
-                        .clicked()
+                    if theme::premium_button(
+                        ui,
+                        tr("Create Project"),
+                        vec2(if premium { 164.0 } else { 128.0 }, if premium { 30.0 } else { 22.0 }),
+                        true,
+                    )
+                    .clicked()
                     {
                         action = Some(make(false));
                     }
-                    if ui
-                        .add_sized([128.0, 22.0], egui::Button::new(tr("Advanced Settings…")))
-                        .on_hover_text(tr(
-                            "A new project with these settings, in Project Properties",
-                        ))
-                        .clicked()
+                    if theme::premium_button(
+                        ui,
+                        tr("Advanced Settings…"),
+                        vec2(if premium { 162.0 } else { 128.0 }, if premium { 30.0 } else { 22.0 }),
+                        false,
+                    )
+                    .on_hover_text(tr("A new project with these settings, in Project Properties"))
+                    .clicked()
                     {
                         action = Some(make(true));
                     }
@@ -394,7 +469,7 @@ impl RecentProjects {
             }
             egui::ScrollArea::vertical()
                 .id_salt("noni-recent-projects")
-                .max_height(188.0)
+                .max_height(if theme::premium() { 248.0 } else { 188.0 })
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     let width = (ui.available_width() - 24.0) / 4.0;
@@ -404,20 +479,36 @@ impl RecentProjects {
                         .show(ui, |ui| {
                             for (index, path) in self.paths.iter().enumerate() {
                                 let (card, response) =
-                                    ui.allocate_exact_size(vec2(width, 90.0), Sense::click());
+                                    ui.allocate_exact_size(
+                                        vec2(width, if theme::premium() { 108.0 } else { 90.0 }),
+                                        Sense::click(),
+                                    );
                                 let painter = ui.painter_at(card);
-                                painter.rect_filled(
-                                    card,
-                                    4.0,
-                                    if response.hovered() {
-                                        theme::hover()
-                                    } else {
-                                        theme::panel()
-                                    },
-                                );
+                                if theme::premium() {
+                                    theme::paint_premium_panel(&painter, card, true);
+                                    painter.rect_stroke(
+                                        card,
+                                        10.0,
+                                        Stroke::new(
+                                            1.0,
+                                            if response.hovered() {
+                                                Color32::from_rgb(0x5B, 0xBA, 0xFF)
+                                            } else {
+                                                theme::separator()
+                                            },
+                                        ),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                } else {
+                                    painter.rect_filled(
+                                        card,
+                                        4.0,
+                                        if response.hovered() { theme::hover() } else { theme::panel() },
+                                    );
+                                }
                                 let picture = Rect::from_min_max(
                                     card.min + vec2(4.0, 4.0),
-                                    pos2(card.right() - 4.0, card.bottom() - 24.0),
+                                    pos2(card.right() - 4.0, card.bottom() - if theme::premium() { 27.0 } else { 24.0 }),
                                 );
                                 let thumbnail = self
                                     .pictures
@@ -454,7 +545,7 @@ impl RecentProjects {
                                     .to_string_lossy();
                                 let label = painter.layout_no_wrap(
                                     name.into_owned(),
-                                    FontId::proportional(12.0),
+                                    FontId::proportional(if theme::premium() { 13.0 } else { 12.0 }),
                                     theme::text(),
                                 );
                                 let label_painter = painter.with_clip_rect(Rect::from_min_max(
@@ -547,7 +638,9 @@ fn tile(
 ) -> egui::Response {
     let resp = ui.interact(r, ui.id().with(("boas-vindas-botao", name)), Sense::click());
     let painter = ui.painter();
-    if on {
+    if theme::premium() {
+        theme::paint_premium_button(painter, r, on, resp.hovered(), false);
+    } else if on {
         painter.rect_filled(r, 0.0, theme::selection());
     } else if resp.hovered() {
         painter.rect_filled(r, 0.0, theme::hover());
@@ -710,6 +803,128 @@ fn paint_banner(painter: &egui::Painter, r: Rect) {
         tr("Video editor"),
         FontId::proportional(16.0),
         Color32::from_white_alpha(210),
+    );
+}
+
+
+/// Noni's premium concept banner: illuminated blue / violet light ribbons,
+/// the original fruit mark, and a compact timeline vignette drawn entirely
+/// in egui so no external asset or bitmap is needed.
+fn paint_premium_banner(painter: &egui::Painter, r: Rect) {
+    let clip = painter.with_clip_rect(r.shrink(2.0));
+    gradient(
+        &clip,
+        r,
+        [
+            Color32::from_rgb(0x07, 0x15, 0x34),
+            Color32::from_rgb(0x11, 0x1D, 0x62),
+            Color32::from_rgb(0x08, 0x14, 0x34),
+            Color32::from_rgb(0x0A, 0x21, 0x4A),
+        ],
+    );
+    glow(
+        &clip,
+        pos2(r.left() + 475.0, r.top() + 80.0),
+        155.0,
+        Color32::from_rgb(0x12, 0x7F, 0xFF),
+        0.26,
+    );
+    for (phase, height, light, halo) in [
+        (
+            0.3_f32,
+            44.0_f32,
+            Color32::from_rgb(0x4B, 0xD9, 0xFF),
+            Color32::from_rgba_unmultiplied(32, 144, 255, 30),
+        ),
+        (
+            1.9,
+            29.0,
+            Color32::from_rgb(0xBC, 0x72, 0xFF),
+            Color32::from_rgba_unmultiplied(140, 43, 245, 34),
+        ),
+        (
+            3.8,
+            22.0,
+            Color32::from_rgb(0x3D, 0x92, 0xFF),
+            Color32::from_rgba_unmultiplied(24, 85, 235, 30),
+        ),
+    ] {
+        let mut points = Vec::with_capacity(73);
+        for i in 0..=72 {
+            let t = i as f32 / 72.0;
+            points.push(pos2(
+                r.left() + 280.0 + t * (r.width() - 265.0),
+                r.top() + 88.0 + (t * 8.5 + phase).sin() * height
+                    + (t - 0.5) * 16.0,
+            ));
+        }
+        clip.add(egui::Shape::line(points.clone(), Stroke::new(11.0, halo)));
+        clip.add(egui::Shape::line(points, Stroke::new(2.5, light)));
+    }
+    // A miniature three-track edit and playhead at the right edge.
+    let tracks = Rect::from_min_size(
+        pos2(r.right() - 265.0, r.top() + 45.0),
+        vec2(238.0, 106.0),
+    );
+    clip.rect_filled(tracks, 10.0, Color32::from_rgba_unmultiplied(8, 17, 41, 226));
+    clip.rect_stroke(
+        tracks,
+        10.0,
+        Stroke::new(1.0, Color32::from_rgba_unmultiplied(109, 177, 255, 120)),
+        egui::StrokeKind::Inside,
+    );
+    for (index, color) in [
+        Color32::from_rgb(0x2E, 0x8B, 0xE7),
+        Color32::from_rgb(0x26, 0xB1, 0xCB),
+        Color32::from_rgb(0x7A, 0x4A, 0xDB),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let y = tracks.top() + 18.0 + index as f32 * 28.0;
+        for (x, width) in [(14.0, 74.0), (94.0, 102.0)] {
+            clip.rect_filled(
+                Rect::from_min_size(pos2(tracks.left() + x, y), vec2(width, 19.0)),
+                4.0,
+                color,
+            );
+        }
+    }
+    let cursor = tracks.left() + 135.0;
+    clip.line_segment(
+        [pos2(cursor, tracks.top() + 8.0), pos2(cursor, tracks.bottom() - 7.0)],
+        Stroke::new(2.0, Color32::WHITE),
+    );
+    // A dark scrim keeps logo lettering readable against the light ribbons.
+    clip.rect_filled(
+        Rect::from_min_size(r.min, vec2(345.0, r.height())),
+        0.0,
+        Color32::from_rgba_unmultiplied(5, 12, 32, 120),
+    );
+    let logo = pos2(r.left() + 34.0, r.center().y - 3.0);
+    icons::paint_logo_mark(
+        &clip,
+        Rect::from_center_size(logo + vec2(45.0, 0.0), vec2(88.0, 88.0)),
+    );
+    clip.text(
+        logo + vec2(108.0, -17.0),
+        Align2::LEFT_CENTER,
+        "Noni",
+        FontId::proportional(43.0),
+        Color32::WHITE,
+    );
+    clip.text(
+        logo + vec2(110.0, 23.0),
+        Align2::LEFT_CENTER,
+        tr("Video editor"),
+        FontId::proportional(16.0),
+        Color32::from_white_alpha(224),
+    );
+    painter.rect_stroke(
+        r.shrink(1.0),
+        12.0,
+        Stroke::new(1.0, Color32::from_rgb(0x59, 0x7E, 0xB4)),
+        egui::StrokeKind::Inside,
     );
 }
 
