@@ -963,7 +963,9 @@ pub struct Prefs {
     pub icon_strength: u8,
     /// Display: "Button Highlight Color" (active toolbar buttons).
     pub button_highlight: [u8; 4],
-    /// Display: "Interface Type".
+    /// Display: the skin. Defaults to Classic for earlier settings files.
+    pub theme_variant: crate::theme::ThemeVariant,
+    /// Display: Classic's existing Interface Type.
     pub interface: crate::theme::Interface,
     /// Display: "Automatically hide docking area", "Position tabs at top
     /// of docked windows", "Allow floating windows to dock (hold Ctrl to
@@ -1152,6 +1154,7 @@ impl Default for Prefs {
             snap_colors: SnapKind::ALL.map(SnapKind::default_color).to_vec(),
             icon_strength: 100,
             button_highlight: crate::theme::DEFAULT_HIGHLIGHT,
+            theme_variant: crate::theme::ThemeVariant::Classic,
             interface: crate::theme::Interface::Dark,
             auto_hide_dock: false,
             tabs_at_top: false,
@@ -2114,6 +2117,7 @@ mod tests {
     #[test]
     fn display_starts_as_vegas_does() {
         let p = Prefs::default();
+        assert_eq!(p.theme_variant, crate::theme::ThemeVariant::Classic);
         assert_eq!(p.interface, crate::theme::Interface::Dark);
         assert_eq!(p.icon_strength, 100);
         assert!(p.high_dpi, "Use High DPI scaling: on");

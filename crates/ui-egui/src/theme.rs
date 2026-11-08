@@ -48,6 +48,36 @@ impl Interface {
     }
 }
 
+/// A visual skin is independent of Classic's existing interface brightness.
+/// Choosing Premium never changes a saved Classic Interface Type.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThemeVariant {
+    #[default]
+    Classic,
+    PremiumDark,
+    PremiumLight,
+}
+
+impl ThemeVariant {
+    pub const ALL: [Self; 3] = [Self::Classic, Self::PremiumDark, Self::PremiumLight];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Classic => tr("Noni Classic"),
+            Self::PremiumDark => tr("Premium Dark"),
+            Self::PremiumLight => tr("Premium Light"),
+        }
+    }
+
+    pub fn palette(self, classic: Interface) -> &'static Palette {
+        match self {
+            Self::Classic => classic.palette(),
+            Self::PremiumDark => &PREMIUM_DARK,
+            Self::PremiumLight => &PREMIUM_LIGHT,
+        }
+    }
+}
+
 /// Primary action buttons, including Export.
 pub(crate) const ACTION_BLUE: Color32 = Color32::from_rgb(24, 100, 214);
 
@@ -247,8 +277,82 @@ const WHITE: Palette = Palette {
     widget_text: rgb(0x151515),
 };
 
+// Noni premium styles use its green accent and separated surface depths.
+// Classic retains every original color without modification.
+const PREMIUM_DARK: Palette = Palette {
+    light: false,
+    banana: rgb(0x8EE7BA),
+    banana_dim: rgb(0x286E58),
+    bg: rgb(0x101722),
+    panel: rgb(0x1A2432),
+    panel_dark: rgb(0x0C121C),
+    hover: rgb(0x2B4052),
+    separator: rgb(0x344657),
+    knob: rgb(0xC8D6DB),
+    track_video: rgb(0x1C2836),
+    track_audio: rgb(0x1B2B31),
+    text: rgb(0xE7F1F2),
+    text_dim: rgb(0xA0B4C0),
+    text_disabled: rgb(0x647C8B),
+    text_strong: rgb(0xFFFFFF),
+    cursor: rgb(0xFFFFFF),
+    snap: rgb(0x67C9F3),
+    loop_bar: rgb(0x7E9BE5),
+    marker: rgb(0xF0B66B),
+    region: rgb(0x7BCFA1),
+    error: rgb(0xFF918B),
+    header_selected: rgb(0x26394A),
+    header_selected_focused: rgb(0x245D63),
+    tab_on: rgb(0x286D61),
+    selection: rgb(0x297B73),
+    check_border: rgb(0x8095A4),
+    faint_line: Color32::from_black_alpha(28),
+    grid: rgb(0x314354),
+    widget: rgb(0x263548),
+    widget_hover: rgb(0x344B60),
+    widget_open: rgb(0x1B2B3D),
+    widget_text: rgb(0xE7F1F2),
+};
+
+const PREMIUM_LIGHT: Palette = Palette {
+    light: true,
+    banana: rgb(0x146747),
+    banana_dim: rgb(0xA5DFC2),
+    bg: rgb(0xE7EDF1),
+    panel: rgb(0xFBFDFE),
+    panel_dark: rgb(0xDCE7E9),
+    hover: rgb(0xE3F3EC),
+    separator: rgb(0xC5D3D9),
+    knob: rgb(0x4B6270),
+    track_video: rgb(0xE7EEF2),
+    track_audio: rgb(0xE3EFE8),
+    text: rgb(0x182C39),
+    text_dim: rgb(0x526875),
+    text_disabled: rgb(0x94A6AE),
+    text_strong: rgb(0x10232B),
+    cursor: rgb(0x203746),
+    snap: rgb(0x1479A8),
+    loop_bar: rgb(0x5375BC),
+    marker: rgb(0xAA6527),
+    region: rgb(0x26885A),
+    error: rgb(0xB22F32),
+    header_selected: rgb(0xD4EAE1),
+    header_selected_focused: rgb(0xB5DCCB),
+    tab_on: rgb(0xB6E4D3),
+    selection: rgb(0x74C4A7),
+    check_border: rgb(0x79918D),
+    faint_line: Color32::from_black_alpha(16),
+    grid: rgb(0xB5C4CC),
+    widget: rgb(0xEDF4F7),
+    widget_hover: rgb(0xDDECE7),
+    widget_open: rgb(0xD2E4E2),
+    widget_text: rgb(0x1D3640),
+};
+
 /// The interface type shown (an index in [`Interface::ALL`]).
 static INTERFACE: AtomicU8 = AtomicU8::new(0);
+/// The Noni skin; zero preserves Classic for existing settings.
+static THEME_VARIANT: AtomicU8 = AtomicU8::new(0);
 /// Options › Preferences › Display › "Button Highlight Color" (RGBA).
 static BUTTON_HIGHLIGHT: AtomicU32 = AtomicU32::new(u32::from_be_bytes(DEFAULT_HIGHLIGHT));
 /// Options › Preferences › Display › "Icon color strength" (0–100 %).
@@ -264,6 +368,15 @@ pub fn set_interface(kind: Interface) {
 
 pub fn interface() -> Interface {
     Interface::ALL[INTERFACE.load(Ordering::Relaxed) as usize % Interface::ALL.len()]
+}
+
+pub fn set_variant(variant: ThemeVariant) {
+    let index = ThemeVariant::ALL.iter().position(|&v| v == variant).unwrap_or(0);
+    THEME_VARIANT.store(index as u8, Ordering::Relaxed);
+}
+
+pub fn variant() -> ThemeVariant {
+    ThemeVariant::ALL[THEME_VARIANT.load(Ordering::Relaxed) as usize % ThemeVariant::ALL.len()]
 }
 
 pub fn set_button_highlight(rgba: [u8; 4]) {
@@ -302,7 +415,7 @@ pub fn desaturate(color: Color32, percent: u8) -> Color32 {
 }
 
 fn palette() -> &'static Palette {
-    interface().palette()
+    variant().palette(interface())
 }
 
 pub fn banana() -> Color32 {
@@ -424,8 +537,10 @@ pub fn apply(ctx: &egui::Context) {
 /// Sets egui's style from the interface type `kind`.
 pub fn apply_kind(ctx: &egui::Context, kind: Interface) {
     crate::timecode_font::install(ctx);
-    let p = kind.palette();
-    // One style slot, holding the visuals of the interface type.
+    let skin = variant();
+    let p = skin.palette(kind);
+    let premium = skin != ThemeVariant::Classic;
+    // One style slot, holding the visuals of the selected Noni theme.
     ctx.set_theme(egui::Theme::Dark);
     ctx.global_style_mut(|style| {
         let mut v = if p.light {
@@ -436,6 +551,20 @@ pub fn apply_kind(ctx: &egui::Context, kind: Interface) {
         v.panel_fill = p.panel;
         v.window_fill = p.panel;
         v.window_stroke = Stroke::new(1.0, p.separator);
+        if premium {
+            v.window_shadow = egui::Shadow {
+                offset: [0, 7],
+                blur: 20,
+                spread: 0,
+                color: Color32::from_black_alpha(90),
+            };
+            v.popup_shadow = egui::Shadow {
+                offset: [0, 4],
+                blur: 12,
+                spread: 0,
+                color: Color32::from_black_alpha(65),
+            };
+        }
         v.extreme_bg_color = p.panel_dark;
         v.faint_bg_color = p.bg;
         v.code_bg_color = p.panel_dark;
@@ -462,13 +591,22 @@ pub fn apply_kind(ctx: &egui::Context, kind: Interface) {
         w.open.bg_fill = p.panel;
         w.open.fg_stroke = Stroke::new(1.0, p.text);
         v.slider_trailing_fill = true;
-        let r = CornerRadius::same(3);
+        if premium {
+            w.inactive.bg_stroke = Stroke::new(1.0, p.separator);
+            w.hovered.bg_stroke = Stroke::new(1.5, p.snap);
+            w.active.bg_stroke = Stroke::new(1.5, p.banana);
+        }
+        let r = CornerRadius::same(if premium { 8 } else { 3 });
         w.noninteractive.corner_radius = r;
         w.inactive.corner_radius = r;
         w.hovered.corner_radius = r;
         w.active.corner_radius = r;
         style.visuals = v;
-        style.spacing.item_spacing = egui::vec2(6.0, 4.0);
+        style.spacing.item_spacing = if premium {
+            egui::vec2(8.0, 6.0)
+        } else {
+            egui::vec2(6.0, 4.0)
+        };
         style.spacing.slider_width = 140.0;
     });
 }
@@ -476,6 +614,20 @@ pub fn apply_kind(ctx: &egui::Context, kind: Interface) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn themes_preserve_classic_brightness_and_round_trip_by_name() {
+        for classic in Interface::ALL {
+            assert_eq!(ThemeVariant::Classic.palette(classic).panel, classic.palette().panel);
+        }
+        for skin in ThemeVariant::ALL {
+            let json = serde_json::to_string(&skin).unwrap();
+            assert_eq!(serde_json::from_str::<ThemeVariant>(&json).unwrap(), skin);
+        }
+        assert_eq!(ThemeVariant::default(), ThemeVariant::Classic);
+        assert!(ThemeVariant::PremiumLight.palette(Interface::Dark).light);
+        assert!(!ThemeVariant::PremiumDark.palette(Interface::White).light);
+    }
 
     #[test]
     fn grey_keeps_its_brightness_and_full_strength_keeps_the_color() {

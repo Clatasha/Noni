@@ -23,6 +23,9 @@ impl BananaApp {
                 "Medium" => p.interface = theme::Interface::Medium,
                 "Light" => p.interface = theme::Interface::Light,
                 "White" => p.interface = theme::Interface::White,
+                "Noni Classic" => p.theme_variant = theme::ThemeVariant::Classic,
+                "Premium Dark" => p.theme_variant = theme::ThemeVariant::PremiumDark,
+                "Premium Light" => p.theme_variant = theme::ThemeVariant::PremiumLight,
                 "tabs at top" => p.tabs_at_top = true,
                 "statistics" => p.system_stats = true,
                 "hide dock" => p.auto_hide_dock = true,
@@ -38,7 +41,11 @@ impl BananaApp {
         let p = &self.settings.prefs;
         theme::set_button_highlight(p.button_highlight);
         theme::set_icon_strength(p.icon_strength);
-        if self.look_applied != Some(p.interface) || theme::interface() != p.interface {
+        if self.look_applied != Some(p.interface)
+            || theme::interface() != p.interface
+            || theme::variant() != p.theme_variant
+        {
+            theme::set_variant(p.theme_variant);
             theme::set_interface(p.interface);
             theme::apply_kind(ctx, p.interface);
             self.look_applied = Some(p.interface);

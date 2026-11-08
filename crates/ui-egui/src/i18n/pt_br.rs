@@ -6703,6 +6703,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Noni cannot save files in {}: {}",
         "O Noni não consegue salvar arquivos em {}: {}",
     ),
+    ("Noni Classic", "Noni Clássico"),
     ("Noni Community…", "Comunidade Noni…"),
     (
         "Noni did not close normally last time. Open the copy of {} it saved automatically?",
@@ -7287,6 +7288,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Preferences…", "Preferências…"),
     ("Preferred audio editor:", "Editor de áudio preferido:"),
     ("Premastering", "Pré-masterização"),
+    ("Premium Dark", "Premium Escuro"),
+    ("Premium Light", "Premium Claro"),
     ("Premultiplied", "Pré-multiplicado"),
     ("Premultiplied (dirty)", "Pré-multiplicado (sujo)"),
     ("Preparing", "Preparando"),
@@ -10862,6 +10865,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "The whole frame in one color.",
         "O quadro inteiro em uma cor.",
     ),
+    ("Theme", "Tema"),
     (
         "There are no effects in this chain that can be automated.",
         "Não há efeitos nesta cadeia que possam ser automatizados.",

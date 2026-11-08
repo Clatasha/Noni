@@ -873,6 +873,16 @@ fn options_menu(ui: &mut Ui, app: &mut BananaApp) {
     cmd(ui, app, Cmd::CustomizeTimelineToolbar);
     cmd(ui, app, Cmd::CustomizeKeyboard);
     ui.separator();
+    sub(ui, tr("Theme"), true, |ui| {
+        for variant in theme::ThemeVariant::ALL {
+            if mark_item(ui, variant.name(), app.settings.prefs.theme_variant == variant) {
+                app.settings.prefs.theme_variant = variant;
+                let _ = app.settings.save();
+                ui.close();
+            }
+        }
+    });
+    ui.separator();
     cmd(ui, app, Cmd::ExportPreferences);
     cmd(ui, app, Cmd::ImportPreferences);
     cmd(ui, app, Cmd::Preferences);

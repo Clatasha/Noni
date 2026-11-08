@@ -21,7 +21,7 @@ use crate::settings::{
     JklSpeed, LocateMessages, MidiRoute, MtcRate, Prefs, PreviewBackground, RecordWaveforms,
     SnapKind, SurfaceKind, Thumbnails, track_color_name,
 };
-use crate::theme::Interface;
+use crate::theme::{Interface, ThemeVariant};
 use crate::{theme, vst};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2799,6 +2799,15 @@ impl PreferencesDialog {
             },
         );
         ui.add_space(4.0);
+        group(ui, tr("Theme"), |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for variant in ThemeVariant::ALL {
+                    ui.radio_value(&mut p.theme_variant, variant, variant.name());
+                }
+            });
+        });
+        ui.add_space(4.0);
+        ui.add_enabled_ui(p.theme_variant == ThemeVariant::Classic, |ui| {
         group(ui, tr("Interface Type"), |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             // Each type beside a sample of its panels.
@@ -2821,6 +2830,7 @@ impl PreferencesDialog {
                     },
                 );
             }
+        });
         });
         ui.add_space(8.0);
         ui.spacing_mut().item_spacing.y = 3.0;
