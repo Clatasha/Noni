@@ -16,6 +16,7 @@ name: Packages
 
 on:
   # Build on noni-branding only when this packaging workflow changes.
+  # One-time rebuild request: UI fixes batch (mask/text/properties/banner).
   push:
     branches: [noni-branding]
     paths:
