@@ -100,6 +100,19 @@ impl SimpleSettings {
     }
 }
 
+fn export_section(ui: &mut Ui, contents: impl FnOnce(&mut Ui)) {
+    if crate::theme::premium() {
+        egui::Frame::new()
+            .fill(crate::theme::panel())
+            .stroke(egui::Stroke::new(1.0, crate::theme::separator()))
+            .corner_radius(11.0)
+            .inner_margin(egui::Margin::same(12))
+            .show(ui, contents);
+    } else {
+        contents(ui);
+    }
+}
+
 fn choose<T: Copy + PartialEq>(
     ui: &mut Ui,
     label: &str,
@@ -125,6 +138,7 @@ impl RenderDialog {
         let before = self.simple;
         let mut loaded = false;
         ui.spacing_mut().item_spacing.y = 8.0;
+        export_section(ui, |ui| {
         egui::Grid::new("simple-export-destination")
             .num_columns(2)
             .spacing([18.0, 8.0])
@@ -217,10 +231,12 @@ impl RenderDialog {
         if let Some(error) = &self.preset_error {
             ui.colored_label(crate::theme::error(), error);
         }
-        ui.separator();
+        });
+        if crate::theme::premium() { ui.add_space(8.0); } else { ui.separator(); }
         ui.label(RichText::new(tr("Video")).strong());
         let project = app.project();
         let simple = &mut self.simple;
+        export_section(ui, |ui| {
         egui::Grid::new("simple-export-video")
             .num_columns(2)
             .spacing([18.0, 8.0])
@@ -338,8 +354,10 @@ impl RenderDialog {
                 ui.label("MP4 · SDR Rec.709");
                 ui.end_row();
             });
-        ui.separator();
+        });
+        if crate::theme::premium() { ui.add_space(8.0); } else { ui.separator(); }
         ui.collapsing(tr("Audio Settings"), |ui| {
+            export_section(ui, |ui| {
             egui::Grid::new("simple-export-audio")
                 .num_columns(2)
                 .spacing([18.0, 8.0])
@@ -378,6 +396,7 @@ impl RenderDialog {
                         kbps,
                     );
                 });
+            });
         });
         if project.loop_region.is_some() {
             ui.checkbox(&mut self.loop_only, tr("Render loop region only"));
@@ -408,10 +427,17 @@ impl RenderDialog {
                 crate::fmt::num(mb, 2)
             ));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let button = egui::Button::new(RichText::new(tr("Export")).strong())
-                    .fill(crate::theme::ACTION_BLUE)
-                    .min_size(vec2(96.0, 30.0));
-                if ui.add_enabled(ready, button).clicked() {
+                let clicked = if crate::theme::premium() {
+                    crate::theme::dialog_button(
+                        ui, tr("Export"), vec2(118.0, 34.0), true, ready
+                    ).clicked()
+                } else {
+                    let button = egui::Button::new(RichText::new(tr("Export")).strong())
+                        .fill(crate::theme::ACTION_BLUE)
+                        .min_size(vec2(96.0, 30.0));
+                    ui.add_enabled(ready, button).clicked()
+                };
+                if clicked {
                     Action::Render
                 } else if !self.simple_details
                     && self.preset_edit.is_none()

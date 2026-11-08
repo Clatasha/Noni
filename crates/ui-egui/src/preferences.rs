@@ -546,6 +546,19 @@ fn row<R>(ui: &mut Ui, label: &str, width: f32, control: impl FnOnce(&mut Ui) ->
 /// A group's title with a line after it, and its contents indented, as
 /// VEGAS's group boxes.
 fn group(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui)) {
+    if theme::premium() {
+        egui::Frame::new()
+            .fill(theme::panel())
+            .stroke(Stroke::new(1.0, theme::separator()))
+            .corner_radius(10.0)
+            .inner_margin(egui::Margin::same(10))
+            .show(ui, |ui| {
+                ui.label(RichText::new(title).strong().color(theme::banana()));
+                ui.separator();
+                contents(ui);
+            });
+        return;
+    }
     ui.horizontal(|ui| {
         ui.label(title);
         let (rect, _) = ui.allocate_exact_size(
@@ -615,6 +628,7 @@ impl PreferencesDialog {
                 egui::Frame::new()
                     .fill(theme::panel_dark())
                     .stroke(Stroke::new(1.0, theme::separator()))
+                    .corner_radius(if theme::premium() { 11.0 } else { 0.0 })
                     .inner_margin(12.0)
                     .show(ui, |ui| {
                         ui.set_width(width - 26.0);
@@ -638,22 +652,42 @@ impl PreferencesDialog {
                         }
                     });
                 ui.add_space(6.0);
-                let buttons = vec2(width, ui.spacing().interact_size.y);
+                let premium = theme::premium();
+                let buttons = vec2(
+                    width,
+                    if premium { 36.0 } else { ui.spacing().interact_size.y },
+                );
                 let layout = egui::Layout::right_to_left(egui::Align::Center);
                 ui.allocate_ui_with_layout(buttons, layout, |ui| {
                     let changed = self.draft != Draft::of(app);
-                    if ui
-                        .add_enabled(changed, egui::Button::new(tr("Apply")))
-                        .clicked()
-                    {
-                        self.draft.apply(app);
-                    }
-                    if ui.button(tr("Cancel")).clicked() {
-                        close = true;
-                    }
-                    if ui.button(RichText::new("OK").strong()).clicked() {
-                        self.draft.apply(app);
-                        close = true;
+                    if premium {
+                        if theme::dialog_button(ui, tr("Apply"), vec2(90.0, 32.0), false, changed)
+                            .clicked()
+                        {
+                            self.draft.apply(app);
+                        }
+                        if theme::dialog_button(ui, tr("Cancel"), vec2(90.0, 32.0), false, true)
+                            .clicked()
+                        {
+                            close = true;
+                        }
+                        if theme::dialog_button(ui, "OK", vec2(90.0, 32.0), true, true)
+                            .clicked()
+                        {
+                            self.draft.apply(app);
+                            close = true;
+                        }
+                    } else {
+                        if ui.add_enabled(changed, egui::Button::new(tr("Apply"))).clicked() {
+                            self.draft.apply(app);
+                        }
+                        if ui.button(tr("Cancel")).clicked() {
+                            close = true;
+                        }
+                        if ui.button(RichText::new("OK").strong()).clicked() {
+                            self.draft.apply(app);
+                            close = true;
+                        }
                     }
                 });
             });

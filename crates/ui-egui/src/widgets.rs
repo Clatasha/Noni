@@ -840,6 +840,34 @@ pub fn tab_button(ui: &mut Ui, text: &str, on: bool, enabled: bool, min_width: f
     } else {
         theme::text_disabled()
     };
+    if theme::premium() {
+        let font = egui::FontId::proportional(13.0);
+        let label_w = ui.painter().layout_no_wrap(
+            text.to_owned(), font.clone(), color
+        ).size().x;
+        let (rect, response) = ui.allocate_exact_size(
+            vec2((label_w + 22.0).max(min_width), 30.0),
+            if enabled { Sense::click() } else { Sense::hover() },
+        );
+        if enabled {
+            theme::paint_premium_button(ui.painter(), rect, on, response.hovered(), false);
+        } else {
+            ui.painter().rect_filled(rect, 7.0, theme::panel_dark());
+        }
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            text,
+            font,
+            if !enabled { theme::text_disabled() }
+            else if on { Color32::WHITE }
+            else { theme::text() },
+        );
+        response.widget_info(|| egui::WidgetInfo::selected(
+            egui::WidgetType::SelectableLabel, enabled, on, text
+        ));
+        return response.on_disabled_hover_text(tr("Coming soon to Noni"));
+    }
     let button = egui::Button::new(egui::RichText::new(text).color(color))
         .fill(if on { theme::tab_on() } else { theme::panel() })
         .stroke(Stroke::new(

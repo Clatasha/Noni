@@ -12,6 +12,7 @@ use std::sync::Mutex;
 use crate::egui::{
     self, Align2, Context, Id, Pos2, Ui, Vec2, ViewportBuilder, ViewportId, pos2, vec2,
 };
+use crate::theme;
 
 /// Title of the main window, the owner of the dialogs.
 static MAIN_TITLE: Mutex<String> = Mutex::new(String::new());
@@ -85,6 +86,37 @@ pub(crate) fn main_title() -> String {
 
 /// Margin between the native window's border and the dialog's content.
 const MARGIN: f32 = 10.0;
+
+/// The premium chrome applies to every Noni floating dialog, including
+/// Preferences, project/export settings and smaller utility windows. It
+/// changes neither viewport ownership nor dialog state.
+fn dialog_frame(fill: egui::Color32) -> egui::Frame {
+    let frame = egui::Frame::new().fill(fill).inner_margin(MARGIN);
+    if theme::premium() {
+        frame
+            .corner_radius(12.0)
+            .stroke(egui::Stroke::new(1.0, theme::separator()))
+    } else {
+        frame
+    }
+}
+
+fn paint_dialog_trim(ui: &Ui) {
+    if !theme::premium() {
+        return;
+    }
+    let rect = ui.max_rect();
+    if rect.width() > 42.0 {
+        let painter = ui.painter();
+        painter.line_segment(
+            [
+                pos2(rect.left() + 14.0, rect.top() + 1.5),
+                pos2(rect.right() - 14.0, rect.top() + 1.5),
+            ],
+            egui::Stroke::new(1.5, theme::banana().gamma_multiply(0.75)),
+        );
+    }
+}
 
 /// What a native dialog remembers between frames (and between openings:
 /// a dialog opened again starts at the size it had).
@@ -276,21 +308,22 @@ impl<'open> Window<'open> {
                     .resizable(false)
                     .constrain(false)
                     .fixed_pos(pos2(0.0, 0.0))
-                    .frame(egui::Frame::new().fill(fill).inner_margin(MARGIN));
-                let r = w.show(ui.ctx(), add);
+                    .frame(dialog_frame(fill));
+                let r = w.show(ui.ctx(), |ui| {
+                    paint_dialog_trim(ui);
+                    add(ui)
+                });
                 if let Some(r) = &r {
                     measured = Some(r.response.rect.size());
                 }
                 r.and_then(|r| r.inner)
             } else {
                 Some(
-                    egui::Frame::new()
-                        .fill(fill)
-                        .inner_margin(MARGIN)
-                        .show(ui, |ui| {
-                            ui.set_min_size(ui.available_size());
-                            add(ui)
-                        })
+                    dialog_frame(fill).show(ui, |ui| {
+                        ui.set_min_size(ui.available_size());
+                        paint_dialog_trim(ui);
+                        add(ui)
+                    })
                         .inner,
                 )
             };
@@ -369,9 +402,13 @@ impl<'open> Window<'open> {
         if let Some((a, o)) = self.anchor {
             w = w.anchor(a, o);
         }
+        if theme::premium() {
+            w = w.frame(dialog_frame(theme::panel()));
+        }
         let mut content = None;
         let r = w.show(ctx, |ui| {
             content = Some(ui.max_rect().min);
+            paint_dialog_trim(ui);
             add(ui)
         });
         // The title bar and the frame, from where the content starts (its

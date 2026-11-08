@@ -775,6 +775,49 @@ pub fn premium_button(
     response
 }
 
+/// Dialog action button with explicit enabled behavior. For premium skins,
+/// actions are bevelled, with an illuminated primary action and subdued
+/// disabled state. Classic uses ordinary egui buttons.
+pub fn dialog_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    size: egui::Vec2,
+    primary: bool,
+    enabled: bool,
+) -> egui::Response {
+    if !premium() {
+        return ui.add_enabled(enabled, egui::Button::new(label).min_size(size));
+    }
+    let (rect, response) = ui.allocate_exact_size(
+        size,
+        if enabled { egui::Sense::click() } else { egui::Sense::hover() },
+    );
+    if enabled {
+        paint_premium_button(ui.painter(), rect, false, response.hovered(), primary);
+    } else {
+        ui.painter().rect_filled(rect, CornerRadius::same(8), palette().panel_dark);
+        ui.painter().rect_stroke(
+            rect,
+            CornerRadius::same(8),
+            Stroke::new(1.0, palette().separator),
+            egui::StrokeKind::Inside,
+        );
+    }
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(14.0),
+        if !enabled { palette().text_disabled }
+        else if primary { Color32::WHITE }
+        else { palette().text },
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label)
+    });
+    response
+}
+
 /// Sets egui's style from the interface type shown.
 pub fn apply(ctx: &egui::Context) {
     apply_kind(ctx, interface());

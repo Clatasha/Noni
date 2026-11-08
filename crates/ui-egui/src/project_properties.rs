@@ -456,6 +456,7 @@ impl ProjectPropertiesDialog {
                 egui::Frame::new()
                     .fill(theme::panel())
                     .stroke(Stroke::new(1.0, theme::separator()))
+                    .corner_radius(if theme::premium() { 11.0 } else { 0.0 })
                     .inner_margin(10.0)
                     .show(ui, |ui| {
                         ui.set_width(self.page_width);
@@ -500,30 +501,49 @@ impl ProjectPropertiesDialog {
                 ui.add_space(6.0);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let changed = self.changed(app);
-                    if ui
-                        .add_enabled(
-                            changed,
-                            egui::Button::new(tr("Apply")).min_size(vec2(72.0, 0.0)),
-                        )
-                        .clicked()
-                    {
-                        self.apply(app);
-                    }
-                    if ui
-                        .add(egui::Button::new(tr("Cancel")).min_size(vec2(72.0, 0.0)))
-                        .clicked()
-                    {
-                        close = true;
-                    }
-                    if ui
-                        .add(
-                            egui::Button::new(RichText::new("OK").strong())
-                                .min_size(vec2(72.0, 0.0)),
-                        )
-                        .clicked()
-                    {
-                        self.apply(app);
-                        close = true;
+                    if theme::premium() {
+                        if theme::dialog_button(
+                            ui, tr("Apply"), vec2(90.0, 32.0), false, changed
+                        ).clicked() {
+                            self.apply(app);
+                        }
+                        if theme::dialog_button(
+                            ui, tr("Cancel"), vec2(90.0, 32.0), false, true
+                        ).clicked() {
+                            close = true;
+                        }
+                        if theme::dialog_button(
+                            ui, "OK", vec2(90.0, 32.0), true, true
+                        ).clicked() {
+                            self.apply(app);
+                            close = true;
+                        }
+                    } else {
+                        if ui
+                            .add_enabled(
+                                changed,
+                                egui::Button::new(tr("Apply")).min_size(vec2(72.0, 0.0)),
+                            )
+                            .clicked()
+                        {
+                            self.apply(app);
+                        }
+                        if ui
+                            .add(egui::Button::new(tr("Cancel")).min_size(vec2(72.0, 0.0)))
+                            .clicked()
+                        {
+                            close = true;
+                        }
+                        if ui
+                            .add(
+                                egui::Button::new(RichText::new("OK").strong())
+                                    .min_size(vec2(72.0, 0.0)),
+                            )
+                            .clicked()
+                        {
+                            self.apply(app);
+                            close = true;
+                        }
                     }
                 });
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {

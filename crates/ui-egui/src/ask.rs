@@ -93,6 +93,15 @@ impl BananaApp {
                     &ask.text,
                     egui::Color32::from_rgb(231, 77, 82),
                 );
+            } else if crate::theme::premium() {
+                ui.set_width(480.0_f32.min(ctx.content_rect().width() * 0.86));
+                crate::dialogs::prompt_header(
+                    ui,
+                    crate::icons::Icon::File,
+                    &ask.title,
+                    &ask.text,
+                    crate::theme::banana(),
+                );
             } else {
                 ui.set_max_width(440.0);
                 ui.heading(&ask.title);
@@ -125,16 +134,26 @@ impl BananaApp {
                 return;
             }
             ui.horizontal(|ui| {
-                if ui
-                    .add(egui::Button::new(tr("Yes")).min_size(egui::vec2(72.0, 0.0)))
-                    .clicked()
-                {
+                let yes = if crate::theme::premium() {
+                    crate::theme::dialog_button(
+                        ui, tr("Yes"), egui::vec2(100.0, 32.0), true, true
+                    ).clicked()
+                } else {
+                    ui.add(egui::Button::new(tr("Yes")).min_size(egui::vec2(72.0, 0.0)))
+                        .clicked()
+                };
+                if yes {
                     answer = Some(true);
                 }
-                if ui
-                    .add(egui::Button::new(tr("No")).min_size(egui::vec2(72.0, 0.0)))
-                    .clicked()
-                {
+                let no = if crate::theme::premium() {
+                    crate::theme::dialog_button(
+                        ui, tr("No"), egui::vec2(100.0, 32.0), false, true
+                    ).clicked()
+                } else {
+                    ui.add(egui::Button::new(tr("No")).min_size(egui::vec2(72.0, 0.0)))
+                        .clicked()
+                };
+                if no {
                     answer = Some(false);
                 }
             });
