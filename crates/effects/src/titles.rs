@@ -730,6 +730,9 @@ fn blur(v: &mut [f32], w: usize, h: usize, sigma: f64) {
 pub(crate) struct Picture {
     pub region: Region,
     pub rgba: Vec<[f32; 4]>,
+    /// Text box in canonical frame units, excluding its rendering margins.
+    pub text_bounds: [f64; 4],
+    pub em: f64,
 }
 
 /// Draws `s` in a frame `fw` × `fh` (square units) shown `k` pixels to a
@@ -831,7 +834,12 @@ pub(crate) fn picture(
         v = over(pre(s.color, text[i]), v);
         rgba.push(v);
     }
-    Some(Picture { region, rgba })
+    Some(Picture {
+        region,
+        rgba,
+        text_bounds: l.bounds,
+        em: l.em,
+    })
 }
 
 /// The plug-in's entry point.
@@ -1134,6 +1142,18 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
     let w = ((frame[0] * k[0]).round() as usize).max(1);
     let h = ((frame[1] * k[1]).round() as usize).max(1);
     let pic = picture(&s, frame[0], frame[1], k, w, h);
+    // Fill only the box around the glyphs, not the whole project frame.
+    // Padding is in font ems so it follows font size and title scale.
+    let background_bounds = pic.as_ref().map(|p| {
+        let pad = p.em * 0.16;
+        let [left, top, right, bottom] = p.text_bounds;
+        [
+            ((left - pad) * k[0]).floor() as i64,
+            ((top - pad) * k[1]).floor() as i64,
+            ((right + pad) * k[0]).ceil() as i64,
+            ((bottom + pad) * k[1]).ceil() as i64,
+        ]
+    });
     let back = {
         let a = s.background[3].clamp(0.0, 1.0) as f32;
         [
@@ -1151,7 +1171,13 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
         let fy = h as i64 - 1 - (y - first[1]) as i64;
         for x in columns.clone() {
             let fx_ = (x - first[0]) as i64;
-            let mut v = back;
+            let mut v = if background_bounds.is_some_and(|[left, top, right, bottom]| {
+                fx_ >= left && fx_ < right && fy >= top && fy < bottom
+            }) {
+                back
+            } else {
+                [0.0; 4]
+            };
             if let Some(p) = &pic {
                 let (i, j) = (fx_ - p.region.x, fy - p.region.y);
                 if i >= 0 && j >= 0 && (i as usize) < p.region.w && (j as usize) < p.region.h {

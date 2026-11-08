@@ -49,7 +49,37 @@ enum AnimationPage {
     Out,
 }
 
-/// Keep navigation in view while the selected page scrolls.
+/// A vector chevron rather than a font-dependent symbol.
+/// The button scrolls the tab strip, never changes the active properties page.
+fn tab_chevron(ui: &mut egui::Ui, forward: bool, enabled: bool) -> bool {
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(25.0, 30.0),
+        if enabled { egui::Sense::click() } else { egui::Sense::hover() },
+    );
+    if theme::premium() && enabled {
+        theme::paint_premium_button(ui.painter(), rect, false, response.hovered(), false);
+    } else if response.hovered() && enabled {
+        ui.painter().rect_filled(rect, 5.0, theme::hover());
+    }
+    let c = rect.center();
+    let color = if enabled { theme::text() } else { theme::text_disabled() };
+    let x = if forward { 1.0 } else { -1.0 };
+    let stroke = egui::Stroke::new(1.8, color);
+    ui.painter().line_segment(
+        [c + egui::vec2(-3.0 * x, -6.0), c + egui::vec2(3.0 * x, 0.0)],
+        stroke,
+    );
+    ui.painter().line_segment(
+        [c + egui::vec2(3.0 * x, 0.0), c + egui::vec2(-3.0 * x, 6.0)],
+        stroke,
+    );
+    let tip = if forward { tr("More tabs to the right") } else { tr("More tabs to the left") };
+    response.on_hover_text(tip).clicked()
+}
+
+/// Keep the properties navigation on exactly one row. When the panel is
+/// narrower than the tabs, arrow controls reveal the remaining tabs.
+/// The chosen page stays selected; changing panel width changes no settings.
 fn tabs<T: Copy + Eq + Send + Sync + 'static>(
     ui: &mut egui::Ui,
     salt: &str,
@@ -65,57 +95,103 @@ fn tabs<T: Copy + Eq + Send + Sync + 'static>(
         .corner_radius(if theme::premium() { 10.0 } else { 4.0 })
         .inner_margin(egui::Margin::same(if theme::premium() { 6 } else { 4 }))
         .show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
-            ui.horizontal_wrapped(|ui| {
-                for &(item, label) in items {
-                    if theme::premium() {
-                        let font = egui::FontId::proportional(13.0);
-                        let size = ui.painter().layout_no_wrap(
-                            label.to_owned(),
-                            font.clone(),
-                            theme::text(),
-                        ).size();
-                        let (rect, response) = ui.allocate_exact_size(
-                            egui::vec2(size.x + 24.0, 30.0),
-                            egui::Sense::click(),
-                        );
-                        let selected = item == active;
-                        theme::paint_premium_button(
-                            ui.painter(),
-                            rect,
-                            selected,
-                            response.hovered(),
-                            false,
-                        );
-                        ui.painter().text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            label,
-                            font,
-                            if selected { Color32::WHITE } else { theme::text() },
-                        );
-                        response.widget_info(|| {
-                            egui::WidgetInfo::selected(
-                                egui::WidgetType::SelectableLabel,
-                                true,
-                                selected,
-                                label,
-                            )
-                        });
-                        if response.clicked() {
-                            active = item;
-                        }
-                    } else {
-                        let mut title = RichText::new(label);
-                        if item == active {
-                            title = title.strong().color(theme::banana());
-                        }
-                        if ui.selectable_label(item == active, title).clicked() {
-                            active = item;
-                        }
+            let font = egui::FontId::proportional(13.0);
+            let widths: Vec<f32> = items
+                .iter()
+                .map(|(_, label)| {
+                    ui.painter()
+                        .layout_no_wrap(label.to_string(), font.clone(), theme::text())
+                        .size()
+                        .x
+                        + 24.0
+                })
+                .collect();
+            let gap = 4.0;
+            let total = widths.iter().sum::<f32>()
+                + gap * (widths.len().saturating_sub(1)) as f32;
+            let available = ui.available_width().max(1.0);
+            let overflowing = total > available;
+            let budget = if overflowing { (available - 60.0).max(20.0) } else { available };
+            let start_key = key.with("first-visible");
+            let last_key = key.with("last-selection");
+            let mut first = ui
+                .data(|d| d.get_temp::<usize>(start_key))
+                .unwrap_or(0)
+                .min(items.len().saturating_sub(1));
+            if !overflowing {
+                first = 0;
+            } else {
+                let chosen = items.iter().position(|(tab, _)| *tab == active).unwrap_or(0);
+                let selection_changed = ui.data(|d| d.get_temp::<T>(last_key)) != Some(active);
+                if selection_changed {
+                    if chosen < first {
+                        first = chosen;
+                    }
+                    // Fit the active tab in the view when the selected page
+                    // changes, but not after a user clicks an overflow arrow.
+                    while first < chosen
+                        && widths[first..=chosen].iter().sum::<f32>()
+                            + gap * (chosen - first) as f32
+                            > budget
+                    {
+                        first += 1;
                     }
                 }
+            }
+            let mut end = first;
+            let mut used = 0.0;
+            while end < items.len() {
+                let w = widths[end] + if end > first { gap } else { 0.0 };
+                if end > first && used + w > budget {
+                    break;
+                }
+                used += w;
+                end += 1;
+            }
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = gap;
+                if overflowing && tab_chevron(ui, false, first > 0) {
+                    first = first.saturating_sub(1);
+                }
+                for i in first..end {
+                    let (tab, label) = items[i];
+                    let (rect, response) = ui.allocate_exact_size(
+                        egui::vec2(widths[i].min(budget), 30.0),
+                        egui::Sense::click(),
+                    );
+                    let selected = tab == active;
+                    if theme::premium() {
+                        theme::paint_premium_button(
+                            ui.painter(), rect, selected, response.hovered(), false,
+                        );
+                    } else if selected {
+                        ui.painter().rect_filled(rect, 4.0, theme::selection());
+                    } else if response.hovered() {
+                        ui.painter().rect_filled(rect, 4.0, theme::hover());
+                    }
+                    ui.painter().with_clip_rect(rect).text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        label,
+                        font.clone(),
+                        if selected && theme::premium() { Color32::WHITE }
+                        else if selected { theme::text_strong() } else { theme::text() },
+                    );
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::SelectableLabel, true, selected, label,
+                        )
+                    });
+                    if response.clicked() {
+                        active = tab;
+                    }
+                }
+                if overflowing && tab_chevron(ui, true, end < items.len()) {
+                    first = (first + 1).min(items.len() - 1);
+                }
             });
+            ui.data_mut(|d| d.insert_temp(start_key, first));
+            ui.data_mut(|d| d.insert_temp(last_key, active));
         });
     ui.data_mut(|d| d.insert_temp(key, active));
     active
@@ -669,15 +745,51 @@ fn animation_tile(ui: &mut egui::Ui, preset: AnimationPreset, label: &str, selec
     response.clicked()
 }
 
-fn tile(ui: &mut egui::Ui, glyph: &str, label: &str, selected: bool) -> bool {
-    let title = RichText::new(format!("{glyph}\n{label}"));
-    let mut button = egui::Button::new(title).min_size(egui::vec2(72.0, 56.0));
-    if selected {
-        button = button
-            .fill(theme::panel_dark())
-            .stroke(egui::Stroke::new(1.5, theme::banana()));
+/// Draw reliable shape previews with egui vectors rather than Unicode
+/// glyphs (which display as replacement squares on some Windows fonts).
+fn mask_shape_tile(ui: &mut egui::Ui, label: &str, ellipse: bool) -> bool {
+    use egui::{Align2, FontId, Rect, Stroke, StrokeKind, vec2};
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(96.0, 66.0), egui::Sense::click());
+    let painter = ui.painter();
+    if theme::premium() {
+        theme::paint_premium_button(painter, rect, false, response.hovered(), false);
+    } else {
+        painter.rect_filled(
+            rect, 5.0,
+            if response.hovered() { theme::hover() } else { theme::panel_dark() },
+        );
+        painter.rect_stroke(
+            rect, 5.0, Stroke::new(1.0, theme::separator()), StrokeKind::Inside,
+        );
     }
-    ui.add(button).clicked()
+    let c = rect.center_top() + vec2(0.0, 23.0);
+    let stroke = Stroke::new(2.0, theme::text_strong());
+    if ellipse {
+        let points = (0..=48)
+            .map(|i| {
+                let angle = i as f32 * std::f32::consts::TAU / 48.0;
+                c + vec2(angle.cos() * 17.0, angle.sin() * 11.0)
+            })
+            .collect::<Vec<_>>();
+        painter.add(egui::Shape::line(points, stroke));
+    } else {
+        painter.rect_stroke(
+            Rect::from_center_size(c, vec2(34.0, 22.0)),
+            2.0, stroke, StrokeKind::Inside,
+        );
+    }
+    painter.text(
+        rect.center_bottom() - vec2(0.0, 7.0),
+        Align2::CENTER_BOTTOM,
+        label,
+        FontId::proportional(12.0),
+        theme::text(),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label)
+    });
+    response.clicked()
 }
 
 fn mask(
@@ -698,10 +810,10 @@ fn mask(
         let a = [w * 0.2, h * 0.2];
         let b = [w * 0.8, h * 0.8];
         ui.horizontal_wrapped(|ui| {
-            if tile(ui, "▭", tr("Rectangle"), false) {
+            if mask_shape_tile(ui, tr("Rectangle"), false) {
                 added = Some(MaskPath::rectangle(a, b));
             }
-            if tile(ui, "◯", tr("Ellipse"), false) {
+            if mask_shape_tile(ui, tr("Ellipse"), true) {
                 added = Some(MaskPath::oval(a, b));
             }
         });

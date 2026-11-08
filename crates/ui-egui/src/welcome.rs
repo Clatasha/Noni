@@ -271,14 +271,12 @@ impl Welcome {
     fn new_page(&mut self, ui: &mut egui::Ui, content: Rect) -> Option<Pending> {
         let painter = ui.painter_at(content);
         let premium = theme::premium();
-        let banner_h = if premium { 176.0 } else { BANNER_H };
+        // This is Noni's original banner in every theme; premium styling
+        // belongs around it, never in the artwork itself.
+        let banner_h = BANNER_H;
         let shape_h = if premium { 66.0 } else { SHAPE_H };
         let banner = Rect::from_min_size(content.min, vec2(content.width(), banner_h));
-        if premium {
-            paint_premium_banner(&painter.with_clip_rect(banner), banner);
-        } else {
-            paint_banner(&painter.with_clip_rect(banner), banner);
-        }
+        paint_banner(&painter.with_clip_rect(banner), banner);
         // The shapes, side by side.
         let row = Rect::from_min_size(
             pos2(content.left(), banner.bottom() + 4.0),
@@ -806,127 +804,6 @@ fn paint_banner(painter: &egui::Painter, r: Rect) {
     );
 }
 
-
-/// Noni's premium concept banner: illuminated blue / violet light ribbons,
-/// the original fruit mark, and a compact timeline vignette drawn entirely
-/// in egui so no external asset or bitmap is needed.
-fn paint_premium_banner(painter: &egui::Painter, r: Rect) {
-    let clip = painter.with_clip_rect(r.shrink(2.0));
-    gradient(
-        &clip,
-        r,
-        [
-            Color32::from_rgb(0x07, 0x15, 0x34),
-            Color32::from_rgb(0x11, 0x1D, 0x62),
-            Color32::from_rgb(0x08, 0x14, 0x34),
-            Color32::from_rgb(0x0A, 0x21, 0x4A),
-        ],
-    );
-    glow(
-        &clip,
-        pos2(r.left() + 475.0, r.top() + 80.0),
-        155.0,
-        Color32::from_rgb(0x12, 0x7F, 0xFF),
-        0.26,
-    );
-    for (phase, height, light, halo) in [
-        (
-            0.3_f32,
-            44.0_f32,
-            Color32::from_rgb(0x4B, 0xD9, 0xFF),
-            Color32::from_rgba_unmultiplied(32, 144, 255, 30),
-        ),
-        (
-            1.9,
-            29.0,
-            Color32::from_rgb(0xBC, 0x72, 0xFF),
-            Color32::from_rgba_unmultiplied(140, 43, 245, 34),
-        ),
-        (
-            3.8,
-            22.0,
-            Color32::from_rgb(0x3D, 0x92, 0xFF),
-            Color32::from_rgba_unmultiplied(24, 85, 235, 30),
-        ),
-    ] {
-        let mut points = Vec::with_capacity(73);
-        for i in 0..=72 {
-            let t = i as f32 / 72.0;
-            points.push(pos2(
-                r.left() + 280.0 + t * (r.width() - 265.0),
-                r.top() + 88.0 + (t * 8.5 + phase).sin() * height
-                    + (t - 0.5) * 16.0,
-            ));
-        }
-        clip.add(egui::Shape::line(points.clone(), Stroke::new(11.0, halo)));
-        clip.add(egui::Shape::line(points, Stroke::new(2.5, light)));
-    }
-    // A miniature three-track edit and playhead at the right edge.
-    let tracks = Rect::from_min_size(
-        pos2(r.right() - 265.0, r.top() + 45.0),
-        vec2(238.0, 106.0),
-    );
-    clip.rect_filled(tracks, 10.0, Color32::from_rgba_unmultiplied(8, 17, 41, 226));
-    clip.rect_stroke(
-        tracks,
-        10.0,
-        Stroke::new(1.0, Color32::from_rgba_unmultiplied(109, 177, 255, 120)),
-        egui::StrokeKind::Inside,
-    );
-    for (index, color) in [
-        Color32::from_rgb(0x2E, 0x8B, 0xE7),
-        Color32::from_rgb(0x26, 0xB1, 0xCB),
-        Color32::from_rgb(0x7A, 0x4A, 0xDB),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let y = tracks.top() + 18.0 + index as f32 * 28.0;
-        for (x, width) in [(14.0, 74.0), (94.0, 102.0)] {
-            clip.rect_filled(
-                Rect::from_min_size(pos2(tracks.left() + x, y), vec2(width, 19.0)),
-                4.0,
-                color,
-            );
-        }
-    }
-    let cursor = tracks.left() + 135.0;
-    clip.line_segment(
-        [pos2(cursor, tracks.top() + 8.0), pos2(cursor, tracks.bottom() - 7.0)],
-        Stroke::new(2.0, Color32::WHITE),
-    );
-    // A dark scrim keeps logo lettering readable against the light ribbons.
-    clip.rect_filled(
-        Rect::from_min_size(r.min, vec2(345.0, r.height())),
-        0.0,
-        Color32::from_rgba_unmultiplied(5, 12, 32, 120),
-    );
-    let logo = pos2(r.left() + 34.0, r.center().y - 3.0);
-    icons::paint_logo_mark(
-        &clip,
-        Rect::from_center_size(logo + vec2(45.0, 0.0), vec2(88.0, 88.0)),
-    );
-    clip.text(
-        logo + vec2(108.0, -17.0),
-        Align2::LEFT_CENTER,
-        "Noni",
-        FontId::proportional(43.0),
-        Color32::WHITE,
-    );
-    clip.text(
-        logo + vec2(110.0, 23.0),
-        Align2::LEFT_CENTER,
-        tr("Video editor"),
-        FontId::proportional(16.0),
-        Color32::from_white_alpha(224),
-    );
-    painter.rect_stroke(
-        r.shrink(1.0),
-        12.0,
-        Stroke::new(1.0, Color32::from_rgb(0x59, 0x7E, 0xB4)),
-        egui::StrokeKind::Inside,
-    );
-}
 
 impl BananaApp {
     /// The welcome screen open on `page` ("closed": not shown, whatever
