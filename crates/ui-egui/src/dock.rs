@@ -144,7 +144,9 @@ fn library_categories(ui: &mut Ui, active: Tab) -> Option<Tab> {
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 for &(tab, icon) in LIBRARY_CATEGORIES {
-                    let color = if tab == active {
+                    let color = if theme::premium() && tab == active {
+                        Color32::WHITE
+                    } else if tab == active {
                         theme::banana()
                     } else {
                         theme::text()
@@ -161,25 +163,36 @@ fn library_categories(ui: &mut Ui, active: Tab) -> Option<Tab> {
                         crate::egui::FontId::proportional(11.0),
                         color,
                     );
+                    let premium = theme::premium();
                     let (rect, response) = ui.allocate_exact_size(
-                        vec2((text.size().x + 12.0).max(40.0), 39.0),
+                        vec2(
+                            (text.size().x + if premium { 22.0 } else { 12.0 })
+                                .max(if premium { 56.0 } else { 40.0 }),
+                            if premium { 46.0 } else { 39.0 },
+                        ),
                         Sense::click(),
                     );
                     let painter = ui.painter();
-                    if response.hovered() || tab == active {
+                    if premium {
+                        theme::paint_premium_button(painter, rect.shrink(2.0), tab == active, response.hovered(), false);
+                    } else if response.hovered() || tab == active {
                         painter.rect_filled(rect, 4.0, theme::hover());
                     }
                     icons::paint(
                         painter,
                         Rect::from_center_size(
-                            rect.center_top() + vec2(0.0, 11.0),
+                            rect.center_top() + vec2(0.0, if premium { 14.0 } else { 11.0 }),
                             vec2(16.0, 16.0),
                         ),
                         icon,
                         color,
                     );
                     let x = rect.center().x - text.size().x / 2.0;
-                    painter.galley(crate::egui::pos2(x, rect.top() + 23.0), text, color);
+                    painter.galley(
+                        crate::egui::pos2(x, rect.top() + if premium { 27.0 } else { 23.0 }),
+                        text,
+                        color,
+                    );
                     if response.clicked() && tab != active {
                         picked = Some(tab);
                     }
@@ -825,6 +838,30 @@ fn style(ui: &Ui, at_bottom: bool) -> Style {
     style.separator.color_idle = bar;
     style.separator.color_hovered = theme::banana_dim();
     style.separator.width = 4.0;
+    if theme::premium() {
+        // The tabs remain fully draggable/closeable; only their chrome changes.
+        style.tab_bar.hline_color = theme::separator();
+        for face in [
+            &mut t.active,
+            &mut t.focused,
+            &mut t.active_with_kb_focus,
+            &mut t.focused_with_kb_focus,
+        ] {
+            face.bg_fill = theme::tab_on();
+            face.outline_color = theme::snap();
+            face.corner_radius = CornerRadius::same(7);
+            face.text_color = Color32::WHITE;
+        }
+        for face in [&mut t.inactive, &mut t.hovered, &mut t.inactive_with_kb_focus] {
+            face.bg_fill = theme::panel_dark();
+            face.corner_radius = CornerRadius::same(7);
+        }
+        t.active_line = Stroke::new(2.5, theme::snap());
+        t.spacing = 12.0;
+        t.tab_body.stroke = Stroke::new(1.0, theme::separator());
+        style.separator.color_idle = theme::separator();
+        style.separator.width = 6.0;
+    }
     style
 }
 

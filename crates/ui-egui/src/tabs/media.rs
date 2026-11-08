@@ -249,6 +249,10 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     let tree = Rect::from_min_max(body.min, pos2(tree_right, body.bottom()));
     let list = Rect::from_min_max(pos2(tree_right + 4.0, body.top()), body.max);
     let painter = ui.painter();
+    if theme::premium() {
+        theme::paint_premium_panel(painter, tree.shrink(2.0), false);
+        theme::paint_premium_panel(painter, list.shrink(2.0), false);
+    }
     painter.hline(
         area.x_range(),
         info.top() + 0.5,
@@ -652,19 +656,22 @@ fn text_button(ui: &mut Ui, icon: Icon, text: &str) -> egui::Response {
     let font = FontId::proportional(13.0);
     let galley = ui
         .painter()
-        .layout_no_wrap(text.to_string(), font, theme::text());
+        .layout_no_wrap(text.to_string(), font, if theme::premium() { Color32::WHITE } else { theme::text() });
     let size = vec2(galley.size().x + 32.0, crate::widgets::BUTTON.y);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let painter = ui.painter();
-    if resp.hovered() {
+    let primary = theme::premium();
+    if primary {
+        theme::paint_premium_button(painter, rect, false, resp.hovered(), true);
+    } else if resp.hovered() {
         painter.rect_filled(rect, 3.0, theme::hover());
     }
     let ir = Rect::from_center_size(pos2(rect.left() + 13.0, rect.center().y), vec2(16.0, 16.0));
-    icons::paint(painter, ir, icon, theme::text());
+    icons::paint(painter, ir, icon, if primary { Color32::WHITE } else { theme::text() });
     painter.galley(
         pos2(ir.right() + 6.0, rect.center().y - galley.size().y / 2.0),
         galley,
-        theme::text(),
+        if primary { Color32::WHITE } else { theme::text() },
     );
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, text));
     resp
@@ -674,7 +681,9 @@ fn text_button(ui: &mut Ui, icon: Icon, text: &str) -> egui::Response {
 fn arrow_button(ui: &mut Ui) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(14.0, crate::widgets::BUTTON.y), Sense::click());
     let painter = ui.painter();
-    if resp.hovered() {
+    if theme::premium() {
+        theme::paint_premium_button(painter, rect, false, resp.hovered(), false);
+    } else if resp.hovered() {
         painter.rect_filled(rect, 3.0, theme::hover());
     }
     let c = rect.center();

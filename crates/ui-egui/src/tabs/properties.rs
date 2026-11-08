@@ -62,18 +62,57 @@ fn tabs<T: Copy + Eq + Send + Sync + 'static>(
         .unwrap_or(items[0].0);
     egui::Frame::new()
         .fill(theme::panel_dark())
-        .corner_radius(4.0)
-        .inner_margin(egui::Margin::same(4))
+        .corner_radius(if theme::premium() { 10.0 } else { 4.0 })
+        .inner_margin(egui::Margin::same(if theme::premium() { 6 } else { 4 }))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             ui.horizontal_wrapped(|ui| {
                 for &(item, label) in items {
-                    let mut title = RichText::new(label);
-                    if item == active {
-                        title = title.strong().color(theme::banana());
-                    }
-                    if ui.selectable_label(item == active, title).clicked() {
-                        active = item;
+                    if theme::premium() {
+                        let font = egui::FontId::proportional(13.0);
+                        let size = ui.painter().layout_no_wrap(
+                            label.to_owned(),
+                            font.clone(),
+                            theme::text(),
+                        ).size();
+                        let (rect, response) = ui.allocate_exact_size(
+                            egui::vec2(size.x + 24.0, 30.0),
+                            egui::Sense::click(),
+                        );
+                        let selected = item == active;
+                        theme::paint_premium_button(
+                            ui.painter(),
+                            rect,
+                            selected,
+                            response.hovered(),
+                            false,
+                        );
+                        ui.painter().text(
+                            rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            label,
+                            font,
+                            if selected { Color32::WHITE } else { theme::text() },
+                        );
+                        response.widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::SelectableLabel,
+                                true,
+                                selected,
+                                label,
+                            )
+                        });
+                        if response.clicked() {
+                            active = item;
+                        }
+                    } else {
+                        let mut title = RichText::new(label);
+                        if item == active {
+                            title = title.strong().color(theme::banana());
+                        }
+                        if ui.selectable_label(item == active, title).clicked() {
+                            active = item;
+                        }
                     }
                 }
             });
@@ -173,9 +212,15 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     let mut preserve_linked_pitch = None;
     let key = ui.id().with(("clip-properties", id.0));
 
-    egui::Frame::new()
-        .inner_margin(egui::Margin::same(12))
-        .show(ui, |ui| {
+    let mut frame = egui::Frame::new()
+        .inner_margin(egui::Margin::same(12));
+    if theme::premium() {
+        frame = frame
+            .fill(theme::panel())
+            .stroke(egui::Stroke::new(1.0, theme::separator()))
+            .corner_radius(10.0);
+    }
+    frame.show(ui, |ui| {
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
             ui.add(egui::Label::new(RichText::new(&media_name).strong()).truncate());
             let page = ui.push_id(kind, |ui| tabs(ui, "pages", &pages)).inner;

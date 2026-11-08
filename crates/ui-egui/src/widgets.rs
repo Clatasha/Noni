@@ -150,7 +150,9 @@ pub fn paint_check_box(ui: &Ui, rect: Rect, on: bool, radio: bool, enabled: bool
 
 fn draw_button(ui: &Ui, rect: Rect, resp: &Response, icon: Icon, on: bool, enabled: bool) {
     let painter = ui.painter();
-    if on {
+    if theme::premium() && enabled {
+        theme::paint_premium_button(painter, rect, on, resp.hovered(), false);
+    } else if on {
         // Options › Preferences › Display › "Button Highlight Color".
         let fill = theme::button_highlight();
         painter.rect_filled(rect, 3.0, fill);
@@ -165,6 +167,8 @@ fn draw_button(ui: &Ui, rect: Rect, resp: &Response, icon: Icon, on: bool, enabl
     }
     let color = if !enabled {
         theme::text_disabled()
+    } else if theme::premium() && on {
+        Color32::WHITE
     } else if on {
         theme::banana()
     } else {
@@ -813,7 +817,9 @@ pub fn icon_button_tinted(
     };
     let (rect, resp) = ui.allocate_exact_size(BUTTON, sense);
     if ui.is_rect_visible(rect) {
-        if resp.hovered() && enabled {
+        if theme::premium() && enabled {
+            theme::paint_premium_button(ui.painter(), rect, false, resp.hovered(), false);
+        } else if resp.hovered() && enabled {
             ui.painter().rect_filled(rect, 3.0, theme::hover());
         }
         let color = if enabled {

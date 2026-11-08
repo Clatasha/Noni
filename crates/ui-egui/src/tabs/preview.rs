@@ -1358,6 +1358,20 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         }
     }
 
+    if theme::premium() {
+        let rim = image_area.shrink(0.5);
+        ui.painter().rect_stroke(
+            rim,
+            8.0,
+            Stroke::new(1.5, theme::separator()),
+            egui::StrokeKind::Inside,
+        );
+        ui.painter().line_segment(
+            [pos2(rim.left() + 12.0, rim.top() + 1.5), pos2(rim.right() - 12.0, rim.top() + 1.5)],
+            Stroke::new(1.0, Color32::from_white_alpha(55)),
+        );
+    }
+
     // The transport: loop, play, pause, stop and More.
     let transport = Rect::from_min_max(
         pos2(full.min.x, full.max.y - status_h - transport_h),

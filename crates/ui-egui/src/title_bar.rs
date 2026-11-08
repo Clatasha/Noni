@@ -42,6 +42,9 @@ pub(crate) fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
     }
     resp.context_menu(|ui| window_menu(ui, maximized));
+    if theme::premium() {
+        theme::paint_premium_panel(ui.painter(), bar.shrink2(vec2(1.0, 1.0)), false);
+    }
 
     // The program's icon, where VEGAS has its own.
     let icon = Rect::from_min_size(
@@ -105,18 +108,37 @@ pub(crate) fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
 
     let render = Cmd::Render;
     let enabled = render.enabled(app);
-    let button = egui::Button::new(
-        egui::RichText::new(export_label)
-            .size(13.0)
-            .strong()
-            .color(Color32::WHITE),
-    )
-    .fill(theme::ACTION_BLUE);
-    if ui
-        .add_enabled_ui(enabled, |ui| ui.put(export, button))
-        .inner
-        .clicked()
-    {
+    let clicked = if theme::premium() {
+        let response = ui.interact(
+            export,
+            ui.id().with("noni-premium-export"),
+            if enabled { Sense::click() } else { Sense::hover() },
+        );
+        theme::paint_premium_button(ui.painter(), export, false, enabled && response.hovered(), enabled);
+        ui.painter().text(
+            export.center(),
+            Align2::CENTER_CENTER,
+            export_label,
+            FontId::proportional(13.0),
+            if enabled { Color32::WHITE } else { theme::text_disabled() },
+        );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, export_label)
+        });
+        response.clicked()
+    } else {
+        let button = egui::Button::new(
+            egui::RichText::new(export_label)
+                .size(13.0)
+                .strong()
+                .color(Color32::WHITE),
+        )
+        .fill(theme::ACTION_BLUE);
+        ui.add_enabled_ui(enabled, |ui| ui.put(export, button))
+            .inner
+            .clicked()
+    };
+    if clicked {
         render.run(app);
     }
 

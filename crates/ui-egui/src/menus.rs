@@ -912,6 +912,13 @@ fn help_menu(ui: &mut Ui, app: &mut BananaApp) {
 }
 
 pub fn toolbar(ui: &mut Ui, app: &mut BananaApp) {
+    if theme::premium() {
+        theme::paint_premium_panel(
+            ui.painter(),
+            ui.available_rect_before_wrap().shrink2(vec2(1.0, 1.0)),
+            false,
+        );
+    }
     // Right-click on the toolbar: customize it, like VEGAS.
     let bg = ui.interact(
         ui.available_rect_before_wrap(),
