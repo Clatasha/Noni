@@ -15,6 +15,11 @@
 name: Packages
 
 on:
+  # Build on noni-branding only when this packaging workflow changes.
+  push:
+    branches: [noni-branding]
+    paths:
+      - .github/workflows/package.yml
   workflow_dispatch:
     inputs:
       platforms:
@@ -30,7 +35,7 @@ env:
 jobs:
   windows:
     name: Windows ${{ matrix.arch }}
-    if: inputs.platforms != 'linux'
+    if: github.event_name == 'push' || inputs.platforms != 'linux'
     strategy:
       fail-fast: false
       matrix:
@@ -144,7 +149,7 @@ jobs:
 
   linux:
     name: Linux ${{ matrix.arch }}
-    if: inputs.platforms != 'windows'
+    if: github.event_name == 'workflow_dispatch' && inputs.platforms != 'windows'
     strategy:
       fail-fast: false
       matrix:
