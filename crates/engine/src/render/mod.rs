@@ -542,7 +542,7 @@ impl RenderJob {
                         }
                         #[cfg(not(all(windows, target_arch = "x86_64")))]
                         {
-                            Err("Reaction Station export is available on Windows x64.".to_string())
+                            Err("The Noni native MP4 exporter is available on Windows x64.".to_string())
                         }
                     });
                     let native = native.and_then(|result| match result {
