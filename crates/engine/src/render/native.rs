@@ -111,16 +111,16 @@ fn request(
         || !v.height.is_multiple_of(2)
     {
         return Err(
-            "Reaction Station requires progressive 8-bit MP4 at even dimensions up to 8192.",
+            "The native MP4 exporter requires progressive 8-bit MP4 at even dimensions up to 8192.",
         );
     }
     if v.frame_rate.den != 1 || !(1..=120).contains(&v.frame_rate.num) {
         return Err(
-            "Reaction Station requires a whole-number output frame rate from 1 to 120 fps.",
+            "The native MP4 exporter requires a whole-number output frame rate from 1 to 120 fps.",
         );
     }
     if p.channels.channel_count() != 2 || a.channels != 2 || a.sample_rate != 48_000 {
-        return Err("Reaction Station requires a stereo project and 48 kHz stereo output.");
+        return Err("The native MP4 exporter requires a stereo project and 48 kHz stereo output.");
     }
     if p.field_order != Default::default()
         || p.rotation != Default::default()
@@ -130,7 +130,7 @@ fn request(
         || p.output_360
         || !p.pixel_aspect.is_square()
     {
-        return Err("The project uses video settings Reaction Station cannot reproduce.");
+        return Err("The project uses video settings the native MP4 exporter cannot reproduce.");
     }
     if project.mute_all_video
         || !project.video_bus.is_default()
@@ -297,10 +297,10 @@ pub(super) fn try_export(
     }
     let mut job = request(project, settings, PathBuf::new())?;
     let exe = std::env::current_exe()
-        .map_err(|error| format!("Could not locate the Reaction Station worker: {error}"))?;
+        .map_err(|error| format!("Could not locate the native MP4 export worker: {error}"))?;
     let worker = exe.with_file_name("native-export").join("noni-export.exe");
     if !worker.is_file() {
-        return Err("The Reaction Station worker is missing from this installation.".into());
+        return Err("The native MP4 export worker is missing from this installation.".into());
     }
     let output = std::path::absolute(&settings.path)
         .map_err(|error| format!("Could not resolve the output path: {error}"))?;
@@ -338,9 +338,9 @@ pub(super) fn try_export(
     if cancel.load(Ordering::Relaxed) {
         return Ok(super::cancelled_result());
     }
-    result.map_err(|error| format!("Reaction Station worker failed: {error}"))?;
+    result.map_err(|error| format!("Native MP4 export worker failed: {error}"))?;
     if !job.path.is_file() {
-        return Err("The Reaction Station worker finished without producing an MP4.".into());
+        return Err("The native MP4 export worker finished without producing an MP4.".into());
     }
     let bytes = job.path.metadata().map_or(0, |metadata| metadata.len());
     let result = std::fs::rename(&job.path, &output)

@@ -245,9 +245,13 @@ fn open_shared_encoder(
     gpu: Option<&bv_gpu::Gpu>,
     timing: Option<&super::timing::Timing>,
 ) -> Option<Mp4Video> {
-    let enabled = |name| std::env::var_os(name).as_deref() == Some(std::ffi::OsStr::new("1"));
-    let direct = enabled("NONI_DIRECT_NVENC");
-    if !direct && !enabled("NONI_FAST_NVENC") {
+    // For compatible Windows/NVIDIA H.264 outputs the fast shared-texture
+    // path is the default. "0" remains a diagnostic opt-out, not a
+    // feature users must enable every launch.
+    let allowed = |name| std::env::var_os(name).as_deref() != Some(std::ffi::OsStr::new("0"));
+    let direct = cfg!(target_arch = "x86_64") && allowed("NONI_DIRECT_NVENC");
+    let fast_shared = allowed("NONI_FAST_NVENC");
+    if !direct && !fast_shared {
         return None;
     }
     let set_status = |status| {
@@ -277,6 +281,11 @@ fn open_shared_encoder(
         }
         #[cfg(not(target_arch = "x86_64"))]
         fallback.push_str("direct NVENC requires Windows x64, ");
+    }
+    // If direct initialization fails, use Windows' shared-NV12 encoder
+    // before reverting to the standard packed-input encoder.
+    if !fast_shared {
+        return None;
     }
     match VideoEncoder::new_shared_nv12(settings, adapter, probe.handle()) {
         Ok(encoder) => {
@@ -316,7 +325,7 @@ fn shared_nv12_probe(
 
 #[cfg(all(windows, target_arch = "x86_64"))]
 fn direct_error(error: bv_mf::Error) -> String {
-    format!("Direct NVENC failed: {error}. Turn off NONI_DIRECT_NVENC and retry.")
+    format!("Direct NVENC failed: {error}. Try setting NONI_DIRECT_NVENC=0 for troubleshooting.")
 }
 
 impl Mp4Out {
@@ -410,7 +419,7 @@ impl Output for Mp4Out {
                     .map_err(|e| e.to_string())?;
                 encoder
                     .encode_shared_nv12(frame.handle(), t, d, details.as_mut())
-                    .map_err(|e| format!("Fast NVENC failed: {e}. Turn off NONI_FAST_NVENC and NONI_DIRECT_NVENC and retry."))
+                    .map_err(|e| format!("Fast NVENC failed: {e}. Set NONI_FAST_NVENC=0 and NONI_DIRECT_NVENC=0 to diagnose."))
             }
             #[cfg(all(windows, target_arch = "x86_64"))]
             Mp4Video::Direct(encoder) => encoder

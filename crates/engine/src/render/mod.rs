@@ -331,9 +331,9 @@ pub struct RenderProgress {
     pub video: bool,
     /// The encoder doing the video ("NVIDIA H.264 Encoder MFT").
     pub encoder: String,
-    /// The Reaction Station worker is producing the file.
+    /// The separately packaged native MP4 worker is producing the file.
     pub reaction_station: bool,
-    /// Why a requested Reaction Station export switched to Noni.
+    /// Why a requested native MP4 export switched to the Noni compositor.
     pub native_fallback: Option<String>,
     /// The files written (one, or every image of a sequence).
     pub files: Vec<PathBuf>,
@@ -515,10 +515,26 @@ impl RenderJob {
                     if let Some((_, temp)) = &swap {
                         s.path = temp.clone();
                     }
-                    // Allow a controlled comparison on the same timeline.
+                    // Prefer Noni's direct/shared NVENC output for compatible
+                    // NVIDIA H.264 jobs, even if the packaged native worker
+                    // could process the same (simple) timeline. Users should
+                    // not need PowerShell variables to get the fastest
+                    // established pipeline. Other formats retain their
+                    // previous automatic native-export preference.
+                    let direct_nvenc_candidate = s.format == FileFormat::AvcMp4
+                        && s.video.is_some_and(|v| {
+                            v.encoder == Encoder::Nvidia
+                                && v.bit_depth == 8
+                                && v.field_order == bv_core::FieldOrder::Progressive
+                        });
+                    // An explicit engine override is for diagnosis only.
+                    let engine_override = std::env::var("NONI_EXPORT_ENGINE").ok();
                     let use_native = s.options.native_mp4
-                        && std::env::var_os("NONI_EXPORT_ENGINE").as_deref()
-                            != Some(std::ffi::OsStr::new("noni"));
+                        && match engine_override.as_deref() {
+                            Some("noni") => false,
+                            Some("native") => true,
+                            _ => !direct_nvenc_candidate,
+                        };
                     let native = use_native.then(|| {
                         #[cfg(all(windows, target_arch = "x86_64"))]
                         {

@@ -326,16 +326,21 @@ impl ProgressWindow {
                     });
                 });
                 let engine = if p.reaction_station {
-                    "Reaction Station"
+                    "Noni Native MP4"
                 } else {
                     "Noni"
                 };
                 if p.reaction_station || p.native_fallback.is_some() || !p.encoder.is_empty() {
                     ui.label(dim(trf!("Export engine: {}", engine)));
                 }
+                // Report the actual active encoder. This distinguishes direct
+                // NVENC from shared-NV12 and standard encoder fallbacks.
+                if !p.encoder.is_empty() {
+                    ui.label(dim(trf!("Video encoder: {}", p.encoder)));
+                }
                 if let Some(reason) = &p.native_fallback {
                     ui.add(
-                        egui::Label::new(dim(trf!("Reaction Station skipped: {}", reason))).wrap(),
+                        egui::Label::new(dim(trf!("Native MP4 exporter skipped: {}", reason))).wrap(),
                     );
                 }
                 if let Some(e) = &p.error {
