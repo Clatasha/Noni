@@ -4,7 +4,8 @@ use bv_core::FrameRate;
 
 use crate::app::{BananaApp, Pending};
 use crate::egui::{
-    self, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, UiBuilder, pos2, vec2,
+    self, Align2, Color32, ColorImage, FontId, Pos2, Rect, RichText, Sense, Stroke,
+    TextureHandle, TextureOptions, UiBuilder, pos2, vec2,
 };
 use crate::i18n::{Language, tr};
 use crate::icons::{self, Icon};
@@ -271,12 +272,10 @@ impl Welcome {
     fn new_page(&mut self, ui: &mut egui::Ui, content: Rect) -> Option<Pending> {
         let painter = ui.painter_at(content);
         let premium = theme::premium();
-        // This is Noni's original banner in every theme; premium styling
-        // belongs around it, never in the artwork itself.
         let banner_h = BANNER_H;
         let shape_h = if premium { 66.0 } else { SHAPE_H };
         let banner = Rect::from_min_size(content.min, vec2(content.width(), banner_h));
-        paint_banner(&painter.with_clip_rect(banner), banner);
+        paint_banner(&painter.with_clip_rect(banner), banner, premium);
         // The shapes, side by side.
         let row = Rect::from_min_size(
             pos2(content.left(), banner.bottom() + 4.0),
@@ -680,108 +679,36 @@ fn paint_logo(painter: &egui::Painter, center: Pos2, icon: f32, text: f32, color
     );
 }
 
-/// A rectangle filled with a gradient between its corners' colors (top
-/// left, top right, bottom right, bottom left).
-fn gradient(painter: &egui::Painter, r: Rect, corners: [Color32; 4]) {
-    let mut mesh = egui::Mesh::default();
-    for (p, c) in [
-        r.left_top(),
-        r.right_top(),
-        r.right_bottom(),
-        r.left_bottom(),
-    ]
-    .into_iter()
-    .zip(corners)
-    {
-        mesh.colored_vertex(p, c);
-    }
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(0, 2, 3);
-    painter.add(egui::Shape::mesh(mesh));
-}
-
-/// A soft round light of `color` at `center`.
-fn glow(painter: &egui::Painter, center: Pos2, radius: f32, color: Color32, strength: f32) {
-    let steps = 14;
-    for i in 0..steps {
-        let t = 1.0 - i as f32 / steps as f32;
-        let a = (strength * 255.0 / steps as f32) as u8;
-        painter.circle_filled(
-            center,
-            radius * t,
-            Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), a),
+/// Draw the artwork at the current theme's banner size, then overlay the logo.
+fn paint_banner(painter: &egui::Painter, r: Rect, premium: bool) {
+    let ctx = painter.ctx();
+    let id = egui::Id::new(("welcome-banner", premium));
+    let cached = ctx.data(|data| data.get_temp::<TextureHandle>(id));
+    let texture = cached.or_else(|| {
+        let bytes: &[u8] = if premium {
+            include_bytes!("../assets/welcome/premium.png")
+        } else {
+            include_bytes!("../assets/welcome/classic.png")
+        };
+        let png = bv_png::decode(bytes).ok()?;
+        let image = ColorImage::from_rgba_unmultiplied(
+            [png.width as usize, png.height as usize],
+            &png.to_rgba8(),
         );
+        let texture = ctx.load_texture("welcome-banner", image, TextureOptions::LINEAR);
+        ctx.data_mut(|data| data.insert_temp(id, texture.clone()));
+        Some(texture)
+    });
+    if let Some(texture) = texture {
+        painter.image(
+            texture.id(),
+            r,
+            Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+    } else {
+        painter.rect_filled(r, 0.0, Color32::from_rgb(18, 33, 58));
     }
-}
-
-/// The New Project banner, Noni's own: a dusk sky, warm lights, a
-/// timeline's events rising to the right and the logo.
-fn paint_banner(painter: &egui::Painter, r: Rect) {
-    gradient(
-        painter,
-        r,
-        [
-            Color32::from_rgb(0x1B, 0x22, 0x46),
-            Color32::from_rgb(0x4A, 0x24, 0x62),
-            Color32::from_rgb(0x9A, 0x3D, 0x3A),
-            Color32::from_rgb(0x22, 0x1F, 0x3E),
-        ],
-    );
-    glow(
-        painter,
-        r.right_bottom() + vec2(-120.0, -10.0),
-        240.0,
-        Color32::from_rgb(0xFF, 0xB0, 0x40),
-        0.35,
-    );
-    glow(
-        painter,
-        r.left_top() + vec2(150.0, 70.0),
-        170.0,
-        Color32::from_rgb(0x50, 0x80, 0xFF),
-        0.25,
-    );
-    // A timeline's events: three tracks of colored blocks and the cursor.
-    let colors = [
-        Color32::from_rgba_unmultiplied(0x4C, 0x8D, 0xE0, 200),
-        Color32::from_rgba_unmultiplied(0x3F, 0xB4, 0xC8, 200),
-        Color32::from_rgba_unmultiplied(0x5E, 0xC2, 0x6A, 200),
-    ];
-    let lane_h = 22.0;
-    let base = pos2(r.left() + 400.0, r.bottom() - 28.0 - 3.0 * (lane_h + 8.0));
-    let blocks: [[(f32, f32); 3]; 3] = [
-        [(0.0, 90.0), (96.0, 70.0), (172.0, 120.0)],
-        [(30.0, 110.0), (146.0, 60.0), (212.0, 80.0)],
-        [(0.0, 150.0), (156.0, 140.0), (300.0, 0.0)],
-    ];
-    for (row, (lane, color)) in blocks.iter().zip(colors).enumerate() {
-        let y = base.y + row as f32 * (lane_h + 8.0);
-        for &(x, w) in lane {
-            if w > 0.0 {
-                let b = Rect::from_min_size(pos2(base.x + x, y), vec2(w, lane_h));
-                painter.rect_filled(b, 4.0, color);
-            }
-        }
-    }
-    let cursor_x = base.x + 140.0;
-    painter.line_segment(
-        [
-            pos2(cursor_x, base.y - 12.0),
-            pos2(cursor_x, base.y + 3.0 * (lane_h + 8.0)),
-        ],
-        Stroke::new(2.0, Color32::from_white_alpha(220)),
-    );
-    painter.add(egui::Shape::convex_polygon(
-        vec![
-            pos2(cursor_x - 6.0, base.y - 20.0),
-            pos2(cursor_x + 6.0, base.y - 20.0),
-            pos2(cursor_x + 6.0, base.y - 14.0),
-            pos2(cursor_x, base.y - 9.0),
-            pos2(cursor_x - 6.0, base.y - 14.0),
-        ],
-        Color32::from_white_alpha(230),
-        Stroke::NONE,
-    ));
     // The logo and what it is.
     let logo = pos2(r.left() + 46.0, r.center().y - 22.0);
     icons::paint_logo_mark(
