@@ -101,6 +101,7 @@ mod timecode_font;
 mod timefmt;
 mod timeline;
 mod title_bar;
+mod title_editor;
 mod toolbar_buttons;
 mod track_defaults;
 mod track_motion;

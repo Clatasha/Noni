@@ -18,6 +18,7 @@ on:
   # Build on noni-branding only when this packaging workflow changes.
   # One-time rebuild request: UI fixes batch (mask/text/properties/banner).
   # One-time rebuild request: automatic Noni Direct NVENC rendering and export labels.
+  # One-time rebuild request: title editor and text fitting.
   push:
     branches: [noni-branding]
     paths:

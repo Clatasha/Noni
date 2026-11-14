@@ -221,6 +221,14 @@ fn own_presets(info: &bv_ofx::PluginInfo) -> Vec<(String, Option<Generator>)> {
         .map(|(name, values)| {
             let mut fx = crate::ofx::plugin_fx(info);
             fx.params = values;
+            if fx.id == bv_engine::plugins::TITLES_ID {
+                fx.params
+                    .entry("autoFit".into())
+                    .or_insert_with(|| bv_timeline::PluginParam {
+                        value: bv_timeline::PluginValue::Num(vec![1.0]),
+                        keys: Vec::new(),
+                    });
+            }
             (name, Some(Generator::Plugin(Box::new(fx))))
         })
         .collect()
@@ -351,7 +359,12 @@ pub(crate) fn add_and_edit(app: &mut BananaApp, g: &Generator) {
         .map(|(_, c)| c.id)
         .find(|id| !before.contains(id));
     if let Some(clip) = added {
-        app.open_generated_media(clip);
+        if matches!(g, Generator::Plugin(fx) if fx.id == bv_engine::plugins::TITLES_ID) {
+            app.select_clip(clip, false);
+            app.show_tab(crate::dock::Tab::Properties, false);
+        } else {
+            app.open_generated_media(clip);
+        }
     }
 }
 

@@ -39,6 +39,9 @@ const STYLES: &CStr = c"styles";
 const FONT: &CStr = c"font";
 const SIZE: &CStr = c"size";
 const BOLD: &CStr = c"bold";
+const UNDERLINE: &CStr = c"underline";
+const WRAP: &CStr = c"boxWidth";
+const AUTO_FIT: &CStr = c"autoFit";
 const ITALIC: &CStr = c"italic";
 const JUSTIFY: &CStr = c"justification";
 const COLOR: &CStr = c"textColor";
@@ -60,7 +63,7 @@ const SHADOW_Y: &CStr = c"shadowOffsetY";
 const SHADOW_BLUR: &CStr = c"shadowBlur";
 
 /// The text's justification, as the text box's buttons set it.
-const JUSTIFICATIONS: [&CStr; 3] = [c"Left", c"Center", c"Right"];
+const JUSTIFICATIONS: [&CStr; 4] = [c"Left", c"Center", c"Right", c"Justify"];
 /// The anchor points: the box's corners, sides' middles and middle.
 const ANCHORS: [&CStr; 9] = [
     c"Top Left",
@@ -93,7 +96,11 @@ pub(crate) struct Settings {
     pub size: f64,
     pub bold: bool,
     pub italic: bool,
-    /// 0 left, 1 center, 2 right.
+    pub underline: bool,
+    pub auto_fit: bool,
+    /// Box width as a fraction of the source frame. Zero uses natural width.
+    pub wrap_width: f64,
+    /// 0 left, 1 center, 2 right, 3 justify.
     pub justify: i32,
     pub color: [f64; 4],
     pub scale: f64,
@@ -231,6 +238,9 @@ impl Default for Settings {
             bold: false,
             italic: false,
             justify: 1,
+            underline: false,
+            auto_fit: false,
+            wrap_width: 0.0,
             color: [1.0, 1.0, 1.0, 1.0],
             scale: 1.0,
             location: [0.5, 0.5],
@@ -260,6 +270,9 @@ impl Settings {
             bold: p(BOLD).int_at(time) != 0,
             italic: p(ITALIC).int_at(time) != 0,
             justify: p(JUSTIFY).int_at(time),
+            underline: p(UNDERLINE).int_at(time) != 0,
+            auto_fit: p(AUTO_FIT).int_at(time) != 0,
+            wrap_width: p(WRAP).f64_at(time),
             color: p(COLOR).rgba_at(time),
             scale: p(SCALE).f64_at(time),
             location: p(LOCATION).xy_at(time),
@@ -352,6 +365,8 @@ pub(crate) struct Layout {
     pub em: f64,
     pub ems: Vec<f64>,
     pub bounds: [f64; 4],
+    ink: [f64; 4],
+    underlines: Vec<[f64; 4]>,
     pub anchor: [f64; 2],
 }
 
@@ -423,37 +438,77 @@ fn layout_styled(
         return Layout::default();
     }
     let gap = s.tracking * base;
-    // Each line's glyphs (advance and style), and the style of the
-    // character that began it (an empty line's height).
-    let mut lines: Vec<(Vec<Laid>, usize)> = vec![(Vec::new(), 0)];
-    for &(c, st) in chars {
-        let st = st.min(styles.len() - 1);
-        if c == '\n' {
-            lines.push((Vec::new(), st));
-            continue;
+    let limit = if s.wrap_width > 0.0 {
+        w * s.wrap_width.clamp(0.05, 1.0)
+    } else if s.auto_fit {
+        w * 0.90
+    } else {
+        f64::INFINITY
+    };
+    let mut lines: Vec<(Vec<Laid>, usize, bool)> = Vec::new();
+    for paragraph in chars.split(|(c, _)| *c == '\n') {
+        let first = paragraph
+            .first()
+            .map_or(0, |&(_, st)| st.min(styles.len() - 1));
+        let mut line: Vec<Laid> = Vec::new();
+        let mut measured = 0.0;
+        let mut start = 0;
+        let mut break_at = None;
+        let mut i = 0;
+        while i < paragraph.len() {
+            let (c, st) = paragraph[i];
+            let st = st.min(styles.len() - 1);
+            let f = &styles[st];
+            let g = f.charmap.map(c).unwrap_or(GlyphId::NOTDEF);
+            let advance = f.advances.advance_width(g).unwrap_or(0.0) as f64;
+            let kern = line.last().filter(|prev| prev.2 == st).map_or(0.0, |prev| {
+                f.kerning
+                    .as_ref()
+                    .map_or(0.0, |k| f64::from(k.pair(prev.0, g)) * f.unit)
+            });
+            let next = measured + advance + if line.is_empty() { 0.0 } else { gap + kern };
+            if !line.is_empty() && next > limit {
+                if let Some((len, resume, kern)) = break_at {
+                    line.truncate(len);
+                    if let Some(last) = line.last_mut() {
+                        last.1 -= kern;
+                    }
+                    i = resume;
+                }
+                if !line.is_empty() {
+                    lines.push((std::mem::take(&mut line), first, true));
+                }
+                // Only trim whitespace introduced by wrapping.
+                while i < paragraph.len()
+                    && paragraph[i].0.is_whitespace()
+                    && paragraph[i].0 != '\u{a0}'
+                {
+                    i += 1;
+                }
+                start = i;
+                measured = 0.0;
+                break_at = None;
+                continue;
+            }
+            if c.is_whitespace() && c != '\u{a0}' && i > start {
+                break_at = Some((line.len(), i + 1, kern));
+            }
+            if let Some(prev) = line.last_mut() {
+                prev.1 += kern;
+            }
+            line.push((g, advance, st));
+            measured = next;
+            i += 1;
         }
-        let f = &styles[st];
-        let g = f.charmap.map(c).unwrap_or(GlyphId::NOTDEF);
-        let adv = f.advances.advance_width(g).unwrap_or(0.0) as f64;
-        let Some((line, _)) = lines.last_mut() else {
-            continue;
-        };
-        // The pairs the font kerns nearer or farther apart (within a style).
-        if let Some(prev) = line.last_mut()
-            && prev.2 == st
-            && let Some(k) = &f.kerning
-        {
-            prev.1 += f64::from(k.pair(prev.0, g)) * f.unit;
-        }
-        line.push((g, adv, st));
+        lines.push((line, first, false));
     }
     let width =
         |l: &[Laid]| l.iter().map(|g| g.1).sum::<f64>() + gap * l.len().saturating_sub(1) as f64;
-    let widths: Vec<f64> = lines.iter().map(|(l, _)| width(l)).collect();
+    let widths: Vec<f64> = lines.iter().map(|(l, _, _)| width(l)).collect();
     // Each line's ascent, descent and leading: its styles' largest.
     let metrics: Vec<(f64, f64, f64)> = lines
         .iter()
-        .map(|(l, first)| {
+        .map(|(l, first, _)| {
             let used: Vec<usize> = if l.is_empty() {
                 vec![*first]
             } else {
@@ -475,26 +530,110 @@ fn layout_styled(
         }
         baselines.push(y);
     }
-    let box_w = widths.iter().copied().fold(0.0, f64::max);
+    let natural_width = widths.iter().copied().fold(0.0, f64::max);
+    let box_w = if s.wrap_width > 0.0 {
+        limit.max(natural_width)
+    } else {
+        natural_width
+    };
     let box_h = baselines.last().copied().unwrap_or(0.0) + metrics.last().map_or(0.0, |m| m.1);
     let k = s.anchor.clamp(0, 8);
     let (ax, ay) = ((k % 3) as f64 * 0.5, (k / 3) as f64 * 0.5);
-    let anchor = [s.location[0] * w, (1.0 - s.location[1]) * h];
+    let mut anchor = [s.location[0] * w, (1.0 - s.location[1]) * h];
     let (left, top) = (anchor[0] - ax * box_w, anchor[1] - ay * box_h);
-    let j = s.justify.clamp(0, 2) as f64 * 0.5;
+    let j = if s.justify == 3 {
+        0.0
+    } else {
+        s.justify.clamp(0, 2) as f64 * 0.5
+    };
     let mut glyphs = Vec::new();
-    for (((line, _), lw), baseline) in lines.iter().zip(&widths).zip(&baselines) {
+    let mut underlines = Vec::new();
+    let mut ink = [left, top, left + box_w, top + box_h];
+    for (((line, _, wrapped), lw), baseline) in lines.iter().zip(&widths).zip(&baselines) {
+        let is_space = |g, st: usize| styles[st].charmap.map(' ') == Some(g);
+        let spaces = if s.justify == 3 && *wrapped {
+            line.iter().filter(|(g, _, st)| is_space(*g, *st)).count()
+        } else {
+            0
+        };
+        let extra = if spaces > 0 {
+            (box_w - lw) / spaces as f64
+        } else {
+            0.0
+        };
         let mut x = left + (box_w - lw) * j;
+        let start = x;
+        let y = top + baseline;
         for &(g, adv, st) in line {
-            glyphs.push((g, [x, top + baseline], st));
-            x += adv + gap;
+            glyphs.push((g, [x, y], st));
+            if let Some(b) = styles[st].advances.bounds(g) {
+                let overhang = styles[st].em * (SLANT + EMBOLDEN);
+                ink[0] = ink[0].min(x + f64::from(b.x_min) - overhang);
+                ink[1] = ink[1].min(y - f64::from(b.y_max));
+                ink[2] = ink[2].max(x + f64::from(b.x_max) + overhang);
+                ink[3] = ink[3].max(y - f64::from(b.y_min));
+            }
+            x += adv + gap + if is_space(g, st) { extra } else { 0.0 };
         }
+        if s.underline && !line.is_empty() {
+            let end = (x - gap).max(start);
+            underlines.push([start, y + base * 0.08, end, y + base * 0.13]);
+            ink[3] = ink[3].max(y + base * 0.13);
+        }
+    }
+    let mut bounds = [left, top, left + box_w, top + box_h];
+    let mut factor = 1.0;
+    if s.auto_fit {
+        let em = styles.iter().fold(base, |big, f| big.max(f.em));
+        let spread = em * 0.04
+            + base
+                * (0.16
+                    + s.outline_width.max(0.0)
+                    + if s.shadow {
+                        s.shadow_offset[0].abs().max(s.shadow_offset[1].abs()) + s.shadow_blur * 3.0
+                    } else {
+                        0.0
+                    });
+        let padding = 0.024 * w.min(h);
+        let required_w = (ink[2] - ink[0] + 2.0 * spread).max(1.0);
+        let required_h = (ink[3] - ink[1] + 2.0 * spread).max(1.0);
+        let wrap_factor = if s.wrap_width > 0.0 {
+            limit / natural_width.max(1.0)
+        } else {
+            1.0
+        };
+        factor = ((w - 2.0 * padding) / required_w)
+            .min((h - 2.0 * padding) / required_h)
+            .min(wrap_factor)
+            .clamp(0.0, 1.0);
+        let resize = |v: f64, axis: usize| anchor[axis] + (v - anchor[axis]) * factor;
+        let low = [resize(ink[0] - spread, 0), resize(ink[1] - spread, 1)];
+        let high = [resize(ink[2] + spread, 0), resize(ink[3] + spread, 1)];
+        let canvas = [w, h];
+        let shift: [f64; 2] = std::array::from_fn(|i| {
+            let first = padding - low[i];
+            let last = canvas[i] - padding - high[i];
+            0.0f64.clamp(first.min(last), last.max(first))
+        });
+        let x = |v| resize(v, 0) + shift[0];
+        let y = |v| resize(v, 1) + shift[1];
+        for (_, at, _) in &mut glyphs {
+            *at = [x(at[0]), y(at[1])];
+        }
+        for line in &mut underlines {
+            *line = [x(line[0]), y(line[1]), x(line[2]), y(line[3])];
+        }
+        bounds = [x(bounds[0]), y(bounds[1]), x(bounds[2]), y(bounds[3])];
+        ink = [x(ink[0]), y(ink[1]), x(ink[2]), y(ink[3])];
+        anchor = [x(anchor[0]), y(anchor[1])];
     }
     Layout {
         glyphs,
-        em: base,
-        ems: styles.iter().map(|f| f.em).collect(),
-        bounds: [left, top, left + box_w, top + box_h],
+        em: base * factor,
+        ems: styles.iter().map(|f| f.em * factor).collect(),
+        bounds,
+        ink,
+        underlines,
         anchor,
     }
 }
@@ -604,6 +743,18 @@ fn letters(fonts: &[Font], l: &Layout, k: [f64; 2], r: &Region) -> Vec<f32> {
                 &mut pen,
             );
             pen.close();
+        }
+    }
+    for &[left, top, right, bottom] in &l.underlines {
+        let point = |x, y| [x * k[0] - r.x as f64, y * k[1] - r.y as f64];
+        let points = [
+            point(left, top),
+            point(right, top),
+            point(right, bottom),
+            point(left, bottom),
+        ];
+        for i in 0..4 {
+            cover.segment(points[i], points[(i + 1) % 4]);
         }
     }
     cover.finish()
@@ -763,7 +914,7 @@ pub(crate) fn picture(
     if s.shadow {
         margin += shift[0].abs().max(shift[1].abs()) + 3.0 * sigma;
     }
-    let [l0, t0, r0, b0] = l.bounds;
+    let [l0, t0, r0, b0] = l.ink;
     let x0 = ((l0 * k[0] - margin).floor() as i64).max(0);
     let y0 = ((t0 * k[1] - margin).floor() as i64).max(0);
     let x1 = ((r0 * k[0] + margin + px(big)).ceil() as i64).min(w as i64);
@@ -1005,6 +1156,27 @@ fn describe_in_context(fx: Fx) {
         [1.0, 2000.0, 8.0, 200.0, d.size],
         c"The font's size in points, for a frame 1080 lines tall (the same part of other frames).",
     );
+    toggle(
+        UNDERLINE,
+        c"Underline",
+        None,
+        false,
+        c"Draw a line below the text.",
+    );
+    toggle(
+        AUTO_FIT,
+        c"Auto Fit",
+        None,
+        false,
+        c"Keep the title inside the frame.",
+    );
+    number(
+        WRAP,
+        c"Text Box Width",
+        None,
+        [0.0, 1.0, 0.0, 1.0, 0.0],
+        c"Zero follows the text; a fixed width wraps the words.",
+    );
     toggle(BOLD, c"Bold", None, d.bold, c"The family's bold face.");
     toggle(
         ITALIC,
@@ -1053,7 +1225,7 @@ fn describe_in_context(fx: Fx) {
         c"Background",
         Some(ADVANCED),
         d.background,
-        c"The frame's color behind the text (transparent: what is below shows).",
+        c"The color behind the text (transparent: what is below shows).",
     );
     number(
         TRACKING,
@@ -1211,7 +1383,16 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
 #[derive(Clone, Copy, Debug)]
 enum Grab {
     Move([f64; 2]),
-    Scale { scale: f64, reach: f64 },
+    Scale {
+        scale: f64,
+        reach: f64,
+        width: f64,
+    },
+    Width {
+        start: f64,
+        width: f64,
+        direction: f64,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -1223,6 +1404,9 @@ struct OverlayState {
 /// The box's corners and the anchor in canonical units (y up), at `time`.
 fn box_of(fx: Fx, time: f64) -> Option<([[f64; 2]; 4], [f64; 2])> {
     let s = Settings::at(fx, time);
+    if s.text.trim().is_empty() {
+        return None;
+    }
     let (origin, frame) = fx.frame();
     let (_, l) = laid_out(&s, frame[0], frame[1])?;
     let up = |p: [f64; 2]| [origin[0] + p[0], origin[1] + frame[1] - p[1]];
@@ -1279,16 +1463,11 @@ unsafe extern "C" fn overlay(
     let near = |p: [f64; 2], q: [f64; 2]| {
         ((p[0] - q[0]) / ps[0]).abs() <= reach && ((p[1] - q[1]) / ps[1]).abs() <= reach
     };
-    let (lo, hi) = (
-        [
-            corners[3][0].min(corners[1][0]),
-            corners[2][1].min(corners[0][1]),
-        ],
-        [
-            corners[3][0].max(corners[1][0]),
-            corners[2][1].max(corners[0][1]),
-        ],
-    );
+    let (lo, hi) = (corners[3], corners[1]);
+    let sides = [
+        [lo[0], (lo[1] + hi[1]) * 0.5],
+        [hi[0], (lo[1] + hi[1]) * 0.5],
+    ];
     if is(action, kOfxInteractActionDraw) {
         if let Some(d) = Draw::of(args) {
             let hot = state.hover || state.grab.is_some();
@@ -1312,6 +1491,9 @@ unsafe extern "C" fn overlay(
                 for c in corners {
                     d.outline(&square(c, 3.5));
                 }
+                for side in sides {
+                    d.outline(&square(side, 3.5));
+                }
                 // The anchor: an empty square.
                 d.outline(&square(anchor, 5.0));
             }
@@ -1320,13 +1502,26 @@ unsafe extern "C" fn overlay(
     }
     let pen: [f64; 2] = args.dbls(kOfxInteractPropPenPosition);
     let corner = corners.iter().any(|&c| near(pen, c));
+    let side = sides.iter().position(|&c| near(pen, c));
     let inside = pen[0] >= lo[0] && pen[0] <= hi[0] && pen[1] >= lo[1] && pen[1] <= hi[1];
     let (origin, frame) = fx.frame();
     if is(action, kOfxInteractActionPenDown) {
         if corner {
             let reach = (pen[0] - anchor[0]).hypot(pen[1] - anchor[1]).max(1e-6);
             let scale = fx.param(SCALE).f64_at(time);
-            state.grab = Some(Grab::Scale { scale, reach });
+            state.grab = Some(Grab::Scale {
+                scale,
+                reach,
+                width: fx.param(WRAP).f64_at(time),
+            });
+        } else if let Some(side) = side {
+            let ax = fx.param(ANCHOR).int_at(time).clamp(0, 8) % 3;
+            let multiplier = if ax == 1 { 2.0 } else { 1.0 };
+            state.grab = Some(Grab::Width {
+                start: pen[0],
+                width: hi[0] - lo[0],
+                direction: if side == 0 { -multiplier } else { multiplier },
+            });
         } else if inside {
             state.grab = Some(Grab::Move([pen[0] - anchor[0], pen[1] - anchor[1]]));
         } else {
@@ -1344,14 +1539,30 @@ unsafe extern "C" fn overlay(
                 fx.param(LOCATION).set_xy(to);
                 kOfxStatOK
             }
-            Some(Grab::Scale { scale, reach }) => {
+            Some(Grab::Scale {
+                scale,
+                reach,
+                width,
+            }) => {
                 let now = (pen[0] - anchor[0]).hypot(pen[1] - anchor[1]);
-                fx.param(SCALE)
-                    .set_f64((scale * now / reach).clamp(0.01, 100.0));
+                let factor = now / reach;
+                fx.param(SCALE).set_f64((scale * factor).clamp(0.01, 100.0));
+                if width > 0.0 {
+                    fx.param(WRAP).set_f64((width * factor).clamp(0.05, 1.0));
+                }
+                kOfxStatOK
+            }
+            Some(Grab::Width {
+                start,
+                width,
+                direction,
+            }) => {
+                fx.param(WRAP)
+                    .set_f64(((width + (pen[0] - start) * direction) / frame[0]).clamp(0.05, 1.0));
                 kOfxStatOK
             }
             None => {
-                let over = corner || inside;
+                let over = corner || side.is_some() || inside;
                 if over != state.hover {
                     state.hover = over;
                     redraw(handle);
@@ -1376,7 +1587,7 @@ unsafe extern "C" fn overlay(
 /// The factory presets: BananaV's own looks of a title.
 pub(crate) fn presets() -> Vec<Preset> {
     let num = |v: &[f64]| PresetValue::Num(v.to_vec());
-    vec![
+    let mut presets = vec![
         Preset {
             name: "Default",
             values: vec![],
@@ -1419,7 +1630,33 @@ pub(crate) fn presets() -> Vec<Preset> {
                 ("background", num(&[1.0, 1.0, 1.0, 1.0])),
             ],
         },
-    ]
+    ];
+    for (name, rgb) in [
+        ("Ice Blue", [0.40, 0.75, 1.0]),
+        ("Ocean Blue", [0.18, 0.47, 1.0]),
+        ("Violet", [0.63, 0.38, 1.0]),
+        ("Rose", [1.0, 0.40, 0.64]),
+        ("Coral", [1.0, 0.48, 0.36]),
+        ("Amber", [1.0, 0.68, 0.24]),
+        ("Gold", [1.0, 0.82, 0.33]),
+        ("Lemon", [0.95, 0.93, 0.40]),
+        ("Lime", [0.66, 0.93, 0.32]),
+        ("Mint", [0.39, 0.91, 0.68]),
+        ("Turquoise", [0.25, 0.86, 0.88]),
+        ("Silver", [0.77, 0.83, 0.93]),
+    ] {
+        presets.push(Preset {
+            name,
+            values: vec![
+                ("bold", num(&[1.0])),
+                ("textColor", num(&[rgb[0], rgb[1], rgb[2], 1.0])),
+                ("outlineWidth", num(&[0.045])),
+                ("outlineColor", num(&[0.04, 0.06, 0.12, 1.0])),
+                ("shadowEnable", num(&[1.0])),
+            ],
+        });
+    }
+    presets
 }
 
 #[cfg(test)]
@@ -1457,6 +1694,56 @@ mod tests {
             font,
             ..Settings::default()
         })
+    }
+
+    #[test]
+    fn fit_reflows_long_text_and_keeps_ink_inside_portrait_and_landscape_frames() {
+        let Some(mut s) = settings() else { return };
+        s.text = "A long title with more words than it can display in a single line. ".repeat(16);
+        s.auto_fit = true;
+        s.size = 190.0;
+        s.location = [1.0, 0.0];
+        s.underline = true;
+        s.wrap_width = 0.7;
+        s.outline_width = 0.08;
+        s.shadow = true;
+        let count = s.text.chars().filter(|c| !c.is_whitespace()).count();
+        let font = Font::of(&s).unwrap();
+        for (w, h) in [(1920.0, 1080.0), (1080.0, 1920.0)] {
+            let l = layout(&s, &font.face().unwrap(), w, h);
+            assert!(l.em < s.em(h));
+            assert!(l.underlines.len() > 1);
+            assert!(
+                l.glyphs
+                    .iter()
+                    .filter(|(glyph, _, _)| {
+                        Some(*glyph) != font.face().unwrap().charmap().map(' ')
+                    })
+                    .count()
+                    == count,
+                "the fitting pass lost characters"
+            );
+            assert!(l.ink[0] > 0.0 && l.ink[1] > 0.0);
+            assert!(l.ink[2] < w && l.ink[3] < h);
+        }
+    }
+
+    #[test]
+    fn fixed_width_wraps_without_changing_the_requested_size() {
+        let Some(mut s) = settings() else { return };
+        s.text = "one two three four five six seven".into();
+        s.wrap_width = 0.32;
+        s.underline = true;
+        let font = Font::of(&s).unwrap();
+        let l = layout(&s, &font.face().unwrap(), 860.0, 540.0);
+        assert!(l.underlines.len() > 1);
+        assert_eq!(l.em, s.em(540.0));
+        assert!((l.bounds[2] - l.bounds[0] - 860.0 * 0.32).abs() < 1e-6);
+        // Very long URLs and other single tokens can still be laid out.
+        s.text = "abcdefghijklmnopqrstuvwxyz".repeat(10);
+        let l = layout(&s, &font.face().unwrap(), 860.0, 540.0);
+        assert_eq!(l.glyphs.len(), s.text.chars().count());
+        assert!(l.underlines.len() > 1);
     }
 
     #[test]
@@ -1717,6 +2004,7 @@ parts in their own style"
                         "shadowEnable",
                         "shadowBlur",
                         "outlineWidth",
+                        "outlineColor",
                         "textColor",
                         "background",
                     ]

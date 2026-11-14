@@ -4,8 +4,8 @@ use crate::i18n::tr;
 use bv_core::{FrameRate, Tick, timecode};
 use bv_timeline::mask::{MaskFeather, MaskPath, PanCropMask};
 use bv_timeline::{
-    AnimationPreset, Clip, ClipAnimation, ClipId, Effect, EffectKind, FadeCurve, Generator,
-    MediaSource, ParamKind, Project, TrackKind, Transform, Transition, VideoStreamInfo,
+    AnimationPreset, Clip, ClipAnimation, ClipId, Effect, EffectKind, FadeCurve, ParamKind,
+    Project, TrackKind, Transform, Transition, VideoStreamInfo,
 };
 
 use crate::app::BananaApp;
@@ -41,6 +41,7 @@ enum VisualPage {
     Basic,
     RemoveBackground,
     Mask,
+    Animation,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -219,11 +220,10 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     let media_name = media.map_or_else(String::new, crate::i18n::media_name);
     let is_visual = track.kind == TrackKind::Video;
     let still = media.is_some_and(|m| m.still);
-    let is_title = is_visual
-        && media.is_some_and(|m| {
-            matches!(&m.source, MediaSource::Generated(Generator::Plugin(fx))
-                if fx.id == bv_engine::plugins::TITLES_ID)
-        });
+    let title = media
+        .filter(|_| is_visual)
+        .and_then(crate::title_editor::title);
+    let is_title = title.is_some();
     let members = project.group_members(id);
     let group_locked = members
         .iter()
@@ -257,9 +257,11 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     if !is_visual || (!still && !is_title) {
         pages.push((Page::Speed, tr("Speed")));
     }
+    if is_visual && !is_title {
+        pages.push((Page::Animation, tr("Animation")));
+    }
     if is_visual {
         pages.extend([
-            (Page::Animation, tr("Animation")),
             (Page::Adjust, tr("Adjust")),
             (Page::Tracking, tr("Motion Tracking")),
         ]);
@@ -284,12 +286,12 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     let mut audio = linked_audio.cloned();
     let mut tf = framing;
     let mut conform = false;
+    let mut reset_framing = false;
     let mut speed = None;
     let mut preserve_linked_pitch = None;
     let key = ui.id().with(("clip-properties", id.0));
 
-    let mut frame = egui::Frame::new()
-        .inner_margin(egui::Margin::same(12));
+    let mut frame = egui::Frame::new().inner_margin(egui::Margin::same(12));
     if theme::premium() {
         frame = frame
             .fill(theme::panel())
@@ -297,45 +299,66 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             .corner_radius(10.0);
     }
     frame.show(ui, |ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
-            ui.add(egui::Label::new(RichText::new(&media_name).strong()).truncate());
-            let page = ui.push_id(kind, |ui| tabs(ui, "pages", &pages)).inner;
-            let visual_page = (page == Page::Visual).then(|| {
-                if is_title {
-                    tabs(
-                        ui,
-                        "text",
-                        &[(VisualPage::Basic, tr("Basic")), (VisualPage::Mask, tr("Mask"))],
-                    )
-                } else {
-                    tabs(
-                        ui,
-                        "visual",
-                        &[
-                            (VisualPage::Basic, tr("Basic")),
-                            (VisualPage::RemoveBackground, tr("Remove BG")),
-                            (VisualPage::Mask, tr("Mask")),
-                        ],
-                    )
-                }
-            });
-            let animation_page = (page == Page::Animation).then(|| {
+        ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+        ui.add(egui::Label::new(RichText::new(&media_name).strong()).truncate());
+        let page = ui.push_id(kind, |ui| tabs(ui, "pages", &pages)).inner;
+        let visual_page = (page == Page::Visual).then(|| {
+            if is_title {
+                tabs(
+                    ui,
+                    "text",
+                    &[
+                        (VisualPage::Basic, tr("Basic")),
+                        (VisualPage::Animation, tr("Animation")),
+                        (VisualPage::Mask, tr("Mask")),
+                    ],
+                )
+            } else {
+                tabs(
+                    ui,
+                    "visual",
+                    &[
+                        (VisualPage::Basic, tr("Basic")),
+                        (VisualPage::RemoveBackground, tr("Remove BG")),
+                        (VisualPage::Mask, tr("Mask")),
+                    ],
+                )
+            }
+        });
+        let animation_page =
+            (page == Page::Animation || visual_page == Some(VisualPage::Animation)).then(|| {
                 tabs(
                     ui,
                     "animation",
-                    &[(AnimationPage::In, tr("In")), (AnimationPage::Out, tr("Out"))],
+                    &[
+                        (AnimationPage::In, tr("In")),
+                        (AnimationPage::Out, tr("Out")),
+                    ],
                 )
             });
 
-            egui::ScrollArea::vertical()
-                .id_salt((
-                    id.0,
-                    page as u8,
-                    visual_page.map(|p| p as u8),
-                    animation_page.map(|p| p as u8),
-                ))
-                .auto_shrink([false, false])
-                .show(ui, |ui| match page {
+        if page == Page::Visual
+            && visual_page == Some(VisualPage::Basic)
+            && let Some(fx) = title
+            && let Some(place) = crate::ofx::generator_place(&project, id, at)
+        {
+            reset_framing = crate::title_editor::inspector(ui, app, fx, &place, &mut c, &mut tf);
+            return;
+        }
+
+        egui::ScrollArea::vertical()
+            .id_salt((
+                id.0,
+                page as u8,
+                visual_page.map(|p| p as u8),
+                animation_page.map(|p| p as u8),
+            ))
+            .auto_shrink([false, false])
+            .show(ui, |ui| match if visual_page == Some(VisualPage::Animation) {
+                Page::Animation
+            } else {
+                page
+            } {
                     Page::Visual => match visual_page {
                         Some(VisualPage::RemoveBackground) => {
                             chroma_key(ui, app, &project, &mut c, id);
@@ -458,7 +481,8 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         });
     }
 
-    if tf != framing
+    if !reset_framing
+        && tf != framing
         && let (Some(place), Some(was)) = (place, shown)
     {
         let mut now = bv_timeline::pancrop::key_from_transform(&tf, &place);
@@ -474,7 +498,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
 }
 
 fn store_clip(ui: &egui::Ui, app: &mut BananaApp, before: &Clip, after: Clip) {
-    if after == *before {
+    if after == *before || app.project().clip(before.id) == Some(&after) {
         return;
     }
     let id = before.id;
@@ -503,7 +527,7 @@ pub(super) fn section(ui: &mut egui::Ui, title: &str) {
     ui.strong(title);
 }
 
-pub(super) fn value_slider(
+pub(crate) fn value_slider(
     ui: &mut egui::Ui,
     label: &str,
     value: &mut f32,
@@ -638,7 +662,7 @@ fn fades(ui: &mut egui::Ui, c: &mut Clip, rate: FrameRate) {
     c.fade_out = c.fade_out.min(c.duration - c.fade_in);
 }
 
-fn animation_tiles(ui: &mut egui::Ui, animation: &mut ClipAnimation, duration: Tick) {
+pub(crate) fn animation_tiles(ui: &mut egui::Ui, animation: &mut ClipAnimation, duration: Tick) {
     let previous = animation.preset;
     ui.horizontal_wrapped(|ui| {
         for (preset, label) in [

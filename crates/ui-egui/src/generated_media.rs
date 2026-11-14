@@ -29,6 +29,7 @@ pub struct GeneratedMediaWindow {
     /// A color being chosen: which (0: the color, or the gradient's first;
     /// 1: its second) and the picker.
     picking: Option<(usize, ColorPicker)>,
+    title: Option<crate::title_editor::Advanced>,
 }
 
 /// A ▾ opening the presets' list.
@@ -161,7 +162,16 @@ impl BananaApp {
             length,
             preset,
             picking: None,
+            title: None,
         });
+    }
+
+    pub(crate) fn open_title_editor(&mut self, clip: ClipId) {
+        let draft = crate::title_editor::Advanced::new(self, clip);
+        self.open_generated_media(clip);
+        if let Some(window) = &mut self.generated_media {
+            window.title = draft;
+        }
     }
 
     /// The Video Media Generators window of the first gradient on the
@@ -197,6 +207,9 @@ impl BananaApp {
 impl GeneratedMediaWindow {
     /// Shows the window; whether it stays open.
     fn show(&mut self, ctx: &egui::Context, app: &mut BananaApp) -> bool {
+        if let Some(title) = &mut self.title {
+            return title.show(ctx, app, self.clip);
+        }
         let p = app.project();
         let Some(clip) = p.clip(self.clip) else {
             return false;

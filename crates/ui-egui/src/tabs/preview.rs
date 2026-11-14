@@ -1351,10 +1351,17 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         } else if app.motion.open {
             // Motion Tracking's region, while its window is open.
             crate::motion_tracking::overlay(ui, app, frame_rect, image_area);
-        } else if app.ofx.has_preview_overlay() {
+        } else if app.ofx.has_preview_overlay() && !app.ofx.has_generator_title_overlay() {
             crate::ofx::overlay_ui(ui, app, &nav, frame_rect, image_area);
         } else if multicam.is_none() && !app.project().settings.output_360 {
-            canvas::clip_handles(ui, app, &nav, frame_rect, image_area);
+            if app
+                .primary_clip()
+                .is_some_and(|id| crate::ofx::title_overlay(app, id))
+            {
+                crate::ofx::overlay_ui(ui, app, &nav, frame_rect, image_area);
+            } else {
+                canvas::clip_handles(ui, app, &nav, frame_rect, image_area);
+            }
         }
     }
 
@@ -1367,7 +1374,10 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             egui::StrokeKind::Inside,
         );
         ui.painter().line_segment(
-            [pos2(rim.left() + 12.0, rim.top() + 1.5), pos2(rim.right() - 12.0, rim.top() + 1.5)],
+            [
+                pos2(rim.left() + 12.0, rim.top() + 1.5),
+                pos2(rim.right() - 12.0, rim.top() + 1.5),
+            ],
             Stroke::new(1.0, Color32::from_white_alpha(55)),
         );
     }

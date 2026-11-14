@@ -82,7 +82,17 @@ pub fn new_effect(info: &PluginInfo) -> Effect {
 
 /// Media `info`'s plug-in generates, at its defaults.
 pub fn new_generator(info: &PluginInfo) -> Generator {
-    Generator::Plugin(Box::new(plugin_fx(info)))
+    let mut fx = plugin_fx(info);
+    if fx.id == bv_engine::plugins::TITLES_ID {
+        fx.params.insert(
+            "autoFit".into(),
+            PluginParam {
+                value: bv_timeline::PluginValue::Num(vec![1.0]),
+                keys: Vec::new(),
+            },
+        );
+    }
+    Generator::Plugin(Box::new(fx))
 }
 
 /// The known plug-ins that work in a context `fits` finds, by name
@@ -441,6 +451,13 @@ impl OfxUi {
         self.overlay.is_some()
     }
 
+    pub(crate) fn has_generator_title_overlay(&self) -> bool {
+        self.overlay.as_ref().is_some_and(|(key, _)| {
+            key.id == bv_engine::plugins::TITLES_ID
+                && matches!(key.owner, EditorOwner::Generator(_))
+        })
+    }
+
     /// Whether a plug-in's overlay took the last press on the preview (a
     /// double click there is the overlay's).
     pub fn overlay_took_press(&self) -> bool {
@@ -797,6 +814,60 @@ fn editor<'a>(
     }
     e.shown = true;
     Ok(e)
+}
+
+pub(crate) fn prepare_title_keys(
+    ofx: &mut OfxUi,
+    key: &EditorKey,
+    fx: &PluginFx,
+    place: &FxPlace,
+) -> bool {
+    editor(ofx, key, fx, place).is_ok()
+}
+
+/// Keep the selected title's own handles available while its inspector is shown.
+pub(crate) fn title_overlay(app: &mut BananaApp, clip: bv_timeline::ClipId) -> bool {
+    let project = app.project();
+    let Some(c) = project.clip(clip).filter(|c| !c.locked && !c.muted) else {
+        return false;
+    };
+    let Some(track) = project.clip_track(clip).filter(|t| !t.locked && !t.muted) else {
+        return false;
+    };
+    let time = app.display_time();
+    if track.kind != bv_timeline::TrackKind::Video
+        || app.is_playing()
+        || time < c.start
+        || time >= c.end()
+    {
+        return false;
+    }
+    let Some(MediaSource::Generated(Generator::Plugin(fx))) =
+        project.media(c.media).map(|m| &m.source)
+    else {
+        return false;
+    };
+    if fx.id != bv_engine::plugins::TITLES_ID {
+        return false;
+    }
+    let Some(place) = generator_place(project, clip, time) else {
+        return false;
+    };
+    let fx = (**fx).clone();
+    let key = EditorKey {
+        owner: EditorOwner::Generator(c.media),
+        index: 0,
+        id: fx.id.clone(),
+    };
+    let Ok(e) = editor(&mut app.ofx, &key, &fx, &place) else {
+        return false;
+    };
+    if !e.instance.has_overlay() {
+        return false;
+    }
+    app.ofx.overlay = Some((key, place));
+    app.ofx.overlay_seen = true;
+    true
 }
 
 /// Draws a plug-in effect's settings, as VEGAS draws an OFX effect's: a
@@ -2199,7 +2270,7 @@ impl<'a> Rows<'a> {
                                     (a.min(b), a.max(b))
                                 })
                                 .filter(|(a, b)| a < b);
-                            let key = id.with("selection");
+                            let key = rich_text_selection(self.key, &info.name);
                             ui.data_mut(|d| match picked {
                                 Some(x) => {
                                     d.insert_temp(key, x);
@@ -2373,11 +2444,13 @@ pub fn generator_place(p: &Project, clip: ClipId, cursor: Tick) -> Option<FxPlac
     let m = p.media(c.media)?;
     let at = cursor.clamp(c.start, c.end());
     let time = bv_timeline::scene::media_time(c, m, at).unwrap_or(Tick::ZERO);
+    let rate = m.video.map_or(p.settings.frame_rate, |v| v.frame_rate);
+    let time = rate.snap_floor(time);
     let size = m.video.map_or((p.settings.width, p.settings.height), |v| {
         (v.width, v.height)
     });
     Some(FxPlace {
-        rate: p.settings.frame_rate,
+        rate,
         time,
         duration: m.duration,
         size,
@@ -2874,11 +2947,15 @@ fn paint_marks(painter: &egui::Painter, marks: &[Mark], to_screen: impl Fn([f64;
     }
 }
 
+pub(crate) fn rich_text_selection(key: &EditorKey, name: &str) -> egui::Id {
+    egui::Id::new(("ofx-param", key, name)).with("selection")
+}
+
 /// [`params`]' rich text (BananaV's `kBananaVParamPropRichText`): a text
 /// parameter's runs follow its text as it is typed, and a parameter a part
 /// may set, changed while part of the text is selected, sets that part (a
 /// run) instead of the whole.
-fn rich_text(
+pub(crate) fn rich_text(
     ui: &Ui,
     key: &EditorKey,
     infos: &[ParamInfo],
@@ -2905,8 +2982,7 @@ fn rich_text(
             let after = text_of(new, &info.name).unwrap_or_else(|| before.clone());
             runs = shift_runs(&runs, &before, &after);
         }
-        let picked_id =
-            egui::Id::new(("ofx-param", &key.id, key.index, &info.name)).with("selection");
+        let picked_id = rich_text_selection(key, &info.name);
         if let Some((a, b)) = ui.data(|d| d.get_temp::<(usize, usize)>(picked_id)) {
             for name in styled.iter().filter(|n| touched.iter().any(|t| t == *n)) {
                 let Some(p) = new.params.get(*name).filter(|p| p.keys.is_empty()) else {
