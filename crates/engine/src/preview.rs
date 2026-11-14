@@ -851,11 +851,26 @@ impl Worker {
     /// size, media with a proxy are read from it (the files themselves at
     /// full size, as Best (Full) shows them).
     fn ready_for(&mut self, shared: &Shared, project: &Project, (w, h): (u32, u32)) {
-        if project.media != self.pool_media || self.accel.decoding_serial() != self.decoding {
+        if self.accel.decoding_serial() != self.decoding {
             self.pool.clear();
-            self.pool_media = project.media.clone();
             self.decoding = self.accel.decoding_serial();
+            self.pool_media.clone_from(&project.media);
             lock(shared).kept.clear();
+        } else if project.media != self.pool_media {
+            // Editing generator parameters must evict that generator's
+            // reader without reopening the unrelated source videos.
+            for before in &self.pool_media {
+                let source_changed = project.media(before.id).is_none_or(|after| {
+                    before.source != after.source
+                        || before.video != after.video
+                        || before.sequence != after.sequence
+                        || before.layer != after.layer
+                });
+                if source_changed {
+                    self.pool.invalidate(before.id);
+                }
+            }
+            self.pool_media.clone_from(&project.media);
         }
         let (ow, oh) = project.settings.output_size();
         self.pool.set_proxies(w < ow || h < oh);

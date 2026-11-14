@@ -178,6 +178,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             &mut state,
             &names,
             tr("Give it to the track and edit"),
+            1.0,
             |painter, rect, i, play| paint_preset(painter, rect, previews, &presets[i].1, play),
         );
         for cell in cells {

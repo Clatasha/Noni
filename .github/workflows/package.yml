@@ -19,6 +19,7 @@ on:
   # One-time rebuild request: UI fixes batch (mask/text/properties/banner).
   # One-time rebuild request: automatic Noni Direct NVENC rendering and export labels.
   # One-time rebuild request: title editor and text fitting.
+  # One-time rebuild request: title editing, clip keyframes and Properties sizing.
   push:
     branches: [noni-branding]
     paths:

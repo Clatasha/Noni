@@ -78,6 +78,17 @@ fn tab_chevron(ui: &mut egui::Ui, forward: bool, enabled: bool) -> bool {
     response.on_hover_text(tip).clicked()
 }
 
+/// Room for Video, Audio (when linked), Speed, Animation and Adjust,
+/// plus the tab row's overflow arrows and the inspector's side margins.
+pub(crate) fn minimum_width(ui: &egui::Ui) -> f32 {
+    let font = egui::FontId::proportional(13.0);
+    let labels = [tr("Video"), tr("Audio"), tr("Speed"), tr("Animation"), tr("Adjust")];
+    let labels_width: f32 = labels.iter().map(|label| {
+        ui.painter().layout_no_wrap(label.to_string(), font.clone(), theme::text()).size().x + 24.0
+    }).sum();
+    (labels_width + 4.0 * 4.0 + 60.0 + 12.0 + 24.0 + 4.0).ceil()
+}
+
 /// Keep the properties navigation on exactly one row. When the panel is
 /// narrower than the tabs, arrow controls reveal the remaining tabs.
 /// The chosen page stays selected; changing panel width changes no settings.
@@ -87,10 +98,22 @@ fn tabs<T: Copy + Eq + Send + Sync + 'static>(
     items: &[(T, &str)],
 ) -> T {
     let key = ui.id().with(salt);
-    let mut active = ui
+    let active = ui
         .data(|d| d.get_temp::<T>(key))
         .filter(|active| items.iter().any(|(item, _)| item == active))
         .unwrap_or(items[0].0);
+    let active = tab_row(ui, salt, items, active);
+    ui.data_mut(|d| d.insert_temp(key, active));
+    active
+}
+
+pub(crate) fn tab_row<T: Copy + Eq + Send + Sync + 'static>(
+    ui: &mut egui::Ui,
+    salt: &str,
+    items: &[(T, &str)],
+    mut active: T,
+) -> T {
+    let key = ui.id().with(salt);
     egui::Frame::new()
         .fill(theme::panel_dark())
         .corner_radius(if theme::premium() { 10.0 } else { 4.0 })
@@ -194,7 +217,6 @@ fn tabs<T: Copy + Eq + Send + Sync + 'static>(
             ui.data_mut(|d| d.insert_temp(start_key, first));
             ui.data_mut(|d| d.insert_temp(last_key, active));
         });
-    ui.data_mut(|d| d.insert_temp(key, active));
     active
 }
 
@@ -670,6 +692,11 @@ pub(crate) fn animation_tiles(ui: &mut egui::Ui, animation: &mut ClipAnimation, 
             (AnimationPreset::Fade, tr("Fade")),
             (AnimationPreset::SlideUp, tr("Slide Up")),
             (AnimationPreset::SlideDown, tr("Slide Down")),
+            (AnimationPreset::SlideLeft, tr("Slide Left")),
+            (AnimationPreset::SlideRight, tr("Slide Right")),
+            (AnimationPreset::ZoomIn, tr("Zoom In")),
+            (AnimationPreset::ZoomOut, tr("Zoom Out")),
+            (AnimationPreset::Pop, tr("Pop")),
         ] {
             if animation_tile(ui, preset, label, animation.preset == preset) {
                 animation.preset = preset;
@@ -756,6 +783,28 @@ fn animation_tile(ui: &mut egui::Ui, preset: AnimationPreset, label: &str, selec
             painter.line_segment([center + vec2(9.0, -direction * 8.0), tip], stroke);
             for x in [-4.0, 4.0] {
                 painter.line_segment([tip, tip + vec2(x, -direction * 4.0)], stroke);
+            }
+        }
+        AnimationPreset::SlideLeft | AnimationPreset::SlideRight => {
+            let sign = if preset == AnimationPreset::SlideLeft { -1.0 } else { 1.0 };
+            let tip = center + vec2(sign * 11.0, 0.0);
+            painter.line_segment([center - vec2(sign * 10.0, 0.0), tip], stroke);
+            for y in [-5.0, 5.0] {
+                painter.line_segment([tip, tip + vec2(-sign * 5.0, y)], stroke);
+            }
+        }
+        AnimationPreset::ZoomIn | AnimationPreset::ZoomOut => {
+            painter.circle_stroke(center, 9.0, stroke);
+            painter.line_segment([center - vec2(4.0, 0.0), center + vec2(4.0, 0.0)], stroke);
+            if preset == AnimationPreset::ZoomIn {
+                painter.line_segment([center - vec2(0.0, 4.0), center + vec2(0.0, 4.0)], stroke);
+            }
+        }
+        AnimationPreset::Pop => {
+            for i in 0..8 {
+                let angle = i as f32 * std::f32::consts::TAU / 8.0;
+                let ray = vec2(angle.cos(), angle.sin());
+                painter.line_segment([center + ray * 5.0, center + ray * 11.0], stroke);
             }
         }
     }

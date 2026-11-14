@@ -498,6 +498,7 @@ fn package_grid(
         state,
         &names,
         tr("Add to the selected events and edit"),
+        1.0,
         |painter, rect, _, play| paint_preset(painter, rect, previews, &package.chain, play),
     );
     let chain = &package.chain;
@@ -601,6 +602,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             &mut state,
             &names,
             tr("Add to the selected events and edit"),
+            1.0,
             |painter, rect, i, play| {
                 paint_preset(
                     painter,

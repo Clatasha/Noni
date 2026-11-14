@@ -550,6 +550,11 @@ pub enum AnimationPreset {
     Fade,
     SlideUp,
     SlideDown,
+    SlideLeft,
+    SlideRight,
+    ZoomIn,
+    ZoomOut,
+    Pop,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

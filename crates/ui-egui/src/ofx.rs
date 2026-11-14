@@ -639,7 +639,9 @@ fn clip_map(p: &Project, clip: &bv_timeline::Clip, t: Tick) -> Affine {
     let Some(place) = p.clip_place_in(clip.id) else {
         return frame_map(s.width, s.height);
     };
-    let placed = place.at(clip, at, [f64::from(s.width), f64::from(s.height)]);
+    let size = [f64::from(s.width), f64::from(s.height)];
+    let mut placed = place.at(clip, at, size);
+    bv_timeline::scene::clip_animation(clip, at).place(&mut placed, size);
     event_map((v.width, v.height), &placed, frame)
 }
 
@@ -2251,14 +2253,43 @@ impl<'a> Rows<'a> {
                     let mut changed = false;
                     let rich = !info.rich_text.is_empty();
                     ui.add_enabled_ui(enabled, |ui| {
-                        // As wide as a slider at least, however long its
-                        // name (GL Transition's code).
-                        let out = egui::TextEdit::multiline(&mut s)
-                            .desired_rows(3)
-                            .desired_width(SLIDER_W)
-                            .min_size(vec2(SLIDER_W, 0.0))
-                            .lock_focus(true)
-                            .show(ui);
+                        let height_id = id.with("text-height");
+                        let available = ui.max_rect().right() - ui.next_widget_position().x;
+                        let width = (available - 40.0).max(SLIDER_W);
+                        let height = ui.data(|d| d.get_temp::<f32>(height_id)).unwrap_or(112.0);
+                        let (out, grip) = ui
+                            .vertical(|ui| {
+                                let out = egui::ScrollArea::vertical()
+                                    .id_salt(id.with("text-scroll"))
+                                    .max_height(height)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        egui::TextEdit::multiline(&mut s)
+                                            .desired_rows(5)
+                                            .desired_width(width)
+                                            .lock_focus(true)
+                                            .show(ui)
+                                    })
+                                    .inner;
+                                let (r, grip) =
+                                    ui.allocate_exact_size(vec2(width, 9.0), Sense::drag());
+                                let grip =
+                                    grip.on_hover_and_drag_cursor(egui::CursorIcon::ResizeVertical);
+                                for dy in [-1.0, 2.0] {
+                                    let c = r.center() + vec2(0.0, dy);
+                                    ui.painter().line_segment(
+                                        [c - vec2(9.0, 0.0), c + vec2(9.0, 0.0)],
+                                        Stroke::new(1.0, theme::text_dim()),
+                                    );
+                                }
+                                (out, grip)
+                            })
+                            .inner;
+                        if grip.dragged() {
+                            let height = (height + grip.drag_delta().y).clamp(72.0, 640.0);
+                            ui.data_mut(|d| d.insert_temp(height_id, height));
+                            ui.ctx().request_repaint();
+                        }
                         changed = out.response.changed();
                         // Rich text: the part selected, kept while the
                         // other settings are worked (see `rich_text`).
@@ -3368,6 +3399,61 @@ pub fn overlay_ui(ui: &Ui, app: &mut BananaApp, nav: &egui::Response, frame: Rec
             | (u32::from(keys.ctrl) * bv_ofx::interact::CONTROL)
             | (u32::from(keys.alt) * bv_ofx::interact::ALT),
     );
+    let is_title = key.id == bv_engine::plugins::TITLES_ID;
+    let cursor_id = nav.id.with("title-overlay-cursor");
+    let title_cursor = |marks: &[Mark], q: Pos2| {
+        let points = marks.iter().find_map(|mark| match mark {
+            Mark::Strip {
+                points,
+                closed: true,
+                ..
+            } if points.len() == 4 => Some(points),
+            _ => None,
+        })?;
+        let [tl, tr, br, bl] = std::array::from_fn(|i| to_screen(points[i]));
+        let near = |p: Pos2| (q - p).abs().max_elem() <= 8.0;
+        let diagonal = |a: Pos2, b: Pos2| {
+            if (b.x - a.x) * (b.y - a.y) >= 0.0 {
+                egui::CursorIcon::ResizeNwSe
+            } else {
+                egui::CursorIcon::ResizeNeSw
+            }
+        };
+        if near(tl) || near(br) {
+            return Some(diagonal(tl, br));
+        }
+        if near(tr) || near(bl) {
+            return Some(diagonal(tr, bl));
+        }
+        let half = |a: Pos2, b: Pos2| a.lerp(b, 0.5);
+        if near(half(tl, bl)) || near(half(tr, br)) {
+            return Some(if (tr.x - tl.x).abs() >= (tr.y - tl.y).abs() {
+                egui::CursorIcon::ResizeHorizontal
+            } else {
+                egui::CursorIcon::ResizeVertical
+            });
+        }
+        let [x, y] = to_canonical(q);
+        ((points[3][0]..=points[1][0]).contains(&x) && (points[3][1]..=points[1][1]).contains(&y))
+            .then_some(egui::CursorIcon::Move)
+    };
+    if is_title
+        && pressed
+        && let Some(q) = pos
+    {
+        let cursor = app
+            .ofx
+            .overlay_drawn
+            .as_ref()
+            .filter(|d| d.key == key)
+            .and_then(|d| title_cursor(&d.marks, q));
+        ui.data_mut(|d| {
+            d.remove::<egui::CursorIcon>(cursor_id);
+            if let Some(cursor) = cursor {
+                d.insert_temp(cursor_id, cursor);
+            }
+        });
+    }
     let mut answer = None;
     // A click may have the plug-in read its picture (an eyedropper): the
     // one the preview gave it last.
@@ -3418,7 +3504,7 @@ pub fn overlay_ui(ui: &Ui, app: &mut BananaApp, nav: &egui::Response, frame: Rec
         }
         ui.ctx().request_repaint();
     }
-    if app.ofx.pen {
+    if app.ofx.pen && !is_title {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     }
     // Drawn again only when what it shows changes — the view, the
@@ -3463,6 +3549,19 @@ pub fn overlay_ui(ui: &Ui, app: &mut BananaApp, nav: &egui::Response, frame: Rec
     let Some(drawn) = app.ofx.overlay_drawn.as_ref() else {
         return;
     };
+    if is_title {
+        let cursor = if app.ofx.pen {
+            ui.data(|d| d.get_temp::<egui::CursorIcon>(cursor_id))
+        } else if nav.hovered() {
+            pos.filter(|q| area.contains(*q))
+                .and_then(|q| title_cursor(&drawn.marks, q))
+        } else {
+            None
+        };
+        if let Some(cursor) = cursor {
+            ui.ctx().set_cursor_icon(cursor);
+        }
+    }
     let painter = ui.painter().with_clip_rect(area);
     // What an overlay drew with OpenGL itself: a picture of the view, sent
     // to the graphics card when drawn anew.

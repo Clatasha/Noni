@@ -245,13 +245,18 @@ impl GeneratedMediaWindow {
             .generator_presets
             .iter()
             .any(|s| s.plugin == key && s.name == self.preset.trim());
+        let credit_roll = matches!(&generator, Generator::Plugin(fx) if fx.id == crate::tabs::generators::CREDIT_ROLL_ID);
         crate::floating::Window::new(title)
             .id(egui::Id::new("generated-media-window"))
             .collapsible(false)
-            .resizable(false)
+            .resizable(credit_roll)
             .open(&mut open)
             .show(ctx, |ui| {
-                ui.set_width(400.0);
+                if credit_roll {
+                    ui.set_min_width(400.0);
+                } else {
+                    ui.set_width(400.0);
+                }
                 egui::Grid::new("generated-media-top")
                     .num_columns(2)
                     .spacing([10.0, 6.0])

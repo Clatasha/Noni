@@ -974,19 +974,34 @@ fn parallelogram(corners: &Corners, key: &PanCropKey, s: &PlaceIn, par: f64) -> 
 }
 
 impl Placement {
-    /// Move the placed picture in output pixels, including its crop bounds.
-    pub(crate) fn translate_y(&mut self, dy: f64) {
-        self.to_media[2] -= self.to_media[1] * dy;
-        self.to_media[5] -= self.to_media[4] * dy;
-        if let Some(to_box) = &mut self.to_box {
-            to_box[2] -= to_box[1] * dy;
-            to_box[5] -= to_box[4] * dy;
+    /// Transform the picture and its crop together, around the output center.
+    pub(crate) fn animate(&mut self, frame: [f64; 2], offset: [f64; 2], scale: f64) {
+        if scale == 1.0 && offset == [0.0; 2] {
+            return;
         }
-        self.clip[1] += dy;
-        self.clip[3] += dy;
-        if let Some((_, frame)) = &mut self.rect {
-            frame[1] += dy;
-            frame[3] += dy;
+        let [dx, dy] = std::array::from_fn(|i| frame[i] * ((1.0 - scale) * 0.5 + offset[i]));
+        let remap = |m: &mut [f64; 6]| {
+            for row in [0, 3] {
+                m[row] /= scale;
+                m[row + 1] /= scale;
+                m[row + 2] -= m[row] * dx + m[row + 1] * dy;
+            }
+        };
+        let bounds = |r: &mut [f64; 4]| {
+            *r = [
+                r[0] * scale + dx,
+                r[1] * scale + dy,
+                r[2] * scale + dx,
+                r[3] * scale + dy,
+            ];
+        };
+        remap(&mut self.to_media);
+        if let Some(map) = &mut self.to_box {
+            remap(map);
+        }
+        bounds(&mut self.clip);
+        if let Some((_, output)) = &mut self.rect {
+            bounds(output);
         }
     }
 

@@ -99,12 +99,16 @@ impl<'a> Controls<'a> {
     }
 
     fn typography(&mut self, ui: &mut Ui, compact: bool) {
-        ui.horizontal_wrapped(|ui| {
+        let mut fields = |ui: &mut Ui| {
             if let Some(info) = self.infos.iter().find(|p| p.name == "font") {
                 let font = self.get("font").text().to_owned();
                 let mut picked = None;
                 egui::ComboBox::from_id_salt("font-family")
-                    .width((ui.available_width() * 0.49).clamp(80.0, 185.0))
+                    .width(if compact {
+                        148.0
+                    } else {
+                        (ui.available_width() * 0.49).clamp(80.0, 185.0)
+                    })
                     .selected_text(&font)
                     .truncate()
                     .show_ui(ui, |ui| {
@@ -135,9 +139,18 @@ impl<'a> Controls<'a> {
             }
             self.color(ui, "textColor", tr("Text Color"));
             if compact {
+                ui.separator();
                 self.emphasis(ui, 24.0);
             }
-        });
+        };
+        if compact {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().interact_size.y = 28.0;
+                fields(ui);
+            });
+        } else {
+            ui.horizontal_wrapped(fields);
+        }
         if !compact {
             ui.horizontal(|ui| {
                 let width =
@@ -589,7 +602,14 @@ pub(crate) fn inspector(
         // The manual recovery clears the crop that can still cut out the generator.
         clip.pan_crop = Default::default();
         let mut edit = Controls::new(&next, &context.params, place, clip.media);
-        for name in ["anchor", "scale", "boxWidth", "location", "autoFit"] {
+        for name in [
+            "anchor",
+            "scale",
+            "boxWidth",
+            "location",
+            "autoFit",
+            "freePosition",
+        ] {
             edit.fx.params.remove(name);
         }
         for (name, val) in [("anchor", 4.0), ("scale", 1.0), ("boxWidth", 0.0)] {
@@ -619,6 +639,7 @@ pub(crate) fn inspector(
             }
         });
     } else if next != *fx {
+        ui.ctx().request_repaint();
         app.modify_merged(ui.id().with(("title-text", media.0)), |p| {
             write(p, media, next)
         });
@@ -669,6 +690,7 @@ fn transform_controls(ui: &mut Ui, edit: &mut Controls<'_>, transform: &mut Tran
                 .changed();
         }
         if changed {
+            edit.set_flag("freePosition", true);
             edit.set(
                 "location",
                 Value::Num(vec![xy[0] / size[0] + 0.5, xy[1] / size[1] + 0.5]),
@@ -691,6 +713,7 @@ pub(crate) struct Advanced {
     zoom: f32,
     preset: Option<String>,
     picture: Option<TitlePicture>,
+    picture_job: Option<TitleRender>,
 }
 
 impl std::fmt::Debug for Advanced {
@@ -708,10 +731,23 @@ enum AdvancedTab {
     Animation,
 }
 
-struct TitlePicture {
+#[derive(PartialEq)]
+struct TitleFrame {
     fx: PluginFx,
-    frame: i64,
-    texture: egui::TextureHandle,
+    time: Tick,
+    size: (u32, u32),
+    duration: Tick,
+    rate: bv_core::FrameRate,
+}
+
+struct TitlePicture {
+    frame: TitleFrame,
+    texture: Option<egui::TextureHandle>,
+}
+
+struct TitleRender {
+    frame: TitleFrame,
+    result: std::sync::mpsc::Receiver<Option<egui::ColorImage>>,
 }
 
 impl Advanced {
@@ -731,6 +767,7 @@ impl Advanced {
             zoom: 1.0,
             preset: None,
             picture: None,
+            picture_job: None,
         })
     }
 
@@ -808,23 +845,16 @@ impl Advanced {
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
                             ui.set_width(right);
-                            ui.horizontal_wrapped(|ui| {
-                                ui.selectable_value(
-                                    &mut self.tab,
-                                    AdvancedTab::Preset,
-                                    tr("Presets"),
-                                );
-                                ui.selectable_value(
-                                    &mut self.tab,
-                                    AdvancedTab::Customize,
-                                    tr("Customize"),
-                                );
-                                ui.selectable_value(
-                                    &mut self.tab,
-                                    AdvancedTab::Animation,
-                                    tr("Animation"),
-                                );
-                            });
+                            self.tab = crate::tabs::properties::tab_row(
+                                ui,
+                                "advanced-title-tabs",
+                                &[
+                                    (AdvancedTab::Preset, tr("Presets")),
+                                    (AdvancedTab::Customize, tr("Customize")),
+                                    (AdvancedTab::Animation, tr("Animation")),
+                                ],
+                                self.tab,
+                            );
                             ui.separator();
                             egui::ScrollArea::vertical()
                                 .id_salt("advanced-text-scroll")
@@ -912,7 +942,11 @@ impl Advanced {
                         },
                     );
                 });
-                self.fx = edit.finish(ui, &self.fx);
+                let next = edit.finish(ui, &self.fx);
+                if next != self.fx {
+                    self.fx = next;
+                    ui.ctx().request_repaint();
+                }
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button(tr("Save as custom")).clicked() {
@@ -1099,40 +1133,80 @@ impl Advanced {
         );
         let p = ui.painter_at(area);
         p.rect_filled(area, 5.0, Color32::from_gray(17));
-        let frame = if fx.params.values().any(|p| !p.keys.is_empty()) {
-            place.rate.frame_at(place.time)
-        } else {
-            0
+        let frame = TitleFrame {
+            fx: fx.clone(),
+            time: if fx.params.values().any(|p| !p.keys.is_empty()) {
+                place.rate.snap_floor(place.time)
+            } else {
+                Tick::ZERO
+            },
+            size: place.size,
+            duration: place.duration,
+            rate: place.rate,
         };
-        if self
-            .picture
-            .as_ref()
-            .is_none_or(|pic| pic.frame != frame || pic.fx != *fx)
-        {
-            self.picture = render_title(fx, place).map(|image| TitlePicture {
-                fx: fx.clone(),
-                frame,
-                texture: ui.ctx().load_texture(
-                    "advanced-title-picture",
-                    image,
-                    egui::TextureOptions::LINEAR,
-                ),
-            });
+        if let Some(job) = &self.picture_job {
+            use std::sync::mpsc::TryRecvError;
+            let image = match job.result.try_recv() {
+                Ok(image) => Some(image),
+                Err(TryRecvError::Disconnected) => Some(None),
+                Err(TryRecvError::Empty) => None,
+            };
+            if let Some(image) = image {
+                let job = self.picture_job.take().unwrap();
+                let texture = image.map(|image| {
+                    let options = egui::TextureOptions::LINEAR;
+                    if let Some(mut texture) = self.picture.take().and_then(|pic| pic.texture) {
+                        texture.set(image, options);
+                        texture
+                    } else {
+                        ui.ctx()
+                            .load_texture("advanced-title-picture", image, options)
+                    }
+                });
+                self.picture = Some(TitlePicture {
+                    frame: job.frame,
+                    texture,
+                });
+            }
         }
-        if let Some(pic) = &self.picture {
-            let size = pic.texture.size_vec2();
-            let fit = (area.width() / size.x).min(area.height() / size.y);
+        if self.picture_job.is_none() && self.picture.as_ref().is_none_or(|pic| pic.frame != frame)
+        {
+            let (tx, result) = std::sync::mpsc::channel();
+            let input = frame.fx.clone();
+            let mut place = *place;
+            place.time = frame.time;
+            let ctx = ui.ctx().clone();
+            if std::thread::Builder::new()
+                .name("noni-title-preview".into())
+                .stack_size(bv_ofx::PLUGIN_STACK)
+                .spawn(move || {
+                    let _ = tx.send(render_title(&input, &place));
+                    ctx.request_repaint();
+                })
+                .is_ok()
+            {
+                self.picture_job = Some(TitleRender { frame, result });
+            }
+        }
+        let aspect = place.size.0.max(1) as f32 / place.size.1.max(1) as f32;
+        let height = (area.width() / aspect).min(area.height());
+        let canvas =
+            egui::Rect::from_center_size(area.center(), vec2(height * aspect, height) * self.zoom);
+        p.rect_filled(canvas, 0.0, Color32::BLACK);
+        if let Some(texture) = self.picture.as_ref().and_then(|pic| pic.texture.as_ref()) {
             let mut draft = clip.clone();
             draft.animation_in = self.enter;
             draft.animation_out = self.exit;
-            let (slide, opacity) = bv_timeline::scene::clip_animation(&draft, clip.start + self.at);
-            let rect = egui::Rect::from_center_size(area.center(), size * fit * self.zoom);
-            p.rect_filled(rect, 0.0, Color32::BLACK);
-            p.image(
-                pic.texture.id(),
-                rect.translate(vec2(0.0, slide as f32 * rect.height())),
+            let pose = bv_timeline::scene::clip_animation(&draft, clip.start + self.at);
+            p.with_clip_rect(canvas).image(
+                texture.id(),
+                egui::Rect::from_center_size(
+                    canvas.center()
+                        + vec2(pose.offset[0] as f32, pose.offset[1] as f32) * canvas.size(),
+                    canvas.size() * pose.scale as f32,
+                ),
                 egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-                Color32::WHITE.gamma_multiply(opacity.clamp(0.0, 1.0)),
+                Color32::WHITE.gamma_multiply(pose.opacity.clamp(0.0, 1.0)),
             );
         }
     }
@@ -1206,6 +1280,69 @@ fn render_title(fx: &PluginFx, place: &FxPlace) -> Option<egui::ColorImage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn title_overlay_drags_horizontally_to_the_canvas_edge() {
+        use bv_ofx::interact::{Mark, PenAction, View};
+        let mut app = BananaApp::new(egui::Context::default());
+        app.add_generator(
+            crate::tabs::generators::titles_generator().unwrap(),
+            Tick::ZERO,
+            None,
+        );
+        let clip = app.project().clips().next().unwrap().1;
+        let fx = title(app.project().media(clip.media).unwrap()).unwrap();
+        let place = crate::ofx::generator_place(app.project(), clip.id, Tick::ZERO).unwrap();
+        let plugin = bv_ofx::registry().plugin(&fx.id).unwrap();
+        let size = (f64::from(place.size.0), f64::from(place.size.1));
+        let instance = bv_ofx::Instance::new(
+            &plugin,
+            Context::Generator,
+            &bv_ofx::Setup {
+                size,
+                interactive: true,
+                frame_rate: place.rate.as_f64(),
+                duration: bv_engine::plugins::frames(place.duration, place.rate),
+                pixel_aspect: 1.0,
+            },
+        )
+        .unwrap();
+        bv_engine::plugins::sync_values(&instance, &fx.params, place.rate);
+        let view = View {
+            time: 0.0,
+            render_scale: 1.0,
+            pixel_scale: [1.0, 1.0],
+            background: [0.0; 3],
+            viewport: [place.size.0 as i32, place.size.1 as i32],
+            to_frame: None,
+        };
+        let mark = || {
+            instance
+                .overlay_draw(&view)
+                .into_iter()
+                .find_map(|mark| match mark {
+                    Mark::Strip {
+                        points,
+                        closed: true,
+                        ..
+                    } if points.len() == 4 => Some(points),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let points = mark();
+        let center = [
+            (points[0][0] + points[2][0]) * 0.5,
+            (points[0][1] + points[2][1]) * 0.5,
+        ];
+        let send = |action, p| instance.overlay_pen(action, &view, p, [0, 0], 1.0);
+        assert!(send(PenAction::Down, center).taken);
+        let edge = [0.0, center[1]];
+        let moved = send(PenAction::Motion, edge);
+        assert!(moved.changed.iter().any(|name| name == "freePosition"));
+        assert!(mark()[0][0] < 0.0);
+        assert!(send(PenAction::Up, edge).taken);
+    }
 
     #[test]
     fn title_preview_and_text_panels_use_the_same_generator() {

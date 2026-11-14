@@ -193,10 +193,10 @@ pub(super) fn clip_handles(
             [key] => clip.start + key.at,
             _ => time,
         };
-        let (slide, _) = bv_timeline::scene::clip_animation(clip, time);
-        Some((id, place, key, edit_at, slide))
+        let pose = bv_timeline::scene::clip_animation(clip, time);
+        Some((id, place, key, edit_at, pose))
     });
-    let Some((id, place, key, edit_at, slide)) = target else {
+    let Some((id, place, key, edit_at, pose)) = target else {
         ui.data_mut(|data| data.remove::<Drag>(state));
         return;
     };
@@ -205,7 +205,7 @@ pub(super) fn clip_handles(
         active = None;
     }
     let initial = pancrop::place(&key, &place);
-    let Some(mut corners) = outline(&initial, &place, rotation, frame, slide)
+    let Some(mut corners) = outline(&initial, &place, rotation, frame, &pose)
         .or_else(|| active.map(|drag| drag.corners))
     else {
         ui.data_mut(|data| data.remove::<Drag>(state));
@@ -231,7 +231,7 @@ pub(super) fn clip_handles(
                 rotation,
                 frame,
                 place.media.map(|v| v * 0.5),
-                slide,
+                &pose,
             ),
             original: key,
             transform: pancrop::transform_from_key(&key, &place),
@@ -307,7 +307,8 @@ pub(super) fn clip_handles(
                 active = Some(drag);
             }
         }
-        let normalized = from_output_delta(delta / frame.size(), rotation) / place.adjust as f32;
+        let normalized =
+            from_output_delta(delta / frame.size(), rotation) / (place.adjust * pose.scale) as f32;
         tf.x += normalized.x;
         tf.y -= normalized.y;
         let next = if tf == drag.transform {
@@ -326,7 +327,7 @@ pub(super) fn clip_handles(
             &place,
             rotation,
             frame,
-            slide,
+            &pose,
         ) {
             corners = next;
         }
@@ -411,7 +412,7 @@ fn outline(
     place: &PlaceIn,
     rotation: OutputRotation,
     frame: Rect,
-    slide: f64,
+    pose: &bv_timeline::scene::AnimationPose,
 ) -> Option<[Pos2; 4]> {
     if placement.empty {
         return None;
@@ -422,7 +423,7 @@ fn outline(
         return None;
     }
     let corners = [[l, t], [r, t], [r, b], [l, b]]
-        .map(|point| source_point(placement, place, rotation, frame, point, slide));
+        .map(|point| source_point(placement, place, rotation, frame, point, pose));
     (corners.iter().all(|p| p.x.is_finite() && p.y.is_finite())
         && corners[0].distance_sq(corners[2]) >= 1.0)
         .then_some(corners)
@@ -434,12 +435,12 @@ fn source_point(
     rotation: OutputRotation,
     frame: Rect,
     point: [f64; 2],
-    slide: f64,
+    pose: &bv_timeline::scene::AnimationPose,
 ) -> Pos2 {
     let [x, y] = placement.on_frame_point(point);
     let (u, v) = (
-        (x / place.frame[0]) as f32,
-        (y / place.frame[1] + slide) as f32,
+        ((x / place.frame[0] - 0.5) * pose.scale + 0.5 + pose.offset[0]) as f32,
+        ((y / place.frame[1] - 0.5) * pose.scale + 0.5 + pose.offset[1]) as f32,
     );
     let (u, v) = match rotation {
         OutputRotation::None => (u, v),
@@ -503,8 +504,8 @@ mod tests {
         let frame = Rect::from_center_size(area.center(), vec2(400.0, 225.0));
         let initial = pancrop::place(&original, &place);
         let output = app.project().settings.rotation;
-        let (slide, _) = bv_timeline::scene::clip_animation(&clip, at);
-        let corners = outline(&initial, &place, output, frame, slide).expect("clip outline");
+        let pose = bv_timeline::scene::clip_animation(&clip, at);
+        let corners = outline(&initial, &place, output, frame, &pose).expect("clip outline");
         let (_, start) = rotate_handle(&corners, area).expect("rotate handle");
         let center = source_point(
             &initial,
@@ -512,7 +513,7 @@ mod tests {
             output,
             frame,
             place.media.map(|v| v * 0.5),
-            slide,
+            &pose,
         );
         let offset = start - center;
         let end = center + vec2(-offset.y, offset.x);

@@ -4751,6 +4751,59 @@ fn rate_badge(painter: &egui::Painter, right_bottom: Pos2, rate: f64) {
     painter.galley(r.min + vec2(4.0, 2.0), galley, ON_EVENT);
 }
 
+fn visual_key_times(clip: &bv_timeline::Clip, media: Option<&bv_timeline::MediaInfo>) -> Vec<Tick> {
+    let mut times = Vec::new();
+    // A lone framing or mask point stores the static configuration.
+    if clip.pan_crop.keys.len() > 1 {
+        times.extend(clip.pan_crop.keys.iter().map(|key| clip.start + key.at));
+    }
+    if let Some(mask) = &clip.mask
+        && mask.keys.len() > 1
+    {
+        times.extend(mask.keys.iter().map(|key| clip.start + key.at));
+    }
+    for fx in clip
+        .effects
+        .iter()
+        .filter_map(|effect| effect.plugin.as_deref())
+    {
+        times.extend(
+            fx.params
+                .values()
+                .flat_map(|param| &param.keys)
+                .map(|key| clip.start + key.at),
+        );
+    }
+    if let Some(fx) = clip.transition_fx.as_deref() {
+        times.extend(
+            fx.params
+                .values()
+                .flat_map(|param| &param.keys)
+                .map(|key| clip.start + key.at),
+        );
+    }
+    if let Some(media) = media {
+        if let MediaSource::Generated(bv_timeline::Generator::Plugin(fx)) = &media.source {
+            for key in fx.params.values().flat_map(|param| &param.keys) {
+                times.extend(clip.media_points(key.at, media.duration));
+            }
+        }
+        for fx in media
+            .effects
+            .iter()
+            .filter_map(|effect| effect.plugin.as_deref())
+        {
+            for key in fx.params.values().flat_map(|param| &param.keys) {
+                times.extend(clip.media_points(key.at, media.duration));
+            }
+        }
+    }
+    times.retain(|at| *at >= clip.start && *at <= clip.end());
+    times.sort_unstable();
+    times.dedup();
+    times
+}
+
 pub(crate) fn paint(
     view: &TimelineView,
     ui: &egui::Ui,
@@ -5079,6 +5132,23 @@ pub(crate) fn paint(
                         FontId::proportional(11.0),
                         ON_EVENT,
                     );
+                }
+            }
+
+            if row.kind == TrackKind::Video && body.height() >= 9.0 && r.width() >= 4.0 {
+                let y = body.bottom() - 5.5;
+                for at in visual_key_times(clip, info) {
+                    let x = view.x_of(l, at);
+                    cp.add(egui::Shape::convex_polygon(
+                        vec![
+                            pos2(x, y - 4.0),
+                            pos2(x + 4.0, y),
+                            pos2(x, y + 4.0),
+                            pos2(x - 4.0, y),
+                        ],
+                        Color32::WHITE,
+                        Stroke::new(1.0, Color32::from_gray(25)),
+                    ));
                 }
             }
 
@@ -7113,5 +7183,46 @@ mod wheel_tests {
             (needle_x(&h) - middle).abs() < 1.5,
             "the needle in the middle"
         );
+    }
+}
+
+#[cfg(test)]
+mod keyframe_marker_tests {
+    use super::*;
+
+    #[test]
+    fn generator_and_event_keys_land_on_the_clip_and_share_a_diamond() {
+        use bv_timeline::{
+            Clip, Generator, KeyCurve, MediaId, PluginKey, PluginParam, PluginValue,
+        };
+        let value = PluginValue::Num(vec![1.0]);
+        let sec = Tick::from_seconds;
+        let fx = bv_timeline::PluginFx {
+            id: bv_engine::plugins::TITLES_ID.into(),
+            version: [1, 0],
+            name: String::new(),
+            params: [(
+                "scale".into(),
+                PluginParam {
+                    value: value.clone(),
+                    keys: [sec(2), sec(9)]
+                        .map(|at| PluginKey::new(at, value.clone(), KeyCurve::Linear))
+                        .to_vec(),
+                },
+            )]
+            .into(),
+        };
+        let media = bv_timeline::MediaInfo::generated(
+            Generator::Plugin(Box::new(fx.clone())),
+            &Default::default(),
+        );
+        let mut clip = Clip::new(ClipId(1), MediaId(1), sec(5), sec(3));
+        clip.source_in = sec(1);
+        let mut event = fx;
+        event.params.get_mut("scale").unwrap().keys =
+            vec![PluginKey::new(sec(1), value, KeyCurve::Linear)];
+        clip.effects.push(bv_timeline::Effect::plugin(event));
+        assert_eq!(visual_key_times(&clip, Some(&media)), vec![sec(6)]);
+        assert_eq!(visual_key_times(&clip, None), vec![sec(6)]);
     }
 }

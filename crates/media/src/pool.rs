@@ -743,6 +743,13 @@ impl VideoPool {
         self.frame_scaled(info, t, u32::MAX, u32::MAX)
     }
 
+    /// Drops readers and errors for a changed source, keeping other media open.
+    pub fn invalidate(&mut self, media: MediaId) {
+        self.slots.retain(|slot| slot.media != media);
+        self.prepared.retain(|frame| frame.media != media);
+        self.errors.remove(&media);
+    }
+
     /// Forgets readers and errors (after a media is reconnected, say).
     pub fn clear(&mut self) {
         self.prepared.clear();

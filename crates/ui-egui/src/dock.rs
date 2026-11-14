@@ -763,6 +763,28 @@ fn master_width(dock: &DockState<Tab>) -> Option<(f32, f32)> {
     (master > 0.0).then_some((master, whole))
 }
 
+/// Only horizontal splits on the docked Properties pane's path carry its limit.
+fn limit_properties_width(dock: &mut DockState<Tab>, minimum: f32, separator: f32) {
+    let Some((mut child, _)) = dock.find_main_surface_tab(&Tab::Properties) else {
+        return;
+    };
+    let tree = dock.main_surface_mut();
+    while let Some(parent) = child.parent() {
+        if let Node::Horizontal(split) = &mut tree[parent] {
+            let width = split.rect.width();
+            if width.is_finite() && width > 0.0 {
+                let part = ((minimum + separator * 0.5) / width).min(0.90);
+                if child == parent.left() {
+                    split.fraction = split.fraction.max(part);
+                } else {
+                    split.fraction = split.fraction.min(1.0 - part);
+                }
+            }
+        }
+        child = parent;
+    }
+}
+
 pub fn show(ui: &mut Ui, dock: &mut DockState<Tab>, app: &mut BananaApp) {
     let prefs = &app.settings.prefs;
     // Options › Preferences › Display: the tabs below the windows unless
@@ -775,7 +797,10 @@ pub fn show(ui: &mut Ui, dock: &mut DockState<Tab>, app: &mut BananaApp) {
     // Two strips side by side with the Preview fader.
     let strips = if app.settings.preview_fader { 2.0 } else { 1.0 };
     let target = app.master_width.unwrap_or(MASTER_WIDTH) * strips;
-    let before = keep_master_width(dock, target, style.separator.width);
+    let separator = style.separator.width;
+    let minimum = tabs::properties::minimum_width(ui);
+    let before = keep_master_width(dock, target, separator);
+    limit_properties_width(dock, minimum, separator);
     DockArea::new(dock)
         .style(style)
         .show_close_buttons(true)
@@ -783,6 +808,7 @@ pub fn show(ui: &mut Ui, dock: &mut DockState<Tab>, app: &mut BananaApp) {
         .show_leaf_collapse_buttons(false)
         .floating_tabs_dock(floating_dock)
         .show_inside(ui, &mut Viewer { app });
+    limit_properties_width(dock, minimum, separator);
     // Its edge dragged (not the main window resized): the new width stays.
     if let (Some((now, whole)), Some(before)) = (master_width(dock), before)
         && (whole - before).abs() < 0.5

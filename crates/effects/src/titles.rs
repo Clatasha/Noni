@@ -41,6 +41,7 @@ const SIZE: &CStr = c"size";
 const BOLD: &CStr = c"bold";
 const UNDERLINE: &CStr = c"underline";
 const WRAP: &CStr = c"boxWidth";
+const FREE_POSITION: &CStr = c"freePosition";
 const AUTO_FIT: &CStr = c"autoFit";
 const ITALIC: &CStr = c"italic";
 const JUSTIFY: &CStr = c"justification";
@@ -98,6 +99,7 @@ pub(crate) struct Settings {
     pub italic: bool,
     pub underline: bool,
     pub auto_fit: bool,
+    pub free_position: bool,
     /// Box width as a fraction of the source frame. Zero uses natural width.
     pub wrap_width: f64,
     /// 0 left, 1 center, 2 right, 3 justify.
@@ -240,6 +242,7 @@ impl Default for Settings {
             justify: 1,
             underline: false,
             auto_fit: false,
+            free_position: false,
             wrap_width: 0.0,
             color: [1.0, 1.0, 1.0, 1.0],
             scale: 1.0,
@@ -272,6 +275,7 @@ impl Settings {
             justify: p(JUSTIFY).int_at(time),
             underline: p(UNDERLINE).int_at(time) != 0,
             auto_fit: p(AUTO_FIT).int_at(time) != 0,
+            free_position: p(FREE_POSITION).int_at(time) != 0,
             wrap_width: p(WRAP).f64_at(time),
             color: p(COLOR).rgba_at(time),
             scale: p(SCALE).f64_at(time),
@@ -611,6 +615,11 @@ fn layout_styled(
         let high = [resize(ink[2] + spread, 0), resize(ink[3] + spread, 1)];
         let canvas = [w, h];
         let shift: [f64; 2] = std::array::from_fn(|i| {
+            // A title at its default position fits inside the safe margin.
+            // Once positioned by the user, that axis follows the chosen anchor.
+            if s.free_position {
+                return 0.0;
+            }
             let first = padding - low[i];
             let last = canvas[i] - padding - high[i];
             0.0f64.clamp(first.min(last), last.max(first))
@@ -1133,6 +1142,9 @@ fn describe_in_context(fx: Fx) {
         bv_ofx_sys::extensions::kBananaVParamPropRichText,
         c"styles font size bold italic",
     );
+    let position = fx.define_param(kOfxParamTypeBoolean, FREE_POSITION, c"Manual Position");
+    position.set_int(kOfxParamPropSecret, 1);
+    position.set_int(kOfxParamPropAnimates, 0);
     let p = fx.define_param(kOfxParamTypeString, STYLES, c"Styles");
     p.set_str(kOfxParamPropDefault, c"");
     p.set_int(kOfxParamPropAnimates, 0);
@@ -1385,6 +1397,7 @@ enum Grab {
     Move([f64; 2]),
     Scale {
         scale: f64,
+        anchor: [f64; 2],
         reach: f64,
         width: f64,
     },
@@ -1395,20 +1408,21 @@ enum Grab {
     },
 }
 
+type TitleBox = ([[f64; 2]; 4], [f64; 2]);
+
 #[derive(Debug, Default)]
 struct OverlayState {
     grab: Option<Grab>,
     hover: bool,
+    geometry: Option<(Settings, [f64; 2], [f64; 2], TitleBox)>,
 }
 
-/// The box's corners and the anchor in canonical units (y up), at `time`.
-fn box_of(fx: Fx, time: f64) -> Option<([[f64; 2]; 4], [f64; 2])> {
-    let s = Settings::at(fx, time);
+/// The box's corners and the anchor in canonical units (y up).
+fn box_of(s: &Settings, origin: [f64; 2], frame: [f64; 2]) -> Option<TitleBox> {
     if s.text.trim().is_empty() {
         return None;
     }
-    let (origin, frame) = fx.frame();
-    let (_, l) = laid_out(&s, frame[0], frame[1])?;
+    let (_, l) = laid_out(s, frame[0], frame[1])?;
     let up = |p: [f64; 2]| [origin[0] + p[0], origin[1] + frame[1] - p[1]];
     let [x0, y0, x1, y1] = l.bounds;
     Some((
@@ -1456,8 +1470,69 @@ unsafe extern "C" fn overlay(
     let time = args.dbl(kOfxPropTime, 0);
     let ps: [f64; 2] = args.dbls(kOfxInteractPropPixelScale);
     let ps = ps.map(|v| if v.abs() > 1e-12 { v.abs() } else { 1.0 });
-    let Some((corners, anchor)) = box_of(fx, time) else {
-        return kOfxStatReplyDefault;
+    let pen: [f64; 2] = args.dbls(kOfxInteractPropPenPosition);
+    let (origin, frame) = fx.frame();
+    if is(action, kOfxInteractActionPenMotion)
+        && let Some(grab) = state.grab
+    {
+        return match grab {
+            Grab::Move(grip) => {
+                let to = [
+                    (pen[0] - grip[0] - origin[0]) / frame[0],
+                    (pen[1] - grip[1] - origin[1]) / frame[1],
+                ];
+                fx.param(LOCATION).set_xy(to);
+                fx.param(FREE_POSITION).set_int(1);
+                kOfxStatOK
+            }
+            Grab::Scale {
+                scale,
+                anchor,
+                reach,
+                width,
+            } => {
+                let now = (pen[0] - anchor[0]).hypot(pen[1] - anchor[1]);
+                let factor = now / reach;
+                fx.param(SCALE).set_f64((scale * factor).clamp(0.01, 100.0));
+                if width > 0.0 {
+                    fx.param(WRAP).set_f64((width * factor).clamp(0.05, 1.0));
+                }
+                kOfxStatOK
+            }
+            Grab::Width {
+                start,
+                width,
+                direction,
+            } => {
+                fx.param(WRAP)
+                    .set_f64(((width + (pen[0] - start) * direction) / frame[0]).clamp(0.05, 1.0));
+                kOfxStatOK
+            }
+        };
+    }
+    if is(action, kOfxInteractActionPenUp) {
+        return if state.grab.take().is_some() {
+            redraw(handle);
+            kOfxStatOK
+        } else {
+            kOfxStatReplyDefault
+        };
+    }
+    let settings = Settings::at(fx, time);
+    let (corners, anchor) = if let Some((previous, old_origin, old_frame, geometry)) =
+        &state.geometry
+        && *previous == settings
+        && *old_origin == origin
+        && *old_frame == frame
+    {
+        *geometry
+    } else {
+        let Some(geometry) = box_of(&settings, origin, frame) else {
+            state.geometry = None;
+            return kOfxStatReplyDefault;
+        };
+        state.geometry = Some((settings, origin, frame, geometry));
+        geometry
     };
     let reach = 7.0;
     let near = |p: [f64; 2], q: [f64; 2]| {
@@ -1500,17 +1575,16 @@ unsafe extern "C" fn overlay(
         }
         return kOfxStatOK;
     }
-    let pen: [f64; 2] = args.dbls(kOfxInteractPropPenPosition);
     let corner = corners.iter().any(|&c| near(pen, c));
     let side = sides.iter().position(|&c| near(pen, c));
     let inside = pen[0] >= lo[0] && pen[0] <= hi[0] && pen[1] >= lo[1] && pen[1] <= hi[1];
-    let (origin, frame) = fx.frame();
     if is(action, kOfxInteractActionPenDown) {
         if corner {
             let reach = (pen[0] - anchor[0]).hypot(pen[1] - anchor[1]).max(1e-6);
             let scale = fx.param(SCALE).f64_at(time);
             state.grab = Some(Grab::Scale {
                 scale,
+                anchor,
                 reach,
                 width: fx.param(WRAP).f64_at(time),
             });
@@ -1530,53 +1604,12 @@ unsafe extern "C" fn overlay(
         redraw(handle);
         kOfxStatOK
     } else if is(action, kOfxInteractActionPenMotion) {
-        match state.grab {
-            Some(Grab::Move(grip)) => {
-                let to = [
-                    (pen[0] - grip[0] - origin[0]) / frame[0],
-                    (pen[1] - grip[1] - origin[1]) / frame[1],
-                ];
-                fx.param(LOCATION).set_xy(to);
-                kOfxStatOK
-            }
-            Some(Grab::Scale {
-                scale,
-                reach,
-                width,
-            }) => {
-                let now = (pen[0] - anchor[0]).hypot(pen[1] - anchor[1]);
-                let factor = now / reach;
-                fx.param(SCALE).set_f64((scale * factor).clamp(0.01, 100.0));
-                if width > 0.0 {
-                    fx.param(WRAP).set_f64((width * factor).clamp(0.05, 1.0));
-                }
-                kOfxStatOK
-            }
-            Some(Grab::Width {
-                start,
-                width,
-                direction,
-            }) => {
-                fx.param(WRAP)
-                    .set_f64(((width + (pen[0] - start) * direction) / frame[0]).clamp(0.05, 1.0));
-                kOfxStatOK
-            }
-            None => {
-                let over = corner || side.is_some() || inside;
-                if over != state.hover {
-                    state.hover = over;
-                    redraw(handle);
-                }
-                kOfxStatReplyDefault
-            }
-        }
-    } else if is(action, kOfxInteractActionPenUp) {
-        if state.grab.take().is_some() {
+        let over = corner || side.is_some() || inside;
+        if over != state.hover {
+            state.hover = over;
             redraw(handle);
-            kOfxStatOK
-        } else {
-            kOfxStatReplyDefault
         }
+        kOfxStatReplyDefault
     } else {
         kOfxStatReplyDefault
     }
@@ -1726,6 +1759,22 @@ mod tests {
             assert!(l.ink[0] > 0.0 && l.ink[1] > 0.0);
             assert!(l.ink[2] < w && l.ink[3] < h);
         }
+    }
+
+    #[test]
+    fn manually_positioned_text_can_cross_the_canvas_edge_with_auto_fit() {
+        let Some(mut s) = settings() else { return };
+        s.text = "A title".into();
+        s.auto_fit = true;
+        s.location = [0.0, 0.5];
+        let font = Font::of(&s).unwrap();
+        let face = font.face().unwrap();
+        let fitted = layout(&s, &face, 1920.0, 1080.0);
+        s.free_position = true;
+        let moved = layout(&s, &face, 1920.0, 1080.0);
+        assert!(fitted.ink[0] > 0.0);
+        assert!(moved.ink[0] < 0.0);
+        assert_eq!(fitted.em, moved.em);
     }
 
     #[test]

@@ -517,6 +517,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             &mut state,
             &names,
             tr("Add to the selected events"),
+            1.0,
             |painter, rect, i, play| {
                 let p = play.map_or(0.45, chooser::progress);
                 match &presets[i] {

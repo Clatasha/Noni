@@ -1012,7 +1012,7 @@ fn event_layer<'a>(
     width: u32,
     height: u32,
 ) -> EventLayer<'a> {
-    let (slide, opacity) = clip_animation(clip, t);
+    let animation = clip_animation(clip, t);
     let source = project.media(clip.media).and_then(|info| {
         let time = media_time(clip, info, t)?;
         let par = info.video.map_or(1.0, |v| v.pixel_aspect.ratio())
@@ -1029,7 +1029,7 @@ fn event_layer<'a>(
         let min_size = info
             .video
             .map_or((u32::MAX, u32::MAX), |_| placement.size_needed());
-        placement.translate_y(slide * f64::from(height));
+        animation.place(&mut placement, [f64::from(width), f64::from(height)]);
         Some(MediaLayer {
             info,
             clip,
@@ -1055,13 +1055,26 @@ fn event_layer<'a>(
     EventLayer {
         clip: clip.id,
         source,
-        level: clip.level.clamp(0.0, 1.0) * opacity,
+        level: clip.level.clamp(0.0, 1.0) * animation.opacity,
         fade: None,
     }
 }
 
-/// The vertical offset in frame heights and the opacity multiplier.
-pub fn clip_animation(clip: &Clip, time: Tick) -> (f64, f32) {
+/// Offset in frame units, uniform scale around its center, and opacity.
+#[derive(Clone, Copy, Debug)]
+pub struct AnimationPose {
+    pub offset: [f64; 2],
+    pub scale: f64,
+    pub opacity: f32,
+}
+
+impl AnimationPose {
+    pub fn place(&self, placement: &mut crate::pancrop::Placement, frame: [f64; 2]) {
+        placement.animate(frame, self.offset, self.scale);
+    }
+}
+
+pub fn clip_animation(clip: &Clip, time: Tick) -> AnimationPose {
     let duration = clip.duration.as_seconds_f64().max(0.0);
     let length = |animation: crate::ClipAnimation| {
         if animation.preset == AnimationPreset::None {
@@ -1078,8 +1091,11 @@ pub fn clip_animation(clip: &Clip, time: Tick) -> (f64, f32) {
         1.0
     };
     let local = (time - clip.start).as_seconds_f64();
-    let mut slide = 0.0;
-    let mut opacity = 1.0;
+    let mut pose = AnimationPose {
+        offset: [0.0; 2],
+        scale: 1.0,
+        opacity: 1.0,
+    };
     for (animation, length, elapsed, direction) in [
         (clip.animation_in, enter * scale, local, 1.0),
         (clip.animation_out, exit * scale, duration - local, -1.0),
@@ -1091,12 +1107,36 @@ pub fn clip_animation(clip: &Clip, time: Tick) -> (f64, f32) {
         let eased = p * p * (3.0 - 2.0 * p);
         match animation.preset {
             AnimationPreset::None => {}
-            AnimationPreset::Fade => opacity *= eased as f32,
-            AnimationPreset::SlideUp => slide += direction * (1.0 - eased),
-            AnimationPreset::SlideDown => slide -= direction * (1.0 - eased),
+            AnimationPreset::Fade => pose.opacity *= eased as f32,
+            AnimationPreset::SlideUp => pose.offset[1] += direction * (1.0 - eased),
+            AnimationPreset::SlideDown => pose.offset[1] -= direction * (1.0 - eased),
+            AnimationPreset::SlideLeft => pose.offset[0] += direction * (1.0 - eased),
+            AnimationPreset::SlideRight => pose.offset[0] -= direction * (1.0 - eased),
+            AnimationPreset::ZoomIn => {
+                pose.scale *= if direction > 0.0 {
+                    0.15 + 0.85 * eased
+                } else {
+                    1.0 + 0.7 * (1.0 - eased)
+                };
+                pose.opacity *= eased as f32;
+            }
+            AnimationPreset::ZoomOut => {
+                pose.scale *= if direction > 0.0 {
+                    1.0 + 0.7 * (1.0 - eased)
+                } else {
+                    0.15 + 0.85 * eased
+                };
+                pose.opacity *= eased as f32;
+            }
+            AnimationPreset::Pop => {
+                let t = p - 1.0;
+                let back = 1.0 + 2.7 * t * t * t + 1.7 * t * t;
+                pose.scale *= 0.3 + 0.7 * back;
+                pose.opacity *= (p * 5.0).min(1.0) as f32;
+            }
         }
     }
-    (slide, opacity)
+    pose
 }
 
 /// Frame Blend (the event's Resample mode, else the project's): when an
@@ -1266,6 +1306,25 @@ impl<'a> FrameScene<'a> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn new_animation_poses_change_scale_and_horizontal_position() {
+        let sec = bv_core::Tick::from_seconds;
+        let mut clip = crate::Clip::new(crate::ClipId(1), crate::MediaId(1), sec(2), sec(5));
+        let pose = |clip: &crate::Clip, at| super::clip_animation(clip, sec(at));
+        clip.animation_in = crate::ClipAnimation {
+            preset: crate::AnimationPreset::SlideLeft,
+            duration: sec(1),
+        };
+        assert_eq!(pose(&clip, 2).offset, [1.0, 0.0]);
+        assert_eq!(pose(&clip, 3).offset, [0.0, 0.0]);
+        clip.animation_in.preset = crate::AnimationPreset::ZoomIn;
+        assert!(pose(&clip, 2).scale < 1.0);
+        assert_eq!(pose(&clip, 3).scale, 1.0);
+        clip.animation_in.preset = crate::AnimationPreset::Pop;
+        assert!(pose(&clip, 2).scale < 1.0);
+        assert_eq!(pose(&clip, 3).opacity, 1.0);
+    }
+
     use super::*;
     use crate::{CompositeMode, Generator, ProjectSettings, TrackKind};
 

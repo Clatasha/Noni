@@ -17,6 +17,8 @@ use crate::egui::{self, Color32, Rect, pos2};
 use crate::icons::{self, Icon};
 use crate::theme;
 
+pub(crate) const CREDIT_ROLL_ID: &str = "org.bananav.CreditRoll";
+
 /// A generator of the list, as VEGAS names them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Kind {
@@ -78,7 +80,7 @@ impl Kind {
         match self {
             Kind::Checkerboard => Some("org.bananav.Checkerboard"),
             Kind::ColorGradient => Some("org.bananav.ColorGradient"),
-            Kind::CreditRoll => Some("org.bananav.CreditRoll"),
+            Kind::CreditRoll => Some(CREDIT_ROLL_ID),
             Kind::NoiseTexture => Some("org.bananav.NoiseTexture"),
             Kind::SolidColor => Some("org.bananav.SolidColor"),
             Kind::TestPattern => Some("org.bananav.TestPattern"),
@@ -540,6 +542,11 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
             &mut state,
             &names,
             tr("Add at the cursor and edit"),
+            if matches!(kinds.get(i), Some(Kind::TitlesAndText | Kind::CreditRoll)) {
+                2.0
+            } else {
+                1.0
+            },
             |painter, rect, i, play| paint_preset(painter, rect, app, presets[i].1.as_ref(), play),
         );
         for cell in cells {
@@ -594,7 +601,7 @@ mod tests {
         }
         // A plug-in's generator is its kind's.
         let fx = PluginFx {
-            id: "org.bananav.CreditRoll".into(),
+            id: CREDIT_ROLL_ID.into(),
             version: [1, 0],
             name: "Credit Roll".into(),
             params: Default::default(),

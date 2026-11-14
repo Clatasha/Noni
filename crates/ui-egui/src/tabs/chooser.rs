@@ -726,6 +726,7 @@ pub(crate) fn preset_grid(
     state: &mut ChooserState,
     names: &[String],
     add_tip: &str,
+    thumb_scale: f32,
     mut paint: impl FnMut(&Painter, Rect, usize, Option<f32>),
 ) -> Vec<Cell> {
     let mut out = Vec::new();
@@ -739,13 +740,15 @@ pub(crate) fn preset_grid(
             .show(ui, |ui| {
                 // In columns, every cell under the one above, as VEGAS's.
                 let width = ui.available_width();
+                let thumb = THUMB * thumb_scale.min(((width - 2.0 * MARGIN.x) / THUMB.x).max(0.2));
+                let cell = vec2(thumb.x, thumb.y + CELL.y - THUMB.y);
                 let cols =
-                    (((width - 2.0 * MARGIN.x + GAP.x) / (CELL.x + GAP.x)).floor() as usize).max(1);
+                    (((width - 2.0 * MARGIN.x + GAP.x) / (cell.x + GAP.x)).floor() as usize).max(1);
                 let rows = names.len().div_ceil(cols);
                 let (grid, _) = ui.allocate_exact_size(
                     vec2(
                         width,
-                        2.0 * MARGIN.y + (rows as f32 * (CELL.y + GAP.y) - GAP.y).max(0.0),
+                        2.0 * MARGIN.y + (rows as f32 * (cell.y + GAP.y) - GAP.y).max(0.0),
                     ),
                     Sense::hover(),
                 );
@@ -756,10 +759,10 @@ pub(crate) fn preset_grid(
                             grid.min
                                 + MARGIN
                                 + vec2(
-                                    col as f32 * (CELL.x + GAP.x),
-                                    row as f32 * (CELL.y + GAP.y),
+                                    col as f32 * (cell.x + GAP.x),
+                                    row as f32 * (cell.y + GAP.y),
                                 ),
-                            CELL,
+                            cell,
                         );
                         let resp = ui.interact(
                             rect,
@@ -770,7 +773,7 @@ pub(crate) fn preset_grid(
                             egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name)
                         });
                         if ui.is_rect_visible(rect) {
-                            let pic = Rect::from_min_size(rect.min, THUMB);
+                            let pic = Rect::from_min_size(rect.min, thumb);
                             let painter = ui.painter_at(rect);
                             checkerboard(&painter, pic);
                             let play = resp.hovered().then(|| {
@@ -835,7 +838,7 @@ pub(crate) fn preset_grid(
                         if resp.clicked() || resp.drag_started() {
                             state.preset = Some(i);
                         }
-                        let plus = plus_rect(Rect::from_min_size(rect.min, THUMB));
+                        let plus = plus_rect(Rect::from_min_size(rect.min, thumb));
                         let on_plus = resp
                             .interact_pointer_pos()
                             .or_else(|| ui.input(|i| i.pointer.hover_pos()))
