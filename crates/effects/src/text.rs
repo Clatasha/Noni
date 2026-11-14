@@ -35,7 +35,7 @@ impl Coverage {
         Coverage {
             w,
             h,
-            acc: vec![0.0; w * h + 2],
+            acc: vec![0.0; (w + 1) * h],
         }
     }
 
@@ -180,42 +180,60 @@ impl Coverage {
         let first = y0.max(0.0) as usize;
         let last = (y1.ceil().max(0.0) as usize).min(self.h);
         for y in first..last {
-            let row = y * self.w;
+            let row = y * (self.w + 1);
             let dy = (y as f64 + 1.0).min(y1) - (y as f64).max(y0);
             let xnext = x + dxdy * dy;
-            let d = (dy * dir) as f32;
+            let d = dy * dir;
             let (a, b) = if x < xnext { (x, xnext) } else { (xnext, x) };
-            let a = a.clamp(0.0, w - 1e-6);
-            let b = b.clamp(0.0, w - 1e-6);
-            let fa = a.floor();
-            let ia = fa as usize;
-            let cb = b.ceil();
-            let ib = cb as usize;
-            if ib <= ia + 1 {
-                let xm = (0.5 * (a + b) - fa) as f32;
-                self.acc[row + ia] += d - d * xm;
-                self.acc[row + ia + 1] += d * xm;
-            } else {
-                let s = 1.0 / (b - a);
-                let fx = a - fa;
-                let a0 = 0.5 * s * (1.0 - fx) * (1.0 - fx);
-                let fx1 = b - cb + 1.0;
-                let am = 0.5 * s * fx1 * fx1;
-                self.acc[row + ia] += d * a0 as f32;
-                if ib == ia + 2 {
-                    self.acc[row + ia + 1] += d * (1.0 - a0 - am) as f32;
+            // Keep the full slope while clipping. Clamping both endpoints
+            // alone would redistribute the offscreen part onto visible pixels.
+            if b <= 0.0 {
+                self.acc[row] += d as f32;
+            } else if a < w {
+                if a >= 0.0 && b <= w {
+                    self.row_span(row, a, b, d as f32);
                 } else {
-                    let a1 = s * (1.5 - fx);
-                    self.acc[row + ia + 1] += d * (a1 - a0) as f32;
-                    for xi in ia + 2..ib - 1 {
-                        self.acc[row + xi] += d * s as f32;
+                    let width = b - a;
+                    if a < 0.0 {
+                        self.acc[row] += (d * (-a / width)) as f32;
                     }
-                    let a2 = a1 + (ib - ia - 3) as f64 * s;
-                    self.acc[row + ib - 1] += d * (1.0 - a2 - am) as f32;
+                    let (left, right) = (a.max(0.0), b.min(w));
+                    self.row_span(row, left, right, (d * ((right - left) / width)) as f32);
                 }
-                self.acc[row + ib] += d * am as f32;
             }
             x = xnext;
+        }
+    }
+
+    /// Accumulate one span, with a spare cell at the right edge of each row.
+    fn row_span(&mut self, row: usize, a: f64, b: f64, d: f32) {
+        let fa = a.floor();
+        let ia = fa as usize;
+        let cb = b.ceil();
+        let ib = cb as usize;
+        if ib <= ia + 1 {
+            let xm = (0.5 * (a + b) - fa) as f32;
+            self.acc[row + ia] += d - d * xm;
+            self.acc[row + ia + 1] += d * xm;
+        } else {
+            let s = 1.0 / (b - a);
+            let fx = a - fa;
+            let a0 = 0.5 * s * (1.0 - fx) * (1.0 - fx);
+            let fx1 = b - cb + 1.0;
+            let am = 0.5 * s * fx1 * fx1;
+            self.acc[row + ia] += d * a0 as f32;
+            if ib == ia + 2 {
+                self.acc[row + ia + 1] += d * (1.0 - a0 - am) as f32;
+            } else {
+                let a1 = s * (1.5 - fx);
+                self.acc[row + ia + 1] += d * (a1 - a0) as f32;
+                for xi in ia + 2..ib - 1 {
+                    self.acc[row + xi] += d * s as f32;
+                }
+                let a2 = a1 + (ib - ia - 3) as f64 * s;
+                self.acc[row + ib - 1] += d * (1.0 - a2 - am) as f32;
+            }
+            self.acc[row + ib] += d * am as f32;
         }
     }
 
@@ -225,7 +243,7 @@ impl Coverage {
         for y in 0..self.h {
             let mut sum = 0.0f32;
             for x in 0..self.w {
-                sum += self.acc[y * self.w + x];
+                sum += self.acc[y * (self.w + 1) + x];
                 out[y * self.w + x] = sum.abs().min(1.0);
             }
         }
@@ -236,6 +254,30 @@ impl Coverage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clipped_outlines_match_the_same_pixels_in_a_wider_raster() {
+        let mut full = Coverage::new(24, 12);
+        let mut left = Coverage::new(8, 12);
+        let mut right = Coverage::new(8, 12);
+        let path = [[-1.5, 1.5], [15.5, 5.25], [7.25, 10.5], [3.5, 5.75]];
+        for i in 0..path.len() {
+            let (a, b) = (path[i], path[(i + 1) % path.len()]);
+            let shift = |[x, y]: [f64; 2]| [x - 5.0, y];
+            full.segment(a, b);
+            left.segment(a, b);
+            right.segment(shift(a), shift(b));
+        }
+        let full = full.finish();
+        for (i, (l, r)) in left.finish().into_iter().zip(right.finish()).enumerate() {
+            let (x, y) = (i % 8, i / 8);
+            assert!((l - full[y * 24 + x]).abs() < 1e-5, "right edge at {x},{y}");
+            assert!(
+                (r - full[y * 24 + x + 5]).abs() < 1e-5,
+                "both edges at {x},{y}"
+            );
+        }
+    }
 
     #[test]
     fn a_square_covers_its_pixels_and_halves_at_its_edges() {

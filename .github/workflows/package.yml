@@ -23,6 +23,7 @@ on:
   # One-time rebuild request: project settings and title preview refinements and catalog ordering.
   # One-time rebuild request: Noni file extensions and export branding.
   # One-time rebuild request: coastal welcome banner.
+  # One-time rebuild request: title clipping at the frame edge.
   push:
     branches: [noni-branding]
     paths:
