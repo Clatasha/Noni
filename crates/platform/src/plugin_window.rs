@@ -160,7 +160,7 @@ mod imp {
     fn class() -> &'static [u16] {
         static CLASS: OnceLock<Vec<u16>> = OnceLock::new();
         CLASS.get_or_init(|| {
-            let name = wide("BananaVPluginWindow");
+            let name = wide("NoniPluginWindow");
             // SAFETY: a class description whose strings outlive the call
             // (the name is kept in the static).
             unsafe {

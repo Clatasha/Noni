@@ -313,7 +313,7 @@ pub fn to_recycle_bin(path: &std::path::Path) -> std::io::Result<()> {
 /// Whether `dir` takes new files, or why not.
 pub fn try_write(dir: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    let probe = dir.join(format!(".bananav-write-{}.tmp", std::process::id()));
+    let probe = dir.join(format!(".noni-write-{}.tmp", std::process::id()));
     std::fs::File::create(&probe)?;
     let _ = std::fs::remove_file(&probe);
     Ok(())
@@ -1006,7 +1006,7 @@ mod imp {
     pub fn unblock_input(_windows: &[isize]) {}
 
     /// The desktop entry that opens BananaV's files.
-    const DESKTOP: &str = "bananav.desktop";
+    const DESKTOP: &str = "noni.desktop";
 
     /// The type of `.ext` files: BananaV's own.
     fn mime_type(ext: &str) -> String {
@@ -1185,7 +1185,7 @@ mod imp {
         std::fs::create_dir_all(&apps).map_err(err)?;
         let program = launcher().ok_or("this program's path is unknown")?;
         let entry = format!(
-            "[Desktop Entry]\nType=Application\nName=BananaV\nComment={description}\n\
+            "[Desktop Entry]\nType=Application\nName=Noni Video Editor\nComment={description}\n\
              Exec={} %f\nTerminal=false\nCategories=AudioVideo;Video;AudioVideoEditing;\n\
              MimeType={mime};\n",
             exec_arg(&program)

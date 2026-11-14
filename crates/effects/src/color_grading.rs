@@ -623,7 +623,7 @@ pub fn cube(values: &[(String, crate::accel::Value)], size: usize) -> String {
     let size = size.clamp(2, 129);
     let grade = Settings::of(Values(values)).grade();
     let mut out = String::with_capacity(size * size * size * 30 + 100);
-    out.push_str("TITLE \"BananaV Color Grading\"\n");
+    out.push_str("TITLE \"Noni Color Grading\"\n");
     out.push_str(&format!("LUT_3D_SIZE {size}\n"));
     out.push_str("DOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n");
     let step = 1.0 / (size - 1) as f32;

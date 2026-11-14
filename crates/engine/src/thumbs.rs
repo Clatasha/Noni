@@ -424,9 +424,9 @@ impl Thumbs {
 }
 
 /// BananaV's peak files: a media file's waveform kept next to it
-/// (`interview.wav.bvpk`), so that it shows at once the next time (Options ›
-/// Preferences › General: "Do not create .bvpk files to store peak data",
-/// "Hide new .bvpk files").
+/// (`interview.wav.nonipk`), so that it shows at once the next time (Options ›
+/// Preferences › General: "Do not create .nonipk files to store peak data",
+/// "Hide new .nonipk files").
 pub(crate) mod peak_files {
     use std::io::{Read, Write};
     use std::path::PathBuf;
@@ -434,7 +434,8 @@ pub(crate) mod peak_files {
 
     use super::Waveform;
 
-    const MAGIC: &[u8; 4] = b"BVPK";
+    const MAGIC: &[u8; 4] = b"NPK1";
+    const LEGACY_MAGIC: &[u8; 4] = b"BVPK";
     const VERSION: u32 = 1;
     const WRITE: u8 = 1;
     const HIDE: u8 = 2;
@@ -450,9 +451,13 @@ pub(crate) mod peak_files {
 
     /// The peak file of a media file's audio stream.
     pub(crate) fn path(media: &str, stream: u16) -> PathBuf {
+        path_with_extension(media, stream, "nonipk")
+    }
+
+    fn path_with_extension(media: &str, stream: u16, extension: &str) -> PathBuf {
         match stream {
-            0 => PathBuf::from(format!("{media}.bvpk")),
-            s => PathBuf::from(format!("{media}.{s}.bvpk")),
+            0 => PathBuf::from(format!("{media}.{extension}")),
+            s => PathBuf::from(format!("{media}.{s}.{extension}")),
         }
     }
 
@@ -473,6 +478,7 @@ pub(crate) mod peak_files {
         let (len, changed) = stamp(media)?;
         let mut data = Vec::new();
         std::fs::File::open(path(media, stream))
+            .or_else(|_| std::fs::File::open(path_with_extension(media, stream, "bvpk")))
             .ok()?
             .read_to_end(&mut data)
             .ok()?;
@@ -482,7 +488,9 @@ pub(crate) mod peak_files {
         let u64_at = |i: usize| -> Option<u64> {
             Some(u64::from_le_bytes(data.get(i..i + 8)?.try_into().ok()?))
         };
-        if data.get(..4)? != MAGIC || u32_at(4)? != VERSION {
+        if ![MAGIC.as_slice(), LEGACY_MAGIC.as_slice()].contains(&data.get(..4)?)
+            || u32_at(4)? != VERSION
+        {
             return None;
         }
         if (u64_at(8)?, u64_at(16)?) != (len, changed) {
@@ -665,6 +673,7 @@ pub(crate) mod peak_files {
     pub(crate) fn delete(media: &str) {
         for stream in 0..16 {
             let _ = std::fs::remove_file(path(media, stream));
+            let _ = std::fs::remove_file(path_with_extension(media, stream, "bvpk"));
         }
         if let Ok(mut passed) = PASSED.lock()
             && !passed.iter().any(|m| m == media)
@@ -760,6 +769,14 @@ mod tests {
         for (a, b) in back.peaks.iter().flatten().zip(w.peaks.iter().flatten()) {
             assert!((a.0 - b.0).abs() < 1e-4 && (a.1 - b.1).abs() < 1e-4);
         }
+        let current = peak_files::path(&media, 0);
+        let legacy = current.with_extension("bvpk");
+        let mut bytes = std::fs::read(&current).unwrap();
+        assert_eq!(&bytes[..4], b"NPK1");
+        bytes[..4].copy_from_slice(b"BVPK");
+        std::fs::write(&legacy, bytes).unwrap();
+        std::fs::remove_file(&current).unwrap();
+        assert_eq!(peak_files::read(&media, 0).unwrap().peaks, back.peaks);
         // Another version of the media: the peak file is not used.
         std::fs::write(&media, [2u8; 65]).unwrap();
         assert!(peak_files::read(&media, 0).is_none());

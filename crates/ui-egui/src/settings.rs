@@ -743,9 +743,9 @@ pub struct Prefs {
     pub edge_expanded_edit: bool,
     /// General: "Enable Automatic FX Window Resizing".
     pub fx_window_resize: bool,
-    /// General: "Do not create .bvpk files to store peak data".
+    /// General: "Do not create .nonipk files to store peak data".
     pub no_peak_files: bool,
-    /// General: "Hide new .bvpk files".
+    /// General: "Hide new .nonipk files".
     pub hide_peak_files: bool,
     /// General: "Temporary files folder" (`None`: BananaV's in the system's
     /// temporary folder).

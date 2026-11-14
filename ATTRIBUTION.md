@@ -1,5 +1,7 @@
 # Attribution
 
+Noni is based on [BananaV](https://github.com/acasoq-web/BananaV).
+
 Every asset in BananaV, with its author, source and license. The rules are in
 [AGENTS.md](AGENTS.md) §2: open licenses compatible with GPL-3.0-or-later or
 original work only, nothing from proprietary editing programs, and every asset

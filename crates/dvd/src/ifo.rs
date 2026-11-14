@@ -207,7 +207,7 @@ pub fn vmg_ifo(chapters: u16, vts_attributes: &[u8], ntsc: bool, aspect: Aspect)
     put16(&mut b, 0x28, 1);
     b[0x2A] = 1;
     put16(&mut b, 0x3E, 1);
-    b[0x40..0x47].copy_from_slice(b"BananaV");
+    b[0x40..0x44].copy_from_slice(b"Noni");
     put32(&mut b, 0x80, 0x3FF);
     put32(&mut b, 0x84, 0x400);
     put32(&mut b, 0xC4, 1);

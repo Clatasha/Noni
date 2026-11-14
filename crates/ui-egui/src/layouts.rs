@@ -1,5 +1,5 @@
 //! Window layouts kept as files, as VEGAS's (View › Window Layouts): a
-//! layout is a `.bvlayout` file — its name and the places and sizes of the
+//! layout is a `.nonilayout` file — its name and the places and sizes of the
 //! windows, docked and floating, the timeline's among them — in a folder
 //! (`Layouts` beside BananaV's settings unless another is chosen). Up to
 //! ten are in the menu, recalled with Alt+D and their number (Ctrl+Alt+D
@@ -18,7 +18,7 @@ use crate::settings::{SavedLayout, UiSettings};
 use crate::theme;
 
 /// The layout files' extension.
-pub const EXTENSION: &str = "bvlayout";
+pub const EXTENSION: &str = "nonilayout";
 
 /// What a layout file holds.
 #[derive(Serialize, Deserialize)]
@@ -31,7 +31,7 @@ struct LayoutFile {
     timeline_top: bool,
 }
 
-const KIND: &str = "BananaV window layout";
+const KIND: &str = "Noni window layout";
 
 /// The file a layout named `name` goes to in `folder` (what file names
 /// cannot hold becomes `_`).
@@ -85,12 +85,26 @@ pub fn list(folder: &Path) -> Vec<SavedLayout> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| {
-            p.extension()
-                .is_some_and(|x| x.eq_ignore_ascii_case(EXTENSION))
+            p.extension().is_some_and(|x| {
+                x.eq_ignore_ascii_case(EXTENSION) || x.eq_ignore_ascii_case("bvlayout")
+            })
         })
         .filter_map(|p| read(&p).ok())
         .collect();
-    found.sort_by_key(|l| l.name.to_lowercase());
+    found.sort_by_key(|l| {
+        (
+            l.name.to_lowercase(),
+            l.file.as_ref().is_some_and(|path| {
+                path.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("bvlayout"))
+            }),
+        )
+    });
+    found.dedup_by(|a, b| {
+        a.name == b.name
+            && a.file.as_ref().and_then(|p| p.file_stem())
+                == b.file.as_ref().and_then(|p| p.file_stem())
+    });
     found
 }
 
@@ -504,6 +518,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_legacy_layout_is_listed_and_can_be_saved_as_noni() {
+        let dir = std::env::temp_dir().join(format!("noni-legacy-layout-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let legacy = dir.join("Look.bvlayout");
+        std::fs::write(
+            &legacy,
+            r#"{"kind":"BananaV window layout","name":"Look","dock":null}"#,
+        )
+        .unwrap();
+        let layouts = list(&dir);
+        assert_eq!(layouts.len(), 1);
+        assert_eq!(layouts[0].name, "Look");
+        let path = path_for(&dir, "Look");
+        write(&path, &layouts[0]).unwrap();
+        assert!(path.ends_with("Look.nonilayout"));
+        assert!(
+            std::fs::read_to_string(path)
+                .unwrap()
+                .contains("Noni window layout")
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn layouts_go_to_files_and_come_back() {
         let dir = std::env::temp_dir().join(format!("bananav-layouts-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -516,7 +554,7 @@ mod tests {
         let path = path_for(&dir, &layout.name);
         assert_eq!(
             path.file_name().unwrap().to_string_lossy(),
-            "Edit_ big preview_.bvlayout",
+            "Edit_ big preview_.nonilayout",
             "what file names cannot hold"
         );
         write(&path, &layout).unwrap();
@@ -549,7 +587,7 @@ mod tests {
         app.settings.layout_folder = Some(dir.clone());
         app.apply_layout(LayoutPreset::SourceWindow);
         app.save_layout_as(3, "Mine".into(), None);
-        assert!(dir.join("Mine.bvlayout").exists());
+        assert!(dir.join("Mine.nonilayout").exists());
         assert_eq!(app.layout_slot, Some(3));
         assert_eq!(
             app.settings.layouts[3].as_ref().map(|l| l.name.as_str()),

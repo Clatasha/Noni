@@ -298,7 +298,7 @@ impl VideoDecoder {
         if id == ff::AVCodecID::AV_CODEC_ID_PRORES as u32 {
             // BananaV decodes ProRes itself (`PacketReader`), as on Windows:
             // the same pictures on both systems, alpha included.
-            return Err(Error::Ffmpeg("ProRes is decoded by BananaV".into()));
+            return Err(Error::Ffmpeg("ProRes is decoded by Noni".into()));
         }
         // MPEG-1 and 2 are cheap on the processor.
         let cheap = [

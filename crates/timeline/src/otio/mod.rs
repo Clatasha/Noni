@@ -13,7 +13,7 @@
 //! a `FreezeFrame`. Overlaps a transition cannot say (an event inside
 //! another, three at once, overlaps without crossfades) go to tracks of
 //! their own over their track ("lanes"). BananaV keeps everything else in
-//! the objects' `metadata["bananav"]`, so a project comes back as it went.
+//! the objects' `metadata["noni"]`, so a project comes back as it went.
 //!
 //! [`read`] parses a document into a [`Document`]: its tracks' events
 //! placed in time and the media they use; the caller finds each media file
@@ -40,7 +40,7 @@ use bv_core::{FrameRate, TICKS_PER_SECOND, Tick};
 use serde_json::{Value, json};
 
 /// The key of BananaV's metadata in each object's `metadata`.
-const KEY: &str = "bananav";
+const KEY: &str = "noni";
 /// The version of what BananaV keeps there.
 const METADATA_VERSION: u32 = 1;
 /// A clip's media reference's key, OpenTimelineIO's default.
@@ -148,5 +148,6 @@ fn schema(v: &Value) -> Option<(&str, u32)> {
 
 /// What BananaV kept in an object's metadata.
 fn ours(v: &Value) -> Option<&Value> {
-    v.get("metadata")?.get(KEY)
+    let metadata = v.get("metadata")?;
+    metadata.get(KEY).or_else(|| metadata.get("bananav"))
 }

@@ -21,6 +21,7 @@ on:
   # One-time rebuild request: title editor and text fitting.
   # One-time rebuild request: title editing, clip keyframes and Properties sizing.
   # One-time rebuild request: project settings and title preview refinements and catalog ordering.
+  # One-time rebuild request: Noni file extensions and export branding.
   push:
     branches: [noni-branding]
     paths:
@@ -101,6 +102,7 @@ jobs:
           if [ -d native-export ]; then cp -r native-export "dist/$name/"; fi
           cp packaging/windows/README.txt "dist/$name/"
           cp LICENSE "dist/$name/LICENSE.txt"
+          cp ATTRIBUTION.md "dist/$name/"
           cp crates/effects/fonts/OFL.txt "dist/$name/Arimo-OFL.txt"
           cp crates/ui-egui/assets/fonts/Oswald-OFL.txt "dist/$name/Oswald-OFL.txt"
           cp crates/ocio/licenses/ACES.md "dist/$name/ACES-license.md"
@@ -215,6 +217,7 @@ jobs:
           mv Noni*.AppImage "dist/$name/$name.AppImage"
           cp packaging/linux/README.txt "dist/$name/"
           cp LICENSE "dist/$name/LICENSE.txt"
+          cp ATTRIBUTION.md "dist/$name/"
           cp ffmpeg-lgpl/share/licenses/ffmpeg/COPYING.LGPLv2.1 "dist/$name/FFmpeg-LGPL-2.1.txt"
           cp ffmpeg-lgpl/share/licenses/ffmpeg/LICENSE.md "dist/$name/FFmpeg-license.md"
           cp crates/effects/fonts/OFL.txt "dist/$name/Arimo-OFL.txt"

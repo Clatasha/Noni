@@ -216,7 +216,7 @@ impl Gpu {
         .ok_or(GpuError::NoAdapter)?;
         let limits = adapter.limits();
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("BananaV compositor"),
+            label: Some("Noni compositor"),
             required_features: wgpu::Features::empty(),
             // The card's own limits: frames of 4K and more need large
             // buffers.

@@ -33,7 +33,7 @@ License
   option) any later version (LICENSE.txt, beside this file). It comes
   with ABSOLUTELY NO WARRANTY.
 - Its source code is at https://github.com/Clatasha/Noni.
-- Noni is based on BananaV (https://github.com/acasoq-web/BananaV).
+- See ATTRIBUTION.md and THIRD-PARTY-NOTICES.txt for credits and license notices.
 - The open-source libraries it is built with, and their licenses, are in
   THIRD-PARTY-NOTICES.txt; the system libraries the AppImage carries, and
   theirs, in SYSTEM-LIBRARIES-NOTICES.txt, beside this file.

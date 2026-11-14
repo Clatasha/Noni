@@ -353,9 +353,9 @@ mod imp {
         let seq = Seq::open(None, Some(dir), false).map_err(err)?;
         let _ = seq.set_client_name(c"Noni");
         let (name, caps) = if out {
-            (c"BananaV out", readable())
+            (c"Noni out", readable())
         } else {
-            (c"BananaV in", writable())
+            (c"Noni in", writable())
         };
         let port = seq
             .create_simple_port(name, caps, PortType::MIDI_GENERIC | PortType::APPLICATION)

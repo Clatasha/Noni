@@ -773,7 +773,7 @@ impl Output for ProResOut {
     }
 
     fn encoder_name(&self) -> String {
-        format!("BananaV ProRes {}", self.profile.name())
+        format!("Noni ProRes {}", self.profile.name())
     }
 
     fn passable(&self) -> Option<super::smart::Passable> {

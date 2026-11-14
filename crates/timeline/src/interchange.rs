@@ -276,7 +276,7 @@ pub fn export_fcpxml(p: &Project, name: &str) -> (String, usize) {
     let total = fcpxml_time(p.duration().max(rate.frame_duration()));
     let tc_format = if rate.is_drop_frame() { "DF" } else { "NDF" };
     let out = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n<fcpxml version=\"1.9\"><resources>{resources}</resources><library><event name=\"BananaV\"><project name=\"{}\"><sequence format=\"r1\" duration=\"{total}\" tcStart=\"0s\" tcFormat=\"{tc_format}\"><spine><gap name=\"Gap\" offset=\"0s\" start=\"0s\" duration=\"{total}\">{clips}</gap></spine></sequence></project></event></library></fcpxml>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n<fcpxml version=\"1.9\"><resources>{resources}</resources><library><event name=\"Noni\"><project name=\"{}\"><sequence format=\"r1\" duration=\"{total}\" tcStart=\"0s\" tcFormat=\"{tc_format}\"><spine><gap name=\"Gap\" offset=\"0s\" start=\"0s\" duration=\"{total}\">{clips}</gap></spine></sequence></project></event></library></fcpxml>\n",
         xml_escape(name)
     );
     (out, skipped)

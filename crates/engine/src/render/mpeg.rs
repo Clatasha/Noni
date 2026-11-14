@@ -236,9 +236,9 @@ impl Output for Mpeg2Out {
 
     fn encoder_name(&self) -> String {
         if self.mpeg1 {
-            "BananaV MPEG-1".into()
+            "Noni MPEG-1".into()
         } else {
-            "BananaV MPEG-2".into()
+            "Noni MPEG-2".into()
         }
     }
 

@@ -300,10 +300,10 @@ fn general_items() -> [(&'static str, Item); 34] {
             On(|p| &mut p.fx_window_resize),
         ),
         (
-            tr("Do not create .bvpk files to store peak data"),
+            tr("Do not create .nonipk files to store peak data"),
             On(|p| &mut p.no_peak_files),
         ),
-        (tr("Hide new .bvpk files"), On(|p| &mut p.hide_peak_files)),
+        (tr("Hide new .nonipk files"), On(|p| &mut p.hide_peak_files)),
     ]
 }
 

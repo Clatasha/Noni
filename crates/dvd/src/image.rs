@@ -214,7 +214,7 @@ fn file_entry(at: u32, dir: bool, size: u64, lbn: u32, links: u16, unique: u64) 
     }
     le32(&mut b, 1);
     b.extend_from_slice(&long_ad(0, 0));
-    b.extend_from_slice(&regid("*BananaV", false));
+    b.extend_from_slice(&regid("*Noni", false));
     le64(&mut b, unique);
     le32(&mut b, 0);
     // Short allocation descriptors: extents of at most 1 GiB less a
@@ -429,9 +429,9 @@ pub fn write_image(root: &Path, label: &str, out: &mut impl Write) -> io::Result
         b.extend_from_slice(&charspec());
         b.extend_from_slice(&charspec());
         b.extend_from_slice(&[0; 16]);
-        b.extend_from_slice(&regid("*BananaV", false));
+        b.extend_from_slice(&regid("*Noni", false));
         b.extend_from_slice(&timestamp());
-        b.extend_from_slice(&regid("*BananaV", false));
+        b.extend_from_slice(&regid("*Noni", false));
         b.extend_from_slice(&[0; 64]);
         le32(&mut b, 0);
         le16(&mut b, 0);
@@ -444,7 +444,7 @@ pub fn write_image(root: &Path, label: &str, out: &mut impl Write) -> io::Result
         b.extend_from_slice(&charspec());
         b.extend_from_slice(&dstring(&label, 128));
         b.extend_from_slice(&[0; 36 * 3]);
-        b.extend_from_slice(&regid("*BananaV", false));
+        b.extend_from_slice(&regid("*Noni", false));
         b.resize(512 - 16, 0);
         out.push(descriptor(4, first + 1, &b));
         // The partition.
@@ -457,7 +457,7 @@ pub fn write_image(root: &Path, label: &str, out: &mut impl Write) -> io::Result
         le32(&mut b, 1);
         le32(&mut b, PARTITION);
         le32(&mut b, partition_len);
-        b.extend_from_slice(&regid("*BananaV", false));
+        b.extend_from_slice(&regid("*Noni", false));
         b.resize(512 - 16, 0);
         out.push(descriptor(5, first + 2, &b));
         // The logical volume.
@@ -470,7 +470,7 @@ pub fn write_image(root: &Path, label: &str, out: &mut impl Write) -> io::Result
         b.extend_from_slice(&long_ad(SECTOR as u32, 0));
         le32(&mut b, 6);
         le32(&mut b, 1);
-        b.extend_from_slice(&regid("*BananaV", false));
+        b.extend_from_slice(&regid("*Noni", false));
         b.extend_from_slice(&[0; 128]);
         le32(&mut b, 2 * SECTOR as u32);
         le32(&mut b, INTEGRITY);
@@ -503,7 +503,7 @@ pub fn write_image(root: &Path, label: &str, out: &mut impl Write) -> io::Result
     le32(&mut b, 46);
     le32(&mut b, 0);
     le32(&mut b, partition_len);
-    b.extend_from_slice(&regid("*BananaV", false));
+    b.extend_from_slice(&regid("*Noni", false));
     // The files, and the directories with the root.
     le32(&mut b, entries.len() as u32);
     le32(&mut b, 3);

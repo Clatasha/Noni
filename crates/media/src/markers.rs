@@ -1,6 +1,6 @@
 //! Markers and regions of media files (the Trimmer's): WAV files keep them
 //! inside (`cue ` points, `labl` names, `ltxt` region lengths); other types
-//! in a file beside them, `<file>.bvmarkers`.
+//! in a file beside them, `<file>.nonimarkers`.
 
 use std::path::{Path, PathBuf};
 
@@ -12,14 +12,18 @@ use bv_timeline::MediaMarker;
 pub enum MarkerStore {
     /// Inside the file (WAV).
     InFile,
-    /// In `<file>.bvmarkers` beside it.
+    /// In `<file>.nonimarkers` beside it.
     Beside,
 }
 
 /// The file beside `media` that keeps its markers.
 pub fn markers_path(media: &str) -> PathBuf {
+    sidecar_path(media, ".nonimarkers")
+}
+
+fn sidecar_path(media: &str, suffix: &str) -> PathBuf {
     let mut name = Path::new(media).as_os_str().to_os_string();
-    name.push(".bvmarkers");
+    name.push(suffix);
     PathBuf::from(name)
 }
 
@@ -37,10 +41,12 @@ fn wav_rate(path: &str) -> Option<u32> {
 
 /// The markers and regions a media file has (none when it has none).
 pub fn read_markers(path: &str) -> Vec<MediaMarker> {
-    if let Some(text) = std::fs::read_to_string(markers_path(path)).ok()
-        && let Some(markers) = bv_timeline::markers_from_json(&text)
-    {
-        return markers;
+    for file in [markers_path(path), sidecar_path(path, ".bvmarkers")] {
+        if let Ok(text) = std::fs::read_to_string(file)
+            && let Some(markers) = bv_timeline::markers_from_json(&text)
+        {
+            return markers;
+        }
     }
     let Some(rate) = wav_rate(path) else {
         return Vec::new();
@@ -73,7 +79,9 @@ pub fn save_markers(path: &str, markers: &[MediaMarker]) -> Result<MarkerStore, 
     if !can_save_markers(path) {
         return Err("read-only".into());
     }
-    if let Some(rate) = wav_rate(path) {
+    let legacy = sidecar_path(path, ".bvmarkers").exists();
+    // A current sidecar must take precedence over any legacy notes.
+    if !legacy && let Some(rate) = wav_rate(path) {
         let rate = SampleRate(rate);
         let frames = |t: Tick| rate.sample_at(t).clamp(0, u32::MAX as i64) as u32;
         let cues: Vec<bv_wav::Cue> = markers
@@ -101,7 +109,7 @@ pub fn save_markers(path: &str, markers: &[MediaMarker]) -> Result<MarkerStore, 
         }
     }
     let beside = markers_path(path);
-    if markers.is_empty() {
+    if markers.is_empty() && !legacy {
         return match std::fs::remove_file(&beside) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
             _ => Ok(MarkerStore::Beside),
@@ -129,6 +137,23 @@ mod tests {
                 name: "Chorus".into(),
             },
         ]
+    }
+
+    #[test]
+    fn legacy_markers_are_read_and_can_be_cleared_without_resurfacing() {
+        let dir = std::env::temp_dir().join(format!("noni-legacy-markers-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("clip.mp4");
+        std::fs::write(&file, []).unwrap();
+        let path = file.to_str().unwrap();
+        let legacy = sidecar_path(path, ".bvmarkers");
+        std::fs::write(&legacy, bv_timeline::markers_to_json(&marks())).unwrap();
+        assert_eq!(read_markers(path), marks());
+        assert_eq!(save_markers(path, &[]), Ok(MarkerStore::Beside));
+        assert!(markers_path(path).ends_with("clip.mp4.nonimarkers"));
+        assert!(read_markers(path).is_empty());
+        assert!(legacy.exists());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

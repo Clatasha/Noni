@@ -43,7 +43,7 @@ unsafe fn object<'a, T: HostObject>(this: Raw, k: usize) -> &'a T {
 }
 
 /// The name plug-ins are told.
-pub(crate) const HOST_NAME: &str = "BananaV";
+pub(crate) const HOST_NAME: &str = "Noni";
 
 // ---- The host application -----------------------------------------------
 

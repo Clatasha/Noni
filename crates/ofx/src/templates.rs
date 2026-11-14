@@ -26,7 +26,7 @@ pub fn host() -> PropSet {
     s.define_int(kOfxPropAPIVersion, None, &[1, 4]);
     s.define_str(kOfxPropType, Some(1), &[kOfxTypeImageEffectHost]);
     s.define_str(kOfxPropName, Some(1), &[c"org.bananav.BananaV"]);
-    s.define_str(kOfxPropLabel, Some(1), &[c"BananaV"]);
+    s.define_str(kOfxPropLabel, Some(1), &[c"Noni"]);
     s.define_int(kOfxPropVersion, None, &[0, 1, 0]);
     s.define_str(kOfxPropVersionLabel, Some(1), &[c"0.1.0"]);
     s.define_int(kOfxImageEffectHostPropIsBackground, Some(1), &[0]);
@@ -439,6 +439,6 @@ mod tests {
     fn the_host_offers_what_it_runs() {
         let h = host();
         assert_eq!(h.strs(kOfxImageEffectPropSupportedContexts).len(), 4);
-        assert_eq!(h.str(kOfxPropLabel, 0).as_deref(), Some("BananaV"));
+        assert_eq!(h.str(kOfxPropLabel, 0).as_deref(), Some("Noni"));
     }
 }

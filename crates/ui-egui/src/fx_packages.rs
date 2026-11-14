@@ -18,10 +18,11 @@ use crate::i18n::tr;
 use crate::theme;
 
 /// The packages' files' extension.
-pub(crate) const EXTENSION: &str = "bvfx";
+pub(crate) const EXTENSION: &str = "nonifx";
 
 /// What a package's file says it is.
-const FORMAT: &str = "BananaV filter package";
+const FORMAT: &str = "Noni filter package";
+const LEGACY_FORMAT: &str = "BananaV filter package";
 
 /// A saved chain.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -116,10 +117,9 @@ impl FxPackages {
             return;
         };
         for path in entries.flatten().map(|e| e.path()) {
-            let ours = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| e.eq_ignore_ascii_case(EXTENSION));
+            let ours = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                e.eq_ignore_ascii_case(EXTENSION) || e.eq_ignore_ascii_case("bvfx")
+            });
             // A file that is not one is left out.
             if ours && let Some(p) = read_file(&path) {
                 self.list.push((p, Some(path)));
@@ -174,14 +174,19 @@ impl FxPackages {
             None => None,
             Some(dir) => {
                 let own = at.and_then(|i| self.list[i].1.clone());
-                let file = match own {
-                    Some(f) => f,
-                    None => {
-                        std::fs::create_dir_all(dir)?;
-                        free_file(dir, &package.name, None)
-                    }
-                };
+                std::fs::create_dir_all(dir)?;
+                let file = own
+                    .as_ref()
+                    .filter(|path| {
+                        path.extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case(EXTENSION))
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| free_file(dir, &package.name, None));
                 write_file(&file, &package)?;
+                if let Some(old) = own.filter(|old| *old != file) {
+                    let _ = std::fs::remove_file(old);
+                }
                 Some(file)
             }
         };
@@ -319,7 +324,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 fn read_file(path: &Path) -> Option<Package> {
     let text = std::fs::read_to_string(path).ok()?;
     let file: File = serde_json::from_str(&text).ok()?;
-    (file.format == FORMAT).then_some(file.package)
+    matches!(file.format.as_str(), FORMAT | LEGACY_FORMAT).then_some(file.package)
 }
 
 fn write_file(path: &Path, package: &Package) -> std::io::Result<()> {
@@ -481,6 +486,28 @@ mod tests {
     }
 
     #[test]
+    fn legacy_fx_packages_open_and_save_with_the_noni_extension() {
+        let dir = std::env::temp_dir().join(format!("noni-legacy-fx-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = dir.join("Old.bvfx");
+        let package = Package {
+            name: "Old".into(),
+            audio: false,
+            chain: vec![],
+        };
+        write_file(&old, &package).unwrap();
+        let text = std::fs::read_to_string(&old)
+            .unwrap()
+            .replace(FORMAT, LEGACY_FORMAT);
+        std::fs::write(&old, text).unwrap();
+        let mut packages = FxPackages::at(dir.clone());
+        assert_eq!(packages.get("Old", false), Some(package));
+        packages.save("Old", false, vec![]).unwrap();
+        assert!(dir.join("Old.nonifx").is_file());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn packages_are_files_of_their_own_read_back_by_name() {
         let dir = temp("files");
         let mut packages = FxPackages::at(dir.clone());
@@ -493,7 +520,7 @@ mod tests {
         // their settings, the bypassed effect bypassed.
         let files: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().collect();
         assert_eq!(files.len(), 2);
-        assert!(dir.join("Warm look.bvfx").exists());
+        assert!(dir.join("Warm look.nonifx").exists());
         let mut again = FxPackages::at(dir.clone());
         let video = again.list(false);
         assert_eq!(video.len(), 1);
@@ -508,8 +535,8 @@ mod tests {
         assert_eq!(again.get("Warm look", false).unwrap().chain.len(), 1);
         // A file that is not a package is left out; Refresh finds a file
         // copied in.
-        std::fs::write(dir.join("junk.bvfx"), "not a package").unwrap();
-        std::fs::copy(dir.join("Warm look.bvfx"), dir.join("Copy.bvfx")).unwrap();
+        std::fs::write(dir.join("junk.nonifx"), "not a package").unwrap();
+        std::fs::copy(dir.join("Warm look.nonifx"), dir.join("Copy.nonifx")).unwrap();
         again.refresh();
         assert_eq!(
             again.list(false).len(),
@@ -528,7 +555,7 @@ mod tests {
             .save("B", false, vec![Effect::new(EffectKind::Invert)])
             .unwrap();
         packages.rename("A", false, "Night").unwrap();
-        assert!(dir.join("Night.bvfx").exists() && !dir.join("A.bvfx").exists());
+        assert!(dir.join("Night.nonifx").exists() && !dir.join("A.nonifx").exists());
         assert_eq!(
             FxPackages::at(dir.clone())
                 .get("Night", false)
@@ -558,7 +585,7 @@ mod tests {
         let mut packages = FxPackages::at(dir.clone());
         packages.save("a/b", false, chain()).unwrap();
         packages.save("a?b", false, chain()).unwrap();
-        assert!(dir.join("a_b.bvfx").exists() && dir.join("a_b (2).bvfx").exists());
+        assert!(dir.join("a_b.nonifx").exists() && dir.join("a_b (2).nonifx").exists());
         assert_eq!(FxPackages::at(dir.clone()).list(false).len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }

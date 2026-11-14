@@ -121,7 +121,7 @@ impl Output for DvdOut {
     }
 
     fn encoder_name(&self) -> String {
-        "BananaV MPEG-2 (DVD-Video)".into()
+        "Noni MPEG-2 (DVD-Video)".into()
     }
 
     fn bytes(&self) -> u64 {

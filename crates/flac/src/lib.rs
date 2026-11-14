@@ -440,7 +440,7 @@ impl<W: Write + Seek> FlacWriter<W> {
         out.write_all(&[0x00, 0, 0, 34])?;
         out.write_all(&[0u8; 34])?;
         // VORBIS_COMMENT (last block).
-        let vendor = b"BananaV";
+        let vendor = b"Noni";
         let tags: Vec<String> = tags
             .iter()
             .filter(|(_, v)| !v.is_empty())

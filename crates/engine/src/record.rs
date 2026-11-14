@@ -233,7 +233,7 @@ impl Recorder {
                 }
                 let bext = t.broadcast_wave.then(|| bv_wav::Bext {
                     originator: "Noni".into(),
-                    originator_reference: format!("BV{}{}", date.replace('-', ""), t.track.0),
+                    originator_reference: format!("NONI{}{}", date.replace('-', ""), t.track.0),
                     date: date.clone(),
                     time: time.clone(),
                     time_reference: SampleRate(rate).sample_at(t.start).max(0) as u64,

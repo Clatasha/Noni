@@ -234,7 +234,7 @@ fn spherical_v1() -> Vec<u8> {
         "xmlns:GSpherical=\"http://ns.google.com/videos/1.0/spherical/\">",
         "<GSpherical:Spherical>true</GSpherical:Spherical>",
         "<GSpherical:Stitched>true</GSpherical:Stitched>",
-        "<GSpherical:StitchingSoftware>BananaV</GSpherical:StitchingSoftware>",
+        "<GSpherical:StitchingSoftware>Noni</GSpherical:StitchingSoftware>",
         "<GSpherical:ProjectionType>equirectangular</GSpherical:ProjectionType>",
         "</rdf:SphericalVideo>",
     );
@@ -659,7 +659,7 @@ impl<W: Write + Seek> Writer<W> {
     fn minf(&self, header: Vec<u8>, stbl: Vec<u8>) -> Vec<u8> {
         let mut m = header;
         if self.container == Container::Mov {
-            m.extend_from_slice(&self.hdlr(b"alis", "BananaV Data Handler", false));
+            m.extend_from_slice(&self.hdlr(b"alis", "Noni Data Handler", false));
         }
         m.extend_from_slice(&Self::dinf());
         m.extend_from_slice(&stbl);
@@ -828,7 +828,7 @@ impl<W: Write + Seek> Writer<W> {
             // cropped from the equirectangular frame.
             e.extend_from_slice(&full(b"st3d", 0, 0, &[0]));
             let proj = [full(b"prhd", 0, 0, &[0; 12]), full(b"equi", 0, 0, &[0; 16])].concat();
-            let sv3d = [full(b"svhd", 0, 0, b"BananaV\0"), bx(b"proj", &proj)].concat();
+            let sv3d = [full(b"svhd", 0, 0, b"Noni\0"), bx(b"proj", &proj)].concat();
             e.extend_from_slice(&bx(b"sv3d", &sv3d));
         }
         bx(fourcc, &e)
@@ -845,7 +845,7 @@ impl<W: Write + Seek> Writer<W> {
             trak.extend_from_slice(&Self::edts(movie_duration, first));
         }
         let mut mdia = self.mdhd(v.timescale, t.duration);
-        mdia.extend_from_slice(&self.hdlr(b"vide", "BananaV Video", true));
+        mdia.extend_from_slice(&self.hdlr(b"vide", "Noni Video", true));
         let mut vmhd = Vec::new();
         u16b(&mut vmhd, 0);
         vmhd.extend_from_slice(&[0; 6]);
@@ -923,7 +923,7 @@ impl<W: Write + Seek> Writer<W> {
             trak.extend_from_slice(&Self::edts(movie_duration, a.priming as i64));
         }
         let mut mdia = self.mdhd(a.sample_rate, t.duration);
-        mdia.extend_from_slice(&self.hdlr(b"soun", "BananaV Audio", true));
+        mdia.extend_from_slice(&self.hdlr(b"soun", "Noni Audio", true));
         let header = full(b"smhd", 0, 0, &[0; 4]);
         mdia.extend_from_slice(&self.minf(header, Self::stbl(self.audio_entry(a), t)));
         trak.extend_from_slice(&bx(b"mdia", &mdia));

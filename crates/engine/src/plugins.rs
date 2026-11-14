@@ -42,7 +42,7 @@ pub fn register_own() {
             None,
         );
         if let Err(e) = bv_ofx::registry().add_built_in(binary) {
-            eprintln!("BananaV's own effects did not load: {e}");
+            eprintln!("Noni's built-in effects did not load: {e}");
         }
     });
 }

@@ -832,7 +832,7 @@ impl Kernels {
         for sig in Sig::ALL {
             let source = sig.module();
             let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(&format!("bananav {sig:?}")),
+                label: Some(&format!("noni {sig:?}")),
                 source: wgpu::ShaderSource::Wgsl(source.into()),
             });
             modules.insert(sig, module);
@@ -859,11 +859,11 @@ impl Kernels {
                 });
             }
             let group = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some(&format!("bananav {sig:?}")),
+                label: Some(&format!("noni {sig:?}")),
                 entries: &entries,
             });
             let pipeline = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some(&format!("bananav {sig:?}")),
+                label: Some(&format!("noni {sig:?}")),
                 bind_group_layouts: &[Some(&group)],
                 immediate_size: 0,
             });
@@ -903,7 +903,7 @@ impl Kernels {
         });
         let pipeline = valid.then(|| {
             let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("bananav made"),
+                label: Some("noni made"),
                 source: wgpu::ShaderSource::Wgsl(full.into()),
             });
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {

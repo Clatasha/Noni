@@ -77,7 +77,7 @@ mod tests {
                 pixels: Pixels::Rgba16(&px),
                 alpha: false,
             },
-            "BananaV",
+            "Noni",
         );
         assert_eq!(&d[..4], b"SDPX");
         assert_eq!(d.len(), 2052);

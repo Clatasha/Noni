@@ -176,7 +176,7 @@ fn crashed(binary: &Binary, doing: String, code: u32, address: *mut c_void) {
     binary.switch_off();
     let at = place(address);
     eprintln!(
-        "ofx: {} crashed ({doing}, exception {code:#010x} at {at}): switched off until BananaV restarts",
+        "ofx: {} crashed ({doing}, exception {code:#010x} at {at}): switched off until Noni restarts",
         binary.path.display()
     );
     CRASHES

@@ -344,7 +344,7 @@ pub fn looks() -> Vec<(&'static str, String, String)> {
         .iter()
         .map(|(name, f)| {
             let mut text =
-                format!("# One of BananaV's looks.\nTITLE \"{name}\"\nLUT_3D_SIZE {n}\n");
+                format!("# One of Noni's looks.\nTITLE \"{name}\"\nLUT_3D_SIZE {n}\n");
             for b in 0..n {
                 for g in 0..n {
                     for r in 0..n {

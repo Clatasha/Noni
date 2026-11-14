@@ -97,7 +97,7 @@ pub fn tiff(img: &Image<'_>, bits: u16, deflate: bool) -> Vec<u8> {
         b.extend_from_slice(&1u32.to_le_bytes());
         extra(&mut out, &b)
     };
-    let software_at = extra(&mut out, b"BananaV\0");
+    let software_at = extra(&mut out, b"Noni\0");
 
     // (tag, type, count, value or offset)
     let mut entries: Vec<(u16, u16, u32, u32)> = vec![
@@ -124,7 +124,7 @@ pub fn tiff(img: &Image<'_>, bits: u16, deflate: bool) -> Vec<u8> {
         (283, RATIONAL, 1, res_at),
         (284, SHORT, 1, 1), // chunky
         (296, SHORT, 1, 2), // inches
-        (305, ASCII, 8, software_at),
+        (305, ASCII, 5, software_at),
     ];
     if deflate {
         entries.push((317, SHORT, 1, 2));

@@ -2871,8 +2871,8 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Divider Width", "Largura da divisória"),
     ("Divisions", "Divisões"),
     (
-        "Do not create .bvpk files to store peak data",
-        "Não criar arquivos .bvpk para guardar os picos",
+        "Do not create .nonipk files to store peak data",
+        "Não criar arquivos .nonipk para guardar os picos",
     ),
     (
         "Do not quantize to frames for audio-only edits",
@@ -4160,7 +4160,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("Hidden", "Oculto"),
     ("Hide All", "Ocultar tudo"),
     ("Hide Channel", "Ocultar canal"),
-    ("Hide new .bvpk files", "Ocultar os novos arquivos .bvpk"),
+    ("Hide new .nonipk files", "Ocultar os novos arquivos .nonipk"),
     ("Hide resolved notes", "Ocultar notas resolvidas"),
     ("Hide Tangents", "Ocultar tangentes"),
     ("High", "Altos"),

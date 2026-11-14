@@ -389,7 +389,7 @@ impl MediaMarker {
 }
 
 /// A media file's markers kept beside it, when its type has no place for
-/// them (`<file>.bvmarkers`).
+/// them (`<file>.nonimarkers`).
 #[derive(Serialize, Deserialize)]
 struct MarkerFile {
     ticks_per_second: i64,

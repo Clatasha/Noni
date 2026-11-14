@@ -554,7 +554,7 @@ impl Engine {
     }
 
     /// Whether waveforms of media files are kept in peak files next to
-    /// them (`.bvpk`), and whether new ones are hidden.
+    /// them (`.nonipk`), and whether new ones are hidden.
     pub fn set_peak_files(write: bool, hide: bool) {
         thumbs::peak_files::set(write, hide);
     }

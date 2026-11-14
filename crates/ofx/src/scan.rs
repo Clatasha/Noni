@@ -140,7 +140,7 @@ fn answer_file(tag: &str) -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(0);
     let n = N.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("bananav-ofx-{tag}-{}-{n}.json", std::process::id()))
+    std::env::temp_dir().join(format!("noni-ofx-{tag}-{}-{n}.json", std::process::id()))
 }
 
 /// The program that describes plug-ins in its own process: `exe` with

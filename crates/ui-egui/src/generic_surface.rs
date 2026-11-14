@@ -213,7 +213,7 @@ impl Binding {
     }
 }
 
-/// A Generic Control's mapping (Save As keeps it in a `.bvgeneric` file).
+/// A Generic Control's mapping (Save As keeps it in a `.nonigeneric` file).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GenericMap {
@@ -795,26 +795,26 @@ impl BananaApp {
     }
 }
 
-/// Save As: the mapping into a `.bvgeneric` file.
+/// Save As: the mapping into a `.nonigeneric` file.
 fn save_map(map: &GenericMap) {
     let Some(path) = rfd::FileDialog::new()
         .set_title(tr("Save As"))
-        .add_filter(tr("Generic control mapping"), &["bvgeneric"])
-        .set_file_name("Generic Control.bvgeneric")
+        .add_filter(tr("Generic control mapping"), &["nonigeneric"])
+        .set_file_name("Generic Control.nonigeneric")
         .save_file()
     else {
         return;
     };
     if let Ok(text) = serde_json::to_string_pretty(map) {
-        let _ = std::fs::write(path, text);
+        let _ = std::fs::write(path.with_extension("nonigeneric"), text);
     }
 }
 
-/// Open: a mapping from a `.bvgeneric` file.
+/// Open: a mapping from a `.nonigeneric` file.
 fn open_map() -> Option<GenericMap> {
     let path = rfd::FileDialog::new()
         .set_title(tr("Open"))
-        .add_filter(tr("Generic control mapping"), &["bvgeneric"])
+        .add_filter(tr("Generic control mapping"), &["nonigeneric", "bvgeneric"])
         .pick_file()?;
     serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
 }

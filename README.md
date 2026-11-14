@@ -18,4 +18,4 @@ cd Noni
 cargo run --release -p bananav
 ```
 
-Noni is based on [BananaV](https://github.com/acasoq-web/BananaV). See [LICENSE](LICENSE) and [ATTRIBUTION.md](ATTRIBUTION.md) for license and contributor information.
+See [LICENSE](LICENSE) and [ATTRIBUTION.md](ATTRIBUTION.md) for license and contributor information.

@@ -370,7 +370,7 @@ fn new_image(
     props.set_int(kOfxImagePropRowBytes, &[pixels.row_bytes() as i32]);
     props.set_cstr(kOfxImagePropField, kOfxImageFieldNone);
     let id = IMAGE_COUNT.fetch_add(1, Ordering::Relaxed);
-    props.set_str(kOfxImagePropUniqueIdentifier, &[&format!("bananav-{id}")]);
+    props.set_str(kOfxImagePropUniqueIdentifier, &[&format!("noni-{id}")]);
     let image = Box::into_raw(Box::new(Image {
         props,
         pixels,

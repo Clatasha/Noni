@@ -33,13 +33,13 @@ pub struct ProxyProgress {
 /// A proxy finished: of which media file, or why it could not be made.
 pub type ProxyDone = (String, Result<(), String>);
 
-/// Where a media file's proxy goes: next to it (`clip.mp4.bvproxy.mp4`).
+/// Where a media file's proxy goes: next to it (`clip.mp4.noniproxy.mp4`).
 pub fn proxy_path(original: &str) -> PathBuf {
-    PathBuf::from(format!("{original}.bvproxy.mp4"))
+    PathBuf::from(format!("{original}.noniproxy.mp4"))
 }
 
 /// The same name in `folder` (when the media's own folder takes no files).
-fn proxy_in(folder: &Path, original: &str) -> PathBuf {
+fn proxy_in(folder: &Path, original: &str, suffix: &str) -> PathBuf {
     let name = Path::new(original)
         .file_name()
         .map_or_else(|| "media".into(), |n| n.to_string_lossy().to_string());
@@ -47,7 +47,7 @@ fn proxy_in(folder: &Path, original: &str) -> PathBuf {
     let hash = original.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
         (h ^ b as u64).wrapping_mul(0x0100_0000_01b3)
     });
-    folder.join(format!("{name}.{hash:016x}.bvproxy.mp4"))
+    folder.join(format!("{name}.{hash:016x}.{suffix}"))
 }
 
 /// A proxy's frame size: the media's shape, no taller than 720 lines.
@@ -99,13 +99,13 @@ impl crate::Engine {
         let mut target = proxy_path(path);
         let writable = target
             .parent()
-            .is_some_and(|dir| std::fs::File::create(dir.join(".bananav-proxy-probe")).is_ok());
+            .is_some_and(|dir| std::fs::File::create(dir.join(".noni-proxy-probe")).is_ok());
         if let Some(dir) = target.parent() {
-            let _ = std::fs::remove_file(dir.join(".bananav-proxy-probe"));
+            let _ = std::fs::remove_file(dir.join(".noni-proxy-probe"));
         }
         if !writable {
             let _ = std::fs::create_dir_all(fallback);
-            target = proxy_in(fallback, path);
+            target = proxy_in(fallback, path, "noniproxy.mp4");
         }
         let part = target.with_extension("part.mp4");
         let (width, height) = proxy_size(&v);
@@ -201,9 +201,14 @@ impl crate::Engine {
         let Some(media) = changed(Path::new(path)) else {
             return false;
         };
-        let found = [proxy_path(path), proxy_in(fallback, path)]
-            .into_iter()
-            .find(|p| changed(p).is_some_and(|t| t >= media));
+        let found = [
+            proxy_path(path),
+            proxy_in(fallback, path, "noniproxy.mp4"),
+            PathBuf::from(format!("{path}.bvproxy.mp4")),
+            proxy_in(fallback, path, "bvproxy.mp4"),
+        ]
+        .into_iter()
+        .find(|p| changed(p).is_some_and(|t| t >= media));
         match found {
             Some(p) => {
                 bv_media::use_proxy(path, &p.to_string_lossy());
