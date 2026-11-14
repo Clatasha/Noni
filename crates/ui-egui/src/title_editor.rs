@@ -82,10 +82,13 @@ impl<'a> Controls<'a> {
 
     fn text_box(&mut self, ui: &mut Ui) {
         let mut text = self.get("text").text().to_owned();
-        let edit = egui::TextEdit::multiline(&mut text)
-            .desired_width(f32::INFINITY)
-            .desired_rows(3)
-            .show(ui);
+        let edit = crate::widgets::resizable_multiline(
+            ui,
+            ui.id().with(("title-input", &self.key.owner)),
+            &mut text,
+            ui.available_width(),
+            68.0,
+        );
         let selection = crate::ofx::rich_text_selection(&self.key, "text");
         if let Some(range) = edit.cursor_range.filter(|range| !range.is_empty()) {
             let sorted = range.as_sorted_char_range();
@@ -334,8 +337,6 @@ impl<'a> Controls<'a> {
                                 let selection = crate::ofx::rich_text_selection(&self.key, "text");
                                 ui.data_mut(|d| d.remove::<(usize, usize)>(selection));
                                 for field in [
-                                    "font",
-                                    "size",
                                     "bold",
                                     "italic",
                                     "underline",

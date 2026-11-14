@@ -440,16 +440,88 @@ fn paint_preset(
         }
         _ => Tick::ZERO,
     };
-    let h = (rect.height() * painter.ctx().pixels_per_point()).round() as u32;
+    let kind = Kind::of(g);
+    let text = matches!(kind, Some(Kind::TitlesAndText | Kind::CreditRoll));
+    let density = if text { 2.0 } else { 1.0 };
+    let h = (rect.height() * painter.ctx().pixels_per_point() * density).round() as u32;
     if let Some(t) = app.engine.thumbnail(&info, at, h) {
         let id = app.textures.get(painter.ctx(), &t);
-        painter.image(
-            id,
-            rect,
-            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-            Color32::WHITE,
-        );
+        let uv = if text {
+            painter.ctx().memory_mut(|memory| {
+                *memory
+                    .caches
+                    .cache::<egui::cache::FrameCache<Rect, TextPreviewCrop>>()
+                    .get((
+                        PreviewThumbnail(&t),
+                        rect.aspect_ratio().to_bits(),
+                        kind == Some(Kind::CreditRoll),
+                    ))
+            })
+        } else {
+            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0))
+        };
+        painter.image(id, rect, uv, Color32::WHITE);
     }
+}
+
+#[derive(Default)]
+struct TextPreviewCrop;
+
+#[derive(Clone, Copy)]
+struct PreviewThumbnail<'a>(&'a bv_engine::Thumbnail);
+
+impl std::hash::Hash for PreviewThumbnail<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::ptr::hash(self.0, state);
+    }
+}
+
+impl egui::cache::ComputerMut<(PreviewThumbnail<'_>, u32, bool), Rect> for TextPreviewCrop {
+    fn compute(&mut self, (thumb, aspect, credits): (PreviewThumbnail<'_>, u32, bool)) -> Rect {
+        text_preview_uv(thumb.0, f32::from_bits(aspect), credits)
+    }
+}
+
+/// Crop transparent space around the title at thumbnail resolution. Credits
+/// keep a fixed vertical center so hovering still scrolls through the roll.
+fn text_preview_uv(t: &bv_engine::Thumbnail, aspect: f32, credits: bool) -> Rect {
+    let (w, h) = (t.width as usize, t.height as usize);
+    let full = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+    if w == 0 || h == 0 {
+        return full;
+    }
+    let mut ink = Rect::NOTHING;
+    for (i, pixel) in t.rgba.chunks_exact(4).enumerate() {
+        if pixel[3] > 32 {
+            ink.extend_with(pos2((i % w) as f32, (i / w) as f32));
+        }
+    }
+    let frame = egui::vec2(w as f32, h as f32);
+    let mut center = if ink.is_finite() {
+        ink.center()
+    } else {
+        (frame * 0.5).to_pos2()
+    };
+    let mut size = frame * if credits { 0.64 } else { 0.38 };
+    if ink.is_finite() && (!credits || ink.width() < frame.x * 0.95) {
+        let padding = ink.size() * 1.22;
+        size.x = size.x.max(padding.x);
+        if !credits {
+            size.y = size.y.max(padding.y);
+        }
+    }
+    if credits {
+        center = (frame * 0.5).to_pos2();
+    }
+    size.x = size.x.max(size.y * aspect);
+    size.y = size.x / aspect;
+    size *= (frame.x / size.x).min(frame.y / size.y).min(1.0);
+    let half = size * 0.5;
+    center = center.clamp(half.to_pos2(), (frame - half).to_pos2().max(half.to_pos2()));
+    Rect::from_min_max(
+        ((center - half).to_vec2() / frame).to_pos2(),
+        ((center + half).to_vec2() / frame).to_pos2(),
+    )
 }
 
 pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
@@ -542,11 +614,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
             &mut state,
             &names,
             tr("Add at the cursor and edit"),
-            if matches!(kinds.get(i), Some(Kind::TitlesAndText | Kind::CreditRoll)) {
-                2.0
-            } else {
-                1.0
-            },
+            1.0,
             |painter, rect, i, play| paint_preset(painter, rect, app, presets[i].1.as_ref(), play),
         );
         for cell in cells {
@@ -587,6 +655,25 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp, text_only: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_thumbnail_zoom_keeps_ink_and_preserves_card_aspect() {
+        let mut thumb = bv_engine::Thumbnail {
+            width: 100,
+            height: 60,
+            rgba: vec![0; 100 * 60 * 4],
+        };
+        for y in 8..20 {
+            for x in 12..30 {
+                thumb.rgba[(y * 100 + x) * 4 + 3] = 255;
+            }
+        }
+        let uv = text_preview_uv(&thumb, 120.0 / 72.0, false);
+        assert!(uv.contains(pos2(0.12, 8.0 / 60.0)));
+        assert!(uv.contains(pos2(0.29, 19.0 / 60.0)));
+        assert!(uv.width() < 0.5);
+        assert!((uv.aspect_ratio() - 1.0).abs() < 1e-5);
+    }
 
     #[test]
     fn the_generators_are_listed_as_vegas_names_them() {

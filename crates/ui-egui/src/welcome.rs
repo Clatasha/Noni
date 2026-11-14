@@ -22,7 +22,7 @@ const SHAPE_H: f32 = 56.0;
 
 /// The shape of a new project's frame, as VEGAS's welcome screen offers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Shape {
+pub(crate) enum Shape {
     #[default]
     Widescreen,
     Fullscreen,
@@ -32,7 +32,7 @@ enum Shape {
 }
 
 impl Shape {
-    const ALL: [Shape; 5] = [
+    pub(crate) const ALL: [Shape; 5] = [
         Shape::Widescreen,
         Shape::Fullscreen,
         Shape::Portrait,
@@ -40,7 +40,7 @@ impl Shape {
         Shape::Scope,
     ];
 
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Shape::Widescreen => tr("Widescreen (16:9)"),
             Shape::Fullscreen => tr("Fullscreen (4:3)"),
@@ -72,7 +72,7 @@ impl Shape {
     }
 
     /// The frame sizes of HD, FullHD and UHD.
-    fn sizes(self) -> [(u32, u32); 3] {
+    pub(crate) fn sizes(self) -> [(u32, u32); 3] {
         match self {
             Shape::Widescreen => [(1280, 720), (1920, 1080), (3840, 2160)],
             Shape::Fullscreen => [(1280, 960), (1920, 1440), (4096, 3072)],

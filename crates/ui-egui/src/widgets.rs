@@ -6,6 +6,67 @@ use crate::i18n::tr;
 use crate::icons::{self, Icon};
 use crate::theme;
 
+/// A bounded text viewport with a drag handle inside its lower-right corner.
+pub(crate) fn resizable_multiline(
+    ui: &mut Ui,
+    id: egui::Id,
+    text: &mut String,
+    width: f32,
+    initial_height: f32,
+) -> egui::text_edit::TextEditOutput {
+    let height_id = id.with("height");
+    let height = ui
+        .data(|data| data.get_temp::<f32>(height_id))
+        .unwrap_or(initial_height);
+    let width = width.min(ui.available_width()).max(32.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+    let p = ui.painter_at(rect);
+    p.rect(
+        rect,
+        4.0,
+        ui.visuals().text_edit_bg_color(),
+        ui.visuals().widgets.inactive.bg_stroke,
+        egui::StrokeKind::Inside,
+    );
+    let body = Rect::from_min_max(rect.min + vec2(4.0, 4.0), rect.max - vec2(3.0, 12.0));
+    let mut editor = ui.new_child(egui::UiBuilder::new().id_salt(id).max_rect(body));
+    editor.set_clip_rect(body.intersect(ui.clip_rect()));
+    let output = egui::ScrollArea::vertical()
+        .id_salt("scroll")
+        .max_height(body.height())
+        .auto_shrink([false, false])
+        .show(&mut editor, |ui| {
+            egui::TextEdit::multiline(text)
+                .id(id.with("input"))
+                .frame(egui::Frame::NONE)
+                .desired_rows(1)
+                .desired_width(f32::INFINITY)
+                .lock_focus(true)
+                .show(ui)
+        })
+        .inner;
+    let corner = rect.max - vec2(3.0, 3.0);
+    let grip_rect = Rect::from_min_max(rect.max - vec2(14.0, 12.0), rect.max);
+    let grip = ui
+        .interact(grip_rect, id.with("grip"), Sense::drag())
+        .on_hover_and_drag_cursor(egui::CursorIcon::ResizeNwSe);
+    let stroke = ui.style().interact(&grip).fg_stroke;
+    for length in [4.0, 8.0] {
+        p.line_segment(
+            [corner - vec2(length, 0.0), corner - vec2(0.0, length)],
+            stroke,
+        );
+    }
+    if grip.dragged() {
+        let next = (height + grip.drag_delta().y).clamp(54.0, 520.0);
+        if next != height {
+            ui.data_mut(|data| data.insert_temp(height_id, next));
+            ui.request_repaint();
+        }
+    }
+    output
+}
+
 pub(crate) const BUTTON: egui::Vec2 = egui::Vec2::new(26.0, 24.0);
 
 /// Where the app keeps the joystick's push in the context's data (see
@@ -1085,6 +1146,45 @@ pub(crate) fn mark_automation(ui: &egui::Ui, rect: egui::Rect) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_text_corner_drags_in_both_directions_with_overflow() {
+        use std::cell::Cell;
+        let bounds = Cell::new(Rect::NOTHING);
+        let ctx = Cell::new(None);
+        let id = egui::Id::new("resizable-text");
+        let mut harness = egui_kittest::Harness::new_ui_state(
+            |ui, text| {
+                let start = ui.next_widget_position();
+                resizable_multiline(ui, id, text, 250.0, 76.0);
+                let spacing = ui.spacing().item_spacing.y;
+                bounds.set(Rect::from_min_max(
+                    start,
+                    ui.next_widget_position() - vec2(0.0, spacing),
+                ));
+                ctx.set(Some(ui.ctx().clone()));
+            },
+            "Line of text\n".repeat(80),
+        );
+        harness.run();
+        let settings = ctx.take().unwrap();
+        let mut corner = pos2(bounds.get().left() + 245.0, bounds.get().bottom() - 5.0);
+        for (delta, expected) in [(45.0, 121.0), (-30.0, 91.0)] {
+            harness.hover_at(corner);
+            harness.run_steps(2);
+            harness.drag_at(corner);
+            harness.run_steps(1);
+            corner.y += delta;
+            harness.hover_at(corner);
+            harness.run_steps(3);
+            harness.drop_at(corner);
+            harness.run();
+            assert_eq!(
+                settings.data(|data| data.get_temp::<f32>(id.with("height"))),
+                Some(expected),
+            );
+        }
+    }
+
     #[test]
     fn wheel_notches_count_lines_and_points() {
         let wheel = |unit, y: f32, ctrl: bool| egui::Event::MouseWheel {

@@ -250,6 +250,7 @@ impl GeneratedMediaWindow {
             .id(egui::Id::new("generated-media-window"))
             .collapsible(false)
             .resizable(credit_roll)
+            .default_size(egui::vec2(630.0, 655.0))
             .open(&mut open)
             .show(ctx, |ui| {
                 if credit_roll {
@@ -382,11 +383,21 @@ impl GeneratedMediaWindow {
                             index: 0,
                             id: fx.id.clone(),
                         };
-                        if let Some(place) = place
-                            && let Some(new) =
-                                crate::ofx::params(ui, &mut app.ofx, key, fx, &place, 1)
-                        {
-                            chosen = Some(Generator::Plugin(Box::new(new)));
+                        if let Some(place) = place {
+                            let draw = |ui: &mut egui::Ui| {
+                                if let Some(new) = crate::ofx::params(ui, &mut app.ofx, key, fx, &place, 1)
+                                {
+                                    chosen = Some(Generator::Plugin(Box::new(new)));
+                                }
+                            };
+                            if credit_roll {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("credit-roll-settings")
+                                    .auto_shrink([false, false])
+                                    .show(ui, draw);
+                            } else {
+                                draw(ui);
+                            }
                         }
                     }
                     _ => {

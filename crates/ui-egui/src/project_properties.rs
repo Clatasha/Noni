@@ -1,6 +1,6 @@
-//! File › Properties: VEGAS's Project Properties window, with OK, Cancel
-//! and Apply. Changes are made on a draft and reach the project (as one
-//! undoable edit) on OK/Apply.
+//! File › Properties opens a compact Project Settings form. The Advanced
+//! control opens the full Project Properties editor. Both edit the same
+//! draft and apply changes to the project as one undoable edit.
 //!
 //! The Video tab has every control of VEGAS's. The ones BananaV cannot do
 //! yet (interlaced output, non-square pixels, HDR,
@@ -28,6 +28,7 @@ use crate::icons::Icon;
 use crate::settings::{NewProjectDefaults, VideoTemplate};
 use crate::theme;
 use crate::timefmt::{RulerFormat, RulerFormatExt};
+use crate::welcome::Shape;
 use crate::widgets;
 
 /// Width of the tab pages.
@@ -374,6 +375,9 @@ enum TemplatePick {
 #[derive(Debug)]
 pub struct ProjectPropertiesDialog {
     tab: PropTab,
+    advanced_open: bool,
+    locked_ratio: Option<(u32, u32)>,
+    custom_size: bool,
     draft: Draft,
     /// The template box: a template's name, or a name being typed.
     template: String,
@@ -406,12 +410,14 @@ pub struct ProjectPropertiesDialog {
 impl ProjectPropertiesDialog {
     /// The dialog on its Ruler tab (the ruler's Set Project Tempo…).
     pub fn on_ruler(mut self) -> ProjectPropertiesDialog {
+        self.advanced_open = true;
         self.tab = PropTab::Ruler;
         self
     }
 
     /// The dialog open on its Audio tab.
     pub fn on_audio_tab(mut self) -> ProjectPropertiesDialog {
+        self.advanced_open = true;
         self.tab = PropTab::Audio;
         self
     }
@@ -423,6 +429,9 @@ impl ProjectPropertiesDialog {
         let recorded = shown_folder(&draft.recorded_folder, default_recorded_folder());
         ProjectPropertiesDialog {
             tab: PropTab::Video,
+            advanced_open: false,
+            locked_ratio: Some((s.width, s.height)),
+            custom_size: false,
             template: template_name(&s, &app.settings.video_templates),
             width: s.width.to_string(),
             height: s.height.to_string(),
@@ -442,8 +451,222 @@ impl ProjectPropertiesDialog {
         }
     }
 
-    /// Draws the window; `false` once it is closed.
+    /// The compact settings and the full editor work on the same draft.
     pub fn show(&mut self, ctx: &egui::Context, app: &mut BananaApp) -> bool {
+        if self.advanced_open {
+            self.show_advanced(ctx, app)
+        } else {
+            self.show_basic(ctx, app)
+        }
+    }
+
+    fn show_basic(&mut self, ctx: &egui::Context, app: &mut BananaApp) -> bool {
+        let mut open = true;
+        let mut close = false;
+        crate::floating::Window::new(tr("Project Settings"))
+            .id(egui::Id::new("project-settings"))
+            .collapsible(false)
+            .resizable(true)
+            .default_size(vec2(500.0, 335.0))
+            .min_size(vec2(445.0, 280.0))
+            .open(&mut open)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("basic-project-settings")
+                    .max_height((ui.available_height() - 50.0).max(110.0))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| self.basic_fields(ui, app));
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button(tr("Save as Default")).clicked() {
+                        self.save_defaults(app);
+                    }
+                    if ui.button(tr("Advanced")).clicked() {
+                        self.advanced_open = true;
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if theme::dialog_button(ui, "OK", vec2(64.0, 28.0), true, true).clicked() {
+                            self.apply(app);
+                            close = true;
+                        }
+                        if theme::dialog_button(ui, tr("Cancel"), vec2(64.0, 28.0), false, true)
+                            .clicked()
+                        {
+                            close = true;
+                        }
+                    });
+                });
+                close |= ui.input(|i| i.key_pressed(egui::Key::Escape));
+            });
+        open && !close
+    }
+
+    fn basic_fields(&mut self, ui: &mut Ui, app: &BananaApp) {
+        const WIDTH: f32 = 216.0;
+        let settings = self.draft.settings;
+        let size = (settings.width, settings.height);
+        let rot = settings.rotation.is_quarter_turn();
+        let storage_order = |(w, h)| if rot { (h, w) } else { (w, h) };
+        let current_shape = Shape::ALL.into_iter().find(|shape| {
+            let (w, h) = storage_order(shape.sizes()[1]);
+            (f64::from(size.0) / f64::from(size.1.max(1)) - f64::from(w) / f64::from(h)).abs()
+                < 0.004
+        });
+        let mut shape = current_shape;
+        let mut dimensions = size;
+        egui::Grid::new("basic-project-fields")
+            .num_columns(2)
+            .spacing(vec2(14.0, 12.0))
+            .show(ui, |ui| {
+                ui.label(tr("Aspect Ratio"));
+                let shapes: Vec<_> = Shape::ALL
+                    .into_iter()
+                    .map(|shape| (Some(shape), shape.name().to_string(), true))
+                    .chain([(None, tr("Custom").into(), false)])
+                    .collect();
+                choice(ui, "project-aspect", WIDTH, &mut shape, &shapes);
+                if shape != current_shape
+                    && let Some(shape) = shape
+                {
+                    dimensions = storage_order(shape.sizes()[1]);
+                    self.locked_ratio = Some(dimensions);
+                    self.custom_size = false;
+                }
+                ui.end_row();
+
+                ui.label(tr("Resolution"));
+                let mut sizes: Vec<_> = shape.map_or_else(Vec::new, |shape| shape.sizes().to_vec());
+                if shape == Some(Shape::Widescreen) {
+                    sizes.insert(2, (2560, 1440));
+                }
+                let mut resolution = (!self.custom_size
+                    && sizes.contains(&storage_order(dimensions)))
+                .then_some(dimensions);
+                let mut options: Vec<_> = sizes
+                    .into_iter()
+                    .map(|d| (Some(storage_order(d)), format!("{} × {}", d.0, d.1), true))
+                    .collect();
+                options.push((None, tr("Custom").into(), true));
+                choice(ui, "project-resolution", WIDTH, &mut resolution, &options);
+                self.custom_size = resolution.is_none();
+                if let Some(d) = resolution {
+                    dimensions = d;
+                }
+                ui.end_row();
+
+                if dimensions != size {
+                    self.draft.settings.width = dimensions.0;
+                    self.draft.settings.height = dimensions.1;
+                    self.refresh_texts(app);
+                }
+                if self.custom_size {
+                    ui.label("");
+                    ui.vertical(|ui| {
+                        let before = self.draft.settings;
+                        let inputs = if rot {
+                            [&mut self.height, &mut self.width]
+                        } else {
+                            [&mut self.width, &mut self.height]
+                        };
+                        let mut changed = None;
+                        ui.horizontal(|ui| {
+                            for (i, input) in inputs.into_iter().enumerate() {
+                                if i == 1 {
+                                    ui.label("×");
+                                }
+                                let response =
+                                    ui.add(egui::TextEdit::singleline(input).desired_width(64.0));
+                                if response.lost_focus() {
+                                    let previous = if i == usize::from(rot) {
+                                        before.width
+                                    } else {
+                                        before.height
+                                    };
+                                    let value = parse_size(input).unwrap_or(previous);
+                                    if value != previous {
+                                        changed = Some((i, value));
+                                    }
+                                    *input = value.to_string();
+                                }
+                            }
+                        });
+                        if let Some((axis, value)) = changed {
+                            let axis = if rot { 1 - axis } else { axis };
+                            let mut values = [before.width, before.height];
+                            if let Some(ratio) = self.locked_ratio {
+                                values = locked_dimensions([ratio.0, ratio.1], axis, value);
+                            } else {
+                                values[axis] = value;
+                            }
+                            self.draft.settings.width = values[0];
+                            self.draft.settings.height = values[1];
+                            if self.locked_ratio.is_some() && (axis == 1 || values[0] != value) {
+                                self.width = values[0].to_string();
+                            }
+                            if self.locked_ratio.is_some() && (axis == 0 || values[1] != value) {
+                                self.height = values[1].to_string();
+                            }
+                        }
+                        let mut locked = self.locked_ratio.is_some();
+                        if widgets::checkbox(ui, &mut locked, tr("Lock Aspect Ratio")).changed() {
+                            self.locked_ratio = locked
+                                .then_some((self.draft.settings.width, self.draft.settings.height));
+                        }
+                    });
+                    ui.end_row();
+                }
+
+                ui.label(tr("Frame Rate"));
+                let mut rates: Vec<_> = RATES.iter().map(|(rate, _)| *rate).collect();
+                rates.extend([30, 48, 60, 120].map(|fps| FrameRate::new(fps, 1)));
+                rates.extend([60, 120].map(|fps| FrameRate::new(fps * 1000, 1001)));
+                rates.push(self.draft.settings.frame_rate);
+                rates.sort_by(|a, b| a.as_f64().total_cmp(&b.as_f64()));
+                rates.dedup();
+                let rates: Vec<_> = rates
+                    .into_iter()
+                    .map(|rate| {
+                        (
+                            rate,
+                            trf!(
+                                "{} fps",
+                                crate::fmt::num(
+                                    rate.as_f64(),
+                                    if rate.as_f64().fract() == 0.0 { 0 } else { 3 }
+                                )
+                            ),
+                            true,
+                        )
+                    })
+                    .collect();
+                let rate = &mut self.draft.settings.frame_rate;
+                choice(ui, "project-rate", WIDTH, rate, &rates);
+                if *rate != settings.frame_rate {
+                    self.rate = rate_label(*rate);
+                }
+                ui.end_row();
+
+                ui.label(tr("Color space"));
+                let custom_color = self.draft.settings.color_managed();
+                let mut space = u8::from(custom_color);
+                let mut colors = vec![(0, "SDR (Rec.709)".into(), true)];
+                if custom_color {
+                    colors.push((1, tr("Advanced").into(), true));
+                }
+                colors.extend([
+                    (2, "HDR (Rec.2100 HLG)".into(), false),
+                    (3, "HDR (Rec.2100 PQ)".into(), false),
+                ]);
+                choice(ui, "project-color-space", WIDTH, &mut space, &colors);
+                if custom_color && space == 0 {
+                    self.draft.settings.color.view = None;
+                }
+                ui.end_row();
+            });
+    }
+
+    /// Draws the window; `false` once it is closed.
+    fn show_advanced(&mut self, ctx: &egui::Context, app: &mut BananaApp) -> bool {
         let mut open = true;
         let mut close = false;
         crate::floating::Window::new(tr("Project Properties"))
@@ -458,6 +681,16 @@ impl ProjectPropertiesDialog {
             .min_size(vec2(550.0, 420.0))
             .open(&mut open)
             .show(ctx, |ui| {
+                if ui.button(tr("Basic")).clicked() {
+                    self.draft = self.edited();
+                    self.custom_size = false;
+                    if self.locked_ratio.is_some() {
+                        self.locked_ratio =
+                            Some((self.draft.settings.width, self.draft.settings.height));
+                    }
+                    self.refresh_texts(app);
+                    self.advanced_open = false;
+                }
                 self.tab_strip(ui);
                 let body_height = (ui.available_height() - 50.0).max(180.0);
                 egui::ScrollArea::vertical()
@@ -465,71 +698,69 @@ impl ProjectPropertiesDialog {
                     .max_height(body_height)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                egui::Frame::new()
-                    .fill(theme::panel())
-                    .stroke(Stroke::new(1.0, theme::separator()))
-                    .corner_radius(if theme::premium() { 11.0 } else { 0.0 })
-                    .inner_margin(10.0)
-                    .show(ui, |ui| {
-                        ui.set_width(self.page_width);
-                        // Text boxes and lists with a border, like VEGAS's.
-                        ui.visuals_mut().widgets.inactive.bg_stroke =
-                            Stroke::new(1.0, theme::separator());
-                        let top = ui.cursor().top();
-                        match self.tab {
-                            PropTab::Video => {
-                                self.video(ui, app);
-                                ui.separator();
-                                self.page_height = (ui.cursor().top() - top).min(560.0);
-                                // Never measure the dialog's own expanded width
-                                // as a new width request on the next frame.
-                                self.page_width = PAGE_WIDTH;
-                            }
-                            PropTab::Audio => self.audio(ui),
-                            PropTab::Ruler => self.ruler(ui),
-                            PropTab::Summary => self.summary(ui),
-                            PropTab::AudioCd => self.audio_cd(ui),
-                            PropTab::Advanced => advanced(ui, &mut self.draft.settings),
-                        }
-                        // The other tabs are as tall as the Video tab.
-                        let used = ui.cursor().top() - top;
-                        if used < self.page_height {
-                            ui.add_space(self.page_height - used);
-                        }
-                        // At the bottom of every tab but Audio CD (a disc's
-                        // codes are not for every project), like VEGAS: it
-                        // takes the whole dialog's settings.
-                        let shown = self.tab != PropTab::AudioCd;
-                        ui.scope(|ui| {
-                            // Hidden, it keeps its room: all tabs stay as tall.
-                            if !shown {
-                                ui.set_invisible();
-                            }
-                            widgets::checkbox(
-                                ui,
-                                &mut self.start_new_projects,
-                                tr("Start all new projects with these settings"),
-                            );
-                        });
+                        egui::Frame::new()
+                            .fill(theme::panel())
+                            .stroke(Stroke::new(1.0, theme::separator()))
+                            .corner_radius(if theme::premium() { 11.0 } else { 0.0 })
+                            .inner_margin(10.0)
+                            .show(ui, |ui| {
+                                ui.set_width(self.page_width);
+                                // Text boxes and lists with a border, like VEGAS's.
+                                ui.visuals_mut().widgets.inactive.bg_stroke =
+                                    Stroke::new(1.0, theme::separator());
+                                let top = ui.cursor().top();
+                                match self.tab {
+                                    PropTab::Video => {
+                                        self.video(ui, app);
+                                        ui.separator();
+                                        self.page_height = (ui.cursor().top() - top).min(560.0);
+                                        // Never measure the dialog's own expanded width
+                                        // as a new width request on the next frame.
+                                        self.page_width = PAGE_WIDTH;
+                                    }
+                                    PropTab::Audio => self.audio(ui),
+                                    PropTab::Ruler => self.ruler(ui),
+                                    PropTab::Summary => self.summary(ui),
+                                    PropTab::AudioCd => self.audio_cd(ui),
+                                    PropTab::Advanced => advanced(ui, &mut self.draft.settings),
+                                }
+                                // The other tabs are as tall as the Video tab.
+                                let used = ui.cursor().top() - top;
+                                if used < self.page_height {
+                                    ui.add_space(self.page_height - used);
+                                }
+                                // At the bottom of every tab but Audio CD (a disc's
+                                // codes are not for every project), like VEGAS: it
+                                // takes the whole dialog's settings.
+                                let shown = self.tab != PropTab::AudioCd;
+                                ui.scope(|ui| {
+                                    // Hidden, it keeps its room: all tabs stay as tall.
+                                    if !shown {
+                                        ui.set_invisible();
+                                    }
+                                    widgets::checkbox(
+                                        ui,
+                                        &mut self.start_new_projects,
+                                        tr("Start all new projects with these settings"),
+                                    );
+                                });
+                            });
                     });
-                });
                 ui.add_space(6.0);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let changed = self.changed(app);
                     if theme::premium() {
-                        if theme::dialog_button(
-                            ui, tr("Apply"), vec2(90.0, 32.0), false, changed
-                        ).clicked() {
+                        if theme::dialog_button(ui, tr("Apply"), vec2(90.0, 32.0), false, changed)
+                            .clicked()
+                        {
                             self.apply(app);
                         }
-                        if theme::dialog_button(
-                            ui, tr("Cancel"), vec2(90.0, 32.0), false, true
-                        ).clicked() {
+                        if theme::dialog_button(ui, tr("Cancel"), vec2(90.0, 32.0), false, true)
+                            .clicked()
+                        {
                             close = true;
                         }
-                        if theme::dialog_button(
-                            ui, "OK", vec2(90.0, 32.0), true, true
-                        ).clicked() {
+                        if theme::dialog_button(ui, "OK", vec2(90.0, 32.0), true, true).clicked() {
                             self.apply(app);
                             close = true;
                         }
@@ -595,7 +826,9 @@ impl ProjectPropertiesDialog {
         if let Some(h) = parse_size(&self.height) {
             d.settings.height = h;
         }
-        if let Some(r) = parse_rate(&self.rate) {
+        if self.rate != rate_label(d.settings.frame_rate)
+            && let Some(r) = parse_rate(&self.rate)
+        {
             d.settings.frame_rate = r;
         }
         if let Some(r) = parse_sample_rate(&self.sample_rate) {
@@ -628,15 +861,22 @@ impl ProjectPropertiesDialog {
             });
         }
         if self.start_new_projects {
-            app.settings.new_project = Some(NewProjectDefaults {
-                settings: d.settings,
-                prerender_folder: d.prerender_folder,
-                recorded_folder: d.recorded_folder,
-                ruler_offset: d.ruler_offset,
-                summary: d.summary,
-            });
-            let _ = app.settings.save();
+            self.save_defaults(app);
             self.start_new_projects = false;
+        }
+    }
+
+    fn save_defaults(&self, app: &mut BananaApp) {
+        let draft = self.edited();
+        app.settings.new_project = Some(NewProjectDefaults {
+            settings: draft.settings,
+            prerender_folder: draft.prerender_folder,
+            recorded_folder: draft.recorded_folder,
+            ruler_offset: draft.ruler_offset,
+            summary: draft.summary,
+        });
+        if let Err(error) = app.settings.save() {
+            app.report_error(error);
         }
     }
 
@@ -1470,6 +1710,23 @@ fn audio_qualities() -> Vec<(AudioQuality, String, bool)> {
         .collect()
 }
 
+fn locked_dimensions(mut dims: [u32; 2], axis: usize, value: u32) -> [u32; 2] {
+    let other = 1 - axis;
+    let ratio = f64::from(dims[other].max(1)) / f64::from(dims[axis].max(1));
+    let bounded = |n: f64| ((n * 0.5).round() as u32 * 2).clamp(16, 8192);
+    let requested = f64::from(value);
+    let paired = requested * ratio;
+    dims[axis] = bounded(if paired > 8192.0 {
+        8192.0 / ratio
+    } else if paired < 16.0 {
+        16.0 / ratio
+    } else {
+        requested
+    });
+    dims[other] = bounded(f64::from(dims[axis]) * ratio);
+    dims
+}
+
 /// A width or height typed in its box: even, from 16 to 8192.
 fn parse_size(text: &str) -> Option<u32> {
     let digits: String = text.chars().filter(|c| c.is_ascii_digit()).collect();
@@ -1891,6 +2148,14 @@ pub(crate) fn fixed_choice(ui: &mut Ui, width: f32, id: &str, text: &str, tip: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn locked_custom_resolution_preserves_the_ratio_from_either_dimension() {
+        assert_eq!(locked_dimensions([16, 9], 0, 2560), [2560, 1440]);
+        assert_eq!(locked_dimensions([16, 9], 1, 1080), [1920, 1080]);
+        assert_eq!(locked_dimensions([9, 16], 0, 8192), [4608, 8192]);
+        assert_eq!(locked_dimensions([16, 9], 0, 16), [28, 16]);
+    }
 
     #[test]
     fn typed_frame_rates() {

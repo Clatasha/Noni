@@ -2253,43 +2253,14 @@ impl<'a> Rows<'a> {
                     let mut changed = false;
                     let rich = !info.rich_text.is_empty();
                     ui.add_enabled_ui(enabled, |ui| {
-                        let height_id = id.with("text-height");
                         let available = ui.max_rect().right() - ui.next_widget_position().x;
-                        let width = (available - 40.0).max(SLIDER_W);
-                        let height = ui.data(|d| d.get_temp::<f32>(height_id)).unwrap_or(112.0);
-                        let (out, grip) = ui
-                            .vertical(|ui| {
-                                let out = egui::ScrollArea::vertical()
-                                    .id_salt(id.with("text-scroll"))
-                                    .max_height(height)
-                                    .auto_shrink([false, false])
-                                    .show(ui, |ui| {
-                                        egui::TextEdit::multiline(&mut s)
-                                            .desired_rows(5)
-                                            .desired_width(width)
-                                            .lock_focus(true)
-                                            .show(ui)
-                                    })
-                                    .inner;
-                                let (r, grip) =
-                                    ui.allocate_exact_size(vec2(width, 9.0), Sense::drag());
-                                let grip =
-                                    grip.on_hover_and_drag_cursor(egui::CursorIcon::ResizeVertical);
-                                for dy in [-1.0, 2.0] {
-                                    let c = r.center() + vec2(0.0, dy);
-                                    ui.painter().line_segment(
-                                        [c - vec2(9.0, 0.0), c + vec2(9.0, 0.0)],
-                                        Stroke::new(1.0, theme::text_dim()),
-                                    );
-                                }
-                                (out, grip)
-                            })
-                            .inner;
-                        if grip.dragged() {
-                            let height = (height + grip.drag_delta().y).clamp(72.0, 640.0);
-                            ui.data_mut(|d| d.insert_temp(height_id, height));
-                            ui.ctx().request_repaint();
-                        }
+                        let out = crate::widgets::resizable_multiline(
+                            ui,
+                            ui.id().with(id),
+                            &mut s,
+                            (available - 40.0).max(SLIDER_W),
+                            112.0,
+                        );
                         changed = out.response.changed();
                         // Rich text: the part selected, kept while the
                         // other settings are worked (see `rich_text`).

@@ -3812,3 +3812,59 @@ pub(crate) mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod title_cache_tests {
+    #[test]
+    fn static_title_picture_is_reused_but_keyframed_title_is_sampled() {
+        super::register_own();
+        let generator = bv_timeline::Generator::Plugin(Box::new(bv_timeline::PluginFx {
+            id: super::TITLES_ID.into(),
+            name: "Titles & Text".into(),
+            version: [1, 0],
+            params: Default::default(),
+        }));
+        let settings = bv_timeline::ProjectSettings {
+            width: 320,
+            height: 180,
+            ..Default::default()
+        };
+        use bv_core::Tick;
+        use bv_timeline::Generator;
+        let size = (320, 180);
+        let read = |generator| {
+            let info = bv_timeline::MediaInfo::generated(generator, &settings);
+            bv_media::open_video(&info).unwrap()
+        };
+        let first_time = Tick::ZERO;
+        let second_time = Tick::from_seconds(1);
+        let mut reader = read(generator.clone());
+        let picture = reader.frame_at_scaled(first_time, size.0, size.1).unwrap();
+        let next = reader.frame_at_scaled(second_time, size.0, size.1).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&picture, &next));
+        let Generator::Plugin(mut fx) = generator else {
+            panic!("Expected a title generator")
+        };
+        let scale = |n| bv_timeline::PluginValue::Num(vec![n]);
+        fx.params.insert(
+            "scale".into(),
+            bv_timeline::PluginParam {
+                value: scale(1.0),
+                keys: [(first_time, 1.0), (second_time, 2.0)]
+                    .map(|(time, value)| {
+                        bv_timeline::PluginKey::new(
+                            time,
+                            scale(value),
+                            bv_timeline::KeyCurve::Linear,
+                        )
+                    })
+                    .to_vec(),
+            },
+        );
+        let mut reader = read(Generator::Plugin(fx));
+        let first = reader.frame_at_scaled(first_time, size.0, size.1).unwrap();
+        let second = reader.frame_at_scaled(second_time, size.0, size.1).unwrap();
+        assert!(!std::sync::Arc::ptr_eq(&first, &second));
+        assert_ne!(first.data, second.data);
+    }
+}

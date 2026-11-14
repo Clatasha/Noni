@@ -348,6 +348,7 @@ pub fn generator_values(
 pub(crate) struct PluginVideo {
     instance: Instance,
     rate: FrameRate,
+    static_title: bool,
     size: (u32, u32),
     /// The length the instance was told, in frames.
     span: f64,
@@ -378,6 +379,10 @@ impl PluginVideo {
         Ok(PluginVideo {
             instance,
             rate,
+            // The built-in title reads only its parameter values. Clip
+            // transform/entrance/exit are applied later by the compositor.
+            static_title: fx.id == bv_timeline::fcp_import::TITLES_PLUGIN
+                && fx.params.values().all(|param| param.keys.is_empty()),
             size: (width.max(1), height.max(1)),
             span,
             cache: None,
@@ -400,7 +405,11 @@ impl VideoReader for PluginVideo {
     }
 
     fn frame_at_scaled(&mut self, t: Tick, min_w: u32, min_h: u32) -> Result<Arc<ImageRgbaF32>> {
-        let frame = self.rate.frame_at(t);
+        let frame = if self.static_title {
+            0
+        } else {
+            self.rate.frame_at(t)
+        };
         let (w, h) = covering(self.size, (min_w, min_h));
         if let Some((f, size, img)) = &self.cache
             && *f == frame
