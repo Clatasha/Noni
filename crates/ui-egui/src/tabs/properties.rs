@@ -653,7 +653,7 @@ impl Orientation {
                 }
             }
             Self::Clockwise | Self::Counterclockwise => {
-                let direction = if matches!(self, Self::Clockwise) {
+                let direction: f32 = if matches!(self, Self::Clockwise) {
                     1.0
                 } else {
                     -1.0
