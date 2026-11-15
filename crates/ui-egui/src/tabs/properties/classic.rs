@@ -73,7 +73,7 @@ pub(super) fn ui(
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
-                .selectable_label(show_keys, tr("Keyframe Panel"))
+                .add(egui::Button::new(tr("Keyframe Panel")).selected(show_keys))
                 .clicked()
             {
                 show_keys = !show_keys;
@@ -136,13 +136,40 @@ fn header(
                     )
                 });
                 response.on_hover_text(tr("Enable or bypass"));
-                let arrow = if open { "▾" } else { "▸" };
-                if ui
-                    .add(egui::Button::new(format!("{title}  {arrow}")).frame(false))
-                    .clicked()
-                {
+                let text = ui.painter().layout_no_wrap(
+                    title.to_owned(),
+                    egui::TextStyle::Button.resolve(ui.style()),
+                    theme::text_strong(),
+                );
+                let (rect, collapse) =
+                    ui.allocate_exact_size(vec2(text.size().x + 14.0, 20.0), egui::Sense::click());
+                if collapse.clicked() {
                     open = !open;
                 }
+                let color = if collapse.hovered() {
+                    theme::text_strong()
+                } else {
+                    theme::text_dim()
+                };
+                ui.painter().galley(
+                    rect.left_center() - vec2(0.0, text.size().y / 2.0),
+                    text,
+                    color,
+                );
+                let c = rect.right_center() - vec2(5.0, 0.0);
+                let arrow = if open {
+                    [vec2(-3.0, -1.5), vec2(3.0, -1.5), vec2(0.0, 2.0)]
+                } else {
+                    [vec2(-1.5, -3.0), vec2(-1.5, 3.0), vec2(2.0, 0.0)]
+                };
+                ui.painter().add(egui::Shape::convex_polygon(
+                    arrow.map(|point| c + point).to_vec(),
+                    color,
+                    egui::Stroke::NONE,
+                ));
+                collapse.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), title)
+                });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), actions);
             });
         });
@@ -588,6 +615,7 @@ fn keyframe_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::accesskit::Role;
     use egui_kittest::{Harness, kittest::Queryable};
 
     #[test]
@@ -601,15 +629,21 @@ mod tests {
             true,
         );
         harness.get_by_label("Scale X");
-        harness.get_by_label("Transform  ▾").click();
+        harness
+            .get_by_role_and_label(Role::Button, "Transform")
+            .click();
         harness.run();
         assert!(*harness.state());
         assert!(harness.query_by_label("Scale X").is_none());
-        harness.get_by_label("Transform").click();
+        harness
+            .get_by_role_and_label(Role::CheckBox, "Transform")
+            .click();
         harness.run();
         assert!(!*harness.state());
         assert!(harness.query_by_label("Scale X").is_none());
-        harness.get_by_label("Transform  ▸").click();
+        harness
+            .get_by_role_and_label(Role::Button, "Transform")
+            .click();
         harness.run();
         harness.get_by_label("Scale X");
         assert!(!*harness.state());

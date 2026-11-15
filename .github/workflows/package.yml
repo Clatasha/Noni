@@ -25,7 +25,7 @@ on:
   # One-time rebuild request: coastal welcome banner.
   # One-time rebuild request: title clipping at the frame edge.
   # One-time rebuild request: quick video and image orientation controls, with icon coordinate fix.
-  # One-time rebuild request: Classic video and image Properties redesign.
+  # One-time rebuild request: Classic video and image Properties with drawn collapse arrows.
   push:
     branches: [noni-branding]
     paths:
