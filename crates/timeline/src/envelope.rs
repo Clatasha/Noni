@@ -34,6 +34,8 @@ pub enum EnvelopeKind {
     /// straight line over the transition): it can hold, go back and repeat.
     /// Video events only.
     TransitionProgress,
+    /// Video clip opacity, with times relative to the clip start.
+    EventOpacity,
     /// An audio track's send to a bus or a chain over time (VEGAS's bus
     /// envelopes): linear gain on the send's level (1 = its level, up to
     /// +12 dB).
@@ -90,7 +92,11 @@ impl EnvelopeKind {
         EnvelopeKind::FadeToColor,
     ];
     /// The envelopes video events have.
-    pub const EVENT: [EnvelopeKind; 2] = [EnvelopeKind::Velocity, EnvelopeKind::TransitionProgress];
+    pub const EVENT: [EnvelopeKind; 3] = [
+        EnvelopeKind::Velocity,
+        EnvelopeKind::TransitionProgress,
+        EnvelopeKind::EventOpacity,
+    ];
     /// The video bus's.
     pub const VIDEO_BUS: [EnvelopeKind; 4] = [
         EnvelopeKind::Mute,
@@ -117,7 +123,7 @@ impl EnvelopeKind {
     pub fn is_event(self) -> bool {
         matches!(
             self,
-            EnvelopeKind::Velocity | EnvelopeKind::TransitionProgress
+            EnvelopeKind::Velocity | EnvelopeKind::TransitionProgress | EnvelopeKind::EventOpacity
         )
     }
 
@@ -127,6 +133,7 @@ impl EnvelopeKind {
             | EnvelopeKind::Send(_)
             | EnvelopeKind::Mute
             | EnvelopeKind::CompositeLevel
+            | EnvelopeKind::EventOpacity
             | EnvelopeKind::Velocity
             | EnvelopeKind::FxBypass(_) => 1.0,
             EnvelopeKind::FxParam { .. } => 0.5,
@@ -144,6 +151,7 @@ impl EnvelopeKind {
             EnvelopeKind::Pan | EnvelopeKind::FadeToColor => (-1.0, 1.0),
             EnvelopeKind::Mute
             | EnvelopeKind::CompositeLevel
+            | EnvelopeKind::EventOpacity
             | EnvelopeKind::TransitionProgress
             | EnvelopeKind::MotionBlur
             | EnvelopeKind::FxParam { .. }
@@ -194,6 +202,7 @@ impl EnvelopeKind {
             }
             EnvelopeKind::Pan | EnvelopeKind::FadeToColor => ((value + 1.0) / 2.0).clamp(0.0, 1.0),
             EnvelopeKind::CompositeLevel
+            | EnvelopeKind::EventOpacity
             | EnvelopeKind::TransitionProgress
             | EnvelopeKind::MotionBlur
             | EnvelopeKind::FxParam { .. } => value.clamp(0.0, 1.0),
@@ -217,6 +226,7 @@ impl EnvelopeKind {
             EnvelopeKind::Volume | EnvelopeKind::Send(_) => u * VOLUME_ENVELOPE_TOP,
             EnvelopeKind::Pan | EnvelopeKind::FadeToColor => u * 2.0 - 1.0,
             EnvelopeKind::CompositeLevel
+            | EnvelopeKind::EventOpacity
             | EnvelopeKind::TransitionProgress
             | EnvelopeKind::MotionBlur
             | EnvelopeKind::FxParam { .. } => u,
@@ -759,6 +769,9 @@ impl Project {
             return Ok(false);
         }
         let mut env = Envelope::new(kind);
+        if kind == EnvelopeKind::EventOpacity {
+            env.points[0].value = c.level;
+        }
         if kind == EnvelopeKind::TransitionProgress {
             env.points.push(EnvelopePoint {
                 at: fade_in,

@@ -178,6 +178,7 @@ pub(super) fn clip_handles(
             || track.muted
             || clip.locked
             || clip.muted
+            || clip.visual.transform_bypass
             || time < clip.start
             || time >= clip.end()
             || !place.fill
@@ -189,8 +190,8 @@ pub(super) fn clip_handles(
         let key = clip.box_at(time, place.media, place.media_aspect);
         // A static clip stays static even when the playhead is mid-clip.
         let edit_at = match clip.pan_crop.keys.as_slice() {
-            [] => clip.start,
-            [key] => clip.start + key.at,
+            [] if !clip.visual.transform_keyed => clip.start,
+            [key] if !clip.visual.transform_keyed => clip.start + key.at,
             _ => time,
         };
         let pose = bv_timeline::scene::clip_animation(clip, time);

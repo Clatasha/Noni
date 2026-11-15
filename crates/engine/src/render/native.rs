@@ -60,6 +60,9 @@ fn plain_track(track: &Track) -> bool {
 }
 
 fn plain_clip(clip: &Clip) -> bool {
+    if clip.visual != Default::default() {
+        return false;
+    }
     clip.level == 1.0
         && clip.rate == 1.0
         && clip.fade_in == Tick::ZERO

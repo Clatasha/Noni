@@ -631,6 +631,13 @@ pub fn media_time(clip: &Clip, info: &MediaInfo, t: Tick) -> Option<Tick> {
 /// top, black toward the bottom.
 pub const DEFAULT_FADE_COLORS: [[u8; 4]; 2] = [[255, 255, 255, 255], [0, 0, 0, 255]];
 
+/// A solid clip backdrop in the current compositing space, premultiplied.
+pub fn clip_background(scene: &FrameScene<'_>, color: [u8; 4]) -> [f32; 4] {
+    let rgb = fade_color(scene, color);
+    let alpha = f32::from(color[3]) / 255.0;
+    [rgb[0] * alpha, rgb[1] * alpha, rgb[2] * alpha, alpha]
+}
+
 /// A fade color (8 bits) in the frame's compositing space: video's values,
 /// as VEGAS takes a picked color's — as they are in video gamma, else their
 /// light —, under ACES in its working space.
@@ -852,7 +859,24 @@ fn scene_at(
         match track_content(project, track, t, width, height) {
             Some(content) => scene.tracks.push(TrackScene {
                 track: track.id,
-                mode: track.composite_mode,
+                mode: if grouped || space.is_some() || compositor.is_some() {
+                    track.composite_mode
+                } else {
+                    let event = match &content {
+                        TrackContent::Event(event) | TrackContent::Transition { to: event, .. } => {
+                            event.source.as_ref()
+                        }
+                        TrackContent::Nothing => None,
+                    };
+                    event.map_or(track.composite_mode, |source| {
+                        let visual = &source.clip.visual;
+                        if visual.compositing_bypass {
+                            track.composite_mode
+                        } else {
+                            visual.blend.unwrap_or(track.composite_mode)
+                        }
+                    })
+                },
                 parent_mode: track.parent_mode,
                 compositor,
                 parent_compositor,
@@ -931,7 +955,13 @@ fn track_content<'a>(
     let visible: Vec<&Clip> = track
         .clips
         .iter()
-        .filter(|c| !c.muted && c.level > 0.0 && c.range().contains(t))
+        .filter(|c| {
+            !c.muted
+                && c.range().contains(t)
+                && (c.video_opacity(t) > 0.0
+                    || c.envelope(crate::envelope::EnvelopeKind::EventOpacity)
+                        .is_some())
+        })
         .collect();
     let b = *visible.last()?;
     let mut layer_b = event_layer(project, b, t, width, height);
@@ -1055,7 +1085,7 @@ fn event_layer<'a>(
     EventLayer {
         clip: clip.id,
         source,
-        level: clip.level.clamp(0.0, 1.0) * animation.opacity,
+        level: clip.video_opacity(t) * animation.opacity,
         fade: None,
     }
 }
@@ -1761,6 +1791,63 @@ mod tests {
         assert!(
             p.toggle_event_envelope(first, EnvelopeKind::TransitionProgress)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn classic_visual_controls_change_scene_and_round_trip() {
+        let mut p = Project::default();
+        let track = p.tracks[0].id;
+        let media = p.add_media(MediaInfo::generated(Generator::ColorBars, &p.settings));
+        p.insert_media(media, Tick::ZERO, Some(track), None)
+            .unwrap();
+        let id = p.tracks[0].clips[0].id;
+        let time = Tick::from_seconds_f64(0.25);
+        let original = |p: &Project| {
+            let scene = frame_scene(p, time, 640, 360);
+            let TrackContent::Event(event) = &scene.tracks[0].content else {
+                panic!("expected a single clip");
+            };
+            (
+                event.source.as_ref().unwrap().placement,
+                event.level,
+                scene.tracks[0].mode,
+            )
+        };
+        let baseline = original(&p).0;
+        p.set_clip_framing(
+            id,
+            &crate::Transform {
+                x: 0.2,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let moved = original(&p).0;
+        assert_ne!(moved, baseline);
+        let kind = crate::EnvelopeKind::EventOpacity;
+        p.toggle_event_envelope(id, kind).unwrap();
+        p.set_envelope_point(id, kind, Tick::from_seconds_f64(0.5), 0.0)
+            .unwrap();
+        let clip = p.clip_mut(id).unwrap();
+        clip.visual.blend = Some(crate::CompositeMode::Screen);
+        assert_eq!(original(&p).1, 0.5);
+        assert_eq!(original(&p).2, crate::CompositeMode::Screen);
+
+        let clip = p.clip_mut(id).unwrap();
+        clip.visual.transform_bypass = true;
+        clip.visual.compositing_bypass = true;
+        let mut restored = Project::from_json(&p.to_json()).unwrap();
+        assert_eq!(original(&restored), original(&p));
+        assert_eq!(original(&restored).0, baseline);
+        assert_eq!(original(&restored).1, 1.0);
+        assert_eq!(original(&restored).2, crate::CompositeMode::SourceAlpha);
+        let clip = restored.clip_mut(id).unwrap();
+        clip.visual.transform_bypass = false;
+        clip.visual.compositing_bypass = false;
+        assert_eq!(
+            original(&restored),
+            (moved, 0.5, crate::CompositeMode::Screen)
         );
     }
 

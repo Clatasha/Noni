@@ -4754,8 +4754,11 @@ fn rate_badge(painter: &egui::Painter, right_bottom: Pos2, rate: f64) {
 fn visual_key_times(clip: &bv_timeline::Clip, media: Option<&bv_timeline::MediaInfo>) -> Vec<Tick> {
     let mut times = Vec::new();
     // A lone framing or mask point stores the static configuration.
-    if clip.pan_crop.keys.len() > 1 {
+    if clip.visual.transform_keyed || clip.pan_crop.keys.len() > 1 {
         times.extend(clip.pan_crop.keys.iter().map(|key| clip.start + key.at));
+    }
+    if let Some(opacity) = clip.envelope(bv_timeline::envelope::EnvelopeKind::EventOpacity) {
+        times.extend(opacity.points.iter().map(|point| clip.start + point.at));
     }
     if let Some(mask) = &clip.mask
         && mask.keys.len() > 1

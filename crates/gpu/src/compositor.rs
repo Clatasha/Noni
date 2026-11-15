@@ -801,31 +801,44 @@ impl Compositor {
         }
         let out = self.transparent(enc, w, h);
         for look in [m.shadow, m.glow].into_iter().flatten() {
-            let s = look.size.max(0.01);
-            let at = Transform {
-                x: m.transform.x * (1.0 - s) + look.x,
-                y: m.transform.y * (1.0 - s) + look.y,
-                scale: s,
-                ..Transform::default()
-            };
-            let mut shape = self.place(enc, &picture, (w, h), &at, m.quality, 1.0);
-            let radius = look.blur.clamp(0.0, 1.0) * bv_timeline::motion::HALO_BLUR * w as f32;
-            if radius >= 0.5 {
-                shape = self.blur(enc, &shape, radius);
-            }
-            let c = look.color;
-            let k = look.intensity.clamp(0.0, 1.0) * c[3];
-            self.kernel(
-                enc,
-                K::Shade,
-                Params::sized(w, h).with_f(&[c[0], c[1], c[2], k]),
-                &[&shape.buf],
-                Grid::Pixels(w, h),
-            );
+            let shape = self.halo(enc, &picture, &m.transform, look, m.quality);
             self.over(enc, &shape, &out);
         }
         self.over(enc, &picture, &out);
         out
+    }
+
+    fn halo(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        picture: &Img,
+        tf: &Transform,
+        look: bv_timeline::HaloLook,
+        quality: bv_timeline::RenderQuality,
+    ) -> Img {
+        let (w, h) = (picture.w, picture.h);
+        let s = look.size.max(0.01);
+        let at = Transform {
+            x: tf.x * (1.0 - s) + look.x,
+            y: tf.y * (1.0 - s) + look.y,
+            scale: s,
+            ..Transform::default()
+        };
+        let mut shape = self.place(enc, picture, (w, h), &at, quality, 1.0);
+        let radius = look.blur.clamp(0.0, 1.0) * bv_timeline::motion::HALO_BLUR * w as f32;
+        if radius >= 0.5 {
+            shape = self.blur(enc, &shape, radius);
+        }
+        let c = look.color;
+        let k = look.intensity.clamp(0.0, 1.0) * c[3];
+        self.kernel(
+            enc,
+            K::Shade,
+            Params::sized(w, h).with_f(&[c[0], c[1], c[2], k]),
+            &[&shape.buf],
+            Grid::Pixels(w, h),
+        );
+        shape
     }
 
     /// `top` over `under` (in place).
@@ -1062,11 +1075,40 @@ impl Compositor {
         pool: &mut VideoPool,
         below: &Img,
     ) -> Img {
-        let img = match &e.source {
+        let mut img = match &e.source {
             Some(m) if m.info.is_adjustment() => self.adjusted(enc, scene, m, below),
             Some(m) => self.media_layer(enc, scene, e.clip.0, m, pool),
             None => return self.transparent(enc, scene.width, scene.height),
         };
+        if let Some(m) = &e.source {
+            let visual = &m.clip.visual;
+            if let Some(effect) = visual.enhancement() {
+                self.effect(enc, &mut img, &effect, scene.scale);
+            }
+            if visual.shadow_on || visual.background_on {
+                let (w, h) = (img.w, img.h);
+                let under = self.image(w, h);
+                let fill = if visual.background_on {
+                    bv_timeline::scene::clip_background(scene, visual.background)
+                } else {
+                    [0.0; 4]
+                };
+                self.kernel(
+                    enc,
+                    K::Fill,
+                    Params::sized(w, h).with_f(&fill),
+                    &[&under.buf],
+                    Grid::Pixels(w, h),
+                );
+                if visual.shadow_on {
+                    let shadow =
+                        self.halo(enc, &img, &Transform::default(), visual.shadow, m.quality);
+                    self.over(enc, &shadow, &under);
+                }
+                self.over(enc, &img, &under);
+                img = under;
+            }
+        }
         self.scale(enc, &img, e.level);
         if let Some(f) = e.fade {
             self.scale(enc, &img, f);

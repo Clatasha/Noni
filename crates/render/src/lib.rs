@@ -670,6 +670,32 @@ fn event_layer(
         Some(m) => media_layer(scene, e.clip.0, m, pool),
         None => return ImageRgbaF32::transparent(scene.width, scene.height),
     };
+    if let Some(m) = &e.source {
+        let visual = &m.clip.visual;
+        if let Some(effect) = visual.enhancement() {
+            effects::apply(&mut img, &effect, scene.scale);
+        }
+        if visual.shadow_on || visual.background_on {
+            let mut under = ImageRgbaF32::transparent(img.width, img.height);
+            if visual.background_on {
+                under.data.fill(bv_timeline::scene::clip_background(
+                    scene,
+                    visual.background,
+                ));
+            }
+            if visual.shadow_on {
+                let shadow = halo(
+                    &img,
+                    &bv_timeline::Transform::default(),
+                    &visual.shadow,
+                    m.quality,
+                );
+                over_into(&mut under, &shadow);
+            }
+            over_into(&mut under, &img);
+            img = under;
+        }
+    }
     scale_layer(&mut img, e.level);
     if let Some(f) = e.fade {
         scale_layer(&mut img, f);

@@ -315,7 +315,9 @@ impl BananaApp {
                 EnvelopeKind::TransitionProgress => self.timeline.show_env_progress = true,
                 EnvelopeKind::MotionBlur => self.timeline.show_env_motion_blur = true,
                 EnvelopeKind::Supersampling => self.timeline.show_env_supersampling = true,
-                EnvelopeKind::FxParam { .. } | EnvelopeKind::FxBypass(_) => {}
+                EnvelopeKind::FxParam { .. }
+                | EnvelopeKind::FxBypass(_)
+                | EnvelopeKind::EventOpacity => {}
             }
         }
     }

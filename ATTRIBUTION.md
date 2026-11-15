@@ -49,6 +49,7 @@ code), but they are assets all the same.
 |---|---|
 | The interface's icons | `crates/ui-egui/src/icons.rs`, `crates/ui-egui/src/icons/glyphs.rs` (SVG path text on a 24-unit grid) and `icons/path.rs` (their reader) |
 | Video and Image orientation icons | `crates/ui-egui/src/tabs/properties.rs` (original drawn controls) |
+- Classic Properties toggle, rotation dial and keyframe diamond, drawn in `crates/ui-egui/src/tabs/properties/classic.rs` — original work, GPL-3.0-or-later.
 | The interface's colors and layout metrics | `crates/ui-egui/src/theme.rs`: values only, no artwork |
 | Media generators (Checkerboard, Color Gradient, Noise Texture, Test Pattern, Credit Roll, Titles & Text) and the older built-in generators | `crates/effects/src/generators.rs`, `credit_roll.rs`, `titles.rs`; `crates/media/src/generator.rs` |
 | The looks of the LUT Filter (written as `.cube` files when first needed) and of the Looks effect | `crates/effects/src/lut_filter.rs` (`looks`), `crates/effects/src/looks.rs` |

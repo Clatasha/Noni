@@ -1,5 +1,7 @@
 //! Selection-specific controls for timeline clips.
 
+mod classic;
+
 use crate::i18n::tr;
 use bv_core::{FrameRate, Tick, timecode};
 use bv_timeline::mask::{MaskFeather, MaskPath, PanCropMask};
@@ -367,6 +369,18 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             && let Some(place) = crate::ofx::generator_place(&project, id, at)
         {
             reset_framing = crate::title_editor::inspector(ui, app, fx, &place, &mut c, &mut tf);
+            return;
+        }
+
+        if !theme::premium() && !is_title && visual_page == Some(VisualPage::Basic) {
+            classic::ui(ui, app, &mut c, at, place, |ui, clip| {
+                clip_settings(ui, clip, rate);
+                if !still {
+                    conform = video_settings(
+                        ui, clip, media.and_then(|m| m.video), rate, group_locked,
+                    );
+                }
+            });
             return;
         }
 

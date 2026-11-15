@@ -690,8 +690,19 @@ impl PlaceIn {
     /// Where event `clip`'s picture lands at `t` on the timeline, on a frame
     /// of `size` pixels.
     pub fn at(&self, clip: &crate::model::Clip, t: Tick, size: [f64; 2]) -> Placement {
-        let key = clip.box_at(t, self.media, self.media_aspect);
-        place(&key, self).on_frame(self.frame, size)
+        let (key, framing) = if clip.visual.transform_bypass {
+            (
+                PanCropKey::whole(self.media),
+                Self {
+                    keep_aspect: true,
+                    fill: true,
+                    ..*self
+                },
+            )
+        } else {
+            (clip.box_at(t, self.media, self.media_aspect), *self)
+        };
+        place(&key, &framing).on_frame(self.frame, size)
     }
 }
 

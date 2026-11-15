@@ -569,6 +569,55 @@ impl ClipAnimation {
     }
 }
 
+/// Optional controls in the video and image inspectors.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ClipVisual {
+    pub transform_bypass: bool,
+    pub transform_keyed: bool,
+    pub compositing_bypass: bool,
+    pub blend: Option<CompositeMode>,
+    pub background_on: bool,
+    pub background: [u8; 4],
+    pub enhance_on: bool,
+    pub enhance_strength: f32,
+    pub shadow_on: bool,
+    pub shadow: crate::motion::HaloLook,
+}
+
+impl Default for ClipVisual {
+    fn default() -> Self {
+        Self {
+            transform_bypass: false,
+            transform_keyed: false,
+            compositing_bypass: false,
+            blend: None,
+            background_on: false,
+            background: [24, 24, 28, 255],
+            enhance_on: false,
+            enhance_strength: 0.5,
+            shadow_on: false,
+            shadow: crate::motion::HaloLook::SHADOW,
+        }
+    }
+}
+
+impl ClipVisual {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn enhancement(&self) -> Option<Effect> {
+        let strength = self.enhance_strength.clamp(0.0, 1.0);
+        (self.enhance_on && strength > 0.0).then(|| {
+            let mut effect = Effect::new(crate::fx::EffectKind::BrightnessContrast);
+            effect.params[0] = 0.035 * strength;
+            effect.params[1] = 0.25 * strength;
+            effect
+        })
+    }
+}
+
 /// Um trecho de mídia posicionado numa trilha (o "evento" do VEGAS).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
@@ -583,6 +632,8 @@ pub struct Clip {
     pub group: Option<GroupId>,
     /// Opacidade (vídeo) ou ganho linear (áudio).
     pub level: f32,
+    #[serde(default, skip_serializing_if = "ClipVisual::is_default")]
+    pub visual: ClipVisual,
     /// Fade de entrada a partir do início do clipe (além do crossfade
     /// automático quando ele se sobrepõe ao clipe anterior).
     #[serde(default)]
@@ -761,6 +812,7 @@ impl Clip {
             source_in: Tick::ZERO,
             group: None,
             level: 1.0,
+            visual: ClipVisual::default(),
             fade_in: Tick::ZERO,
             fade_out: Tick::ZERO,
             fade_in_curve: FadeCurve::default(),
@@ -948,6 +1000,16 @@ impl Clip {
     /// pixels `aspect` wide.
     pub fn box_at(&self, t: Tick, media: [f64; 2], aspect: f64) -> PanCropKey {
         self.pan_crop.at_time(t, self.start, media, aspect)
+    }
+
+    /// Video opacity before clip animation and fades.
+    pub fn video_opacity(&self, t: Tick) -> f32 {
+        if self.visual.compositing_bypass {
+            return 1.0;
+        }
+        self.envelope(crate::envelope::EnvelopeKind::EventOpacity)
+            .map_or(self.level, |env| env.value_at(t - self.start))
+            .clamp(0.0, 1.0)
     }
 
     /// How many times higher its sound plays: its pitch change, and its

@@ -520,7 +520,9 @@ impl EnvelopeColor {
             EnvelopeKind::Mute => EnvelopeColor::Mute,
             EnvelopeKind::MotionBlur => EnvelopeColor::MotionBlurLength,
             EnvelopeKind::Supersampling => EnvelopeColor::VideoSupersampling,
-            EnvelopeKind::CompositeLevel => EnvelopeColor::CompositeLevel,
+            EnvelopeKind::CompositeLevel | EnvelopeKind::EventOpacity => {
+                EnvelopeColor::CompositeLevel
+            }
             EnvelopeKind::FadeToColor => EnvelopeColor::FadeToColor,
             EnvelopeKind::Velocity => EnvelopeColor::EventVelocity,
             EnvelopeKind::TransitionProgress => EnvelopeColor::TransitionProgress,
@@ -1192,6 +1194,7 @@ impl Prefs {
             | EnvelopeKind::FadeToColor
             | EnvelopeKind::Velocity
             | EnvelopeKind::TransitionProgress
+            | EnvelopeKind::EventOpacity
             | EnvelopeKind::MotionBlur
             | EnvelopeKind::Supersampling => self.new_video_envelopes,
             EnvelopeKind::FxParam { .. } | EnvelopeKind::FxBypass(_) => self.new_audio_fx_envelopes,

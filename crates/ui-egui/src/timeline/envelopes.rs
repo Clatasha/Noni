@@ -86,6 +86,7 @@ pub(crate) fn visible(view: &TimelineView, kind: EnvelopeKind) -> bool {
             EnvelopeKind::FadeToColor => view.show_env_fade,
             EnvelopeKind::Velocity => view.show_env_velocity,
             EnvelopeKind::TransitionProgress => view.show_env_progress,
+            EnvelopeKind::EventOpacity => true,
             EnvelopeKind::MotionBlur => view.show_env_motion_blur,
             EnvelopeKind::Supersampling => view.show_env_supersampling,
             EnvelopeKind::FxParam { .. } | EnvelopeKind::FxBypass(_) => true,
@@ -160,6 +161,7 @@ pub(crate) fn kind_label(kind: EnvelopeKind) -> &'static str {
         EnvelopeKind::FadeToColor => tr("Fade to Color"),
         EnvelopeKind::Velocity => tr("Velocity"),
         EnvelopeKind::TransitionProgress => tr("Transition Progress"),
+        EnvelopeKind::EventOpacity => tr("Opacity"),
         EnvelopeKind::MotionBlur => tr("Motion Blur Amount"),
         EnvelopeKind::Supersampling => tr("Video Supersampling"),
         EnvelopeKind::FxParam { .. } | EnvelopeKind::FxBypass(_) => tr("FX Automation"),
@@ -189,6 +191,7 @@ pub(crate) fn value_text(kind: EnvelopeKind, v: f32) -> String {
             format!("−{} %", crate::fmt::num((-v * 100.0).round() as f64, 0))
         }
         EnvelopeKind::CompositeLevel
+        | EnvelopeKind::EventOpacity
         | EnvelopeKind::Velocity
         | EnvelopeKind::TransitionProgress => {
             format!("{} %", crate::fmt::num((v * 100.0).round() as f64, 0))
@@ -809,6 +812,7 @@ pub(crate) fn parse_value(kind: EnvelopeKind, text: &str) -> Option<f32> {
         EnvelopeKind::Volume | EnvelopeKind::Send(_) => super::headers::parse_volume(text)?,
         EnvelopeKind::Pan => super::headers::parse_pan(text)?,
         EnvelopeKind::CompositeLevel
+        | EnvelopeKind::EventOpacity
         | EnvelopeKind::FadeToColor
         | EnvelopeKind::Velocity
         | EnvelopeKind::TransitionProgress

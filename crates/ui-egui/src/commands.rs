@@ -897,6 +897,9 @@ impl Cmd {
             ShowEnvelopeType(EnvelopeKind::TransitionProgress)
             | AudioEnvelope(EnvelopeKind::TransitionProgress)
             | VideoEnvelope(EnvelopeKind::TransitionProgress) => tr("Transition Progress"),
+            ShowEnvelopeType(EnvelopeKind::EventOpacity)
+            | AudioEnvelope(EnvelopeKind::EventOpacity)
+            | VideoEnvelope(EnvelopeKind::EventOpacity) => tr("Opacity"),
             ShowEnvelopeType(EnvelopeKind::MotionBlur)
             | AudioEnvelope(EnvelopeKind::MotionBlur) => tr("Motion Blur Amount"),
             ShowEnvelopeType(EnvelopeKind::Supersampling)
@@ -1747,7 +1750,9 @@ impl Cmd {
                     EnvelopeKind::TransitionProgress => v.show_env_progress ^= true,
                     EnvelopeKind::MotionBlur => v.show_env_motion_blur ^= true,
                     EnvelopeKind::Supersampling => v.show_env_supersampling ^= true,
-                    EnvelopeKind::FxParam { .. } | EnvelopeKind::FxBypass(_) => {}
+                    EnvelopeKind::FxParam { .. }
+                    | EnvelopeKind::FxBypass(_)
+                    | EnvelopeKind::EventOpacity => {}
                 }
             }
             AudioEnvelope(k) if k.is_event() => {}
