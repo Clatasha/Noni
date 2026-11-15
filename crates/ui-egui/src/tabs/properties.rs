@@ -105,7 +105,7 @@ fn tabs<T: Copy + Eq + Send + Sync + 'static>(
         .data(|d| d.get_temp::<T>(key))
         .filter(|active| items.iter().any(|(item, _)| item == active))
         .unwrap_or(items[0].0);
-    let active = tab_row(ui, salt, items, active);
+    let active = draw_tab_row(ui, salt, items, active, salt != "pages");
     ui.data_mut(|d| d.insert_temp(key, active));
     active
 }
@@ -114,7 +114,17 @@ pub(crate) fn tab_row<T: Copy + Eq + Send + Sync + 'static>(
     ui: &mut egui::Ui,
     salt: &str,
     items: &[(T, &str)],
+    active: T,
+) -> T {
+    draw_tab_row(ui, salt, items, active, false)
+}
+
+fn draw_tab_row<T: Copy + Eq + Send + Sync + 'static>(
+    ui: &mut egui::Ui,
+    salt: &str,
+    items: &[(T, &str)],
     mut active: T,
+    secondary: bool,
 ) -> T {
     let key = ui.id().with(salt);
     egui::Frame::new()
@@ -192,7 +202,12 @@ pub(crate) fn tab_row<T: Copy + Eq + Send + Sync + 'static>(
                             ui.painter(), rect, selected, response.hovered(), false,
                         );
                     } else if selected {
-                        ui.painter().rect_filled(rect, 4.0, theme::selection());
+                        let fill = if secondary {
+                            Color32::from_rgb(64, 85, 104)
+                        } else {
+                            theme::selection()
+                        };
+                        ui.painter().rect_filled(rect, 4.0, fill);
                     } else if response.hovered() {
                         ui.painter().rect_filled(rect, 4.0, theme::hover());
                     }
@@ -427,7 +442,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                             if value_slider(ui, tr("Opacity"), &mut opacity, 0.0..=100.0, 0, " %") {
                                 c.level = opacity / 100.0;
                             }
-                            egui::CollapsingHeader::new(tr("Clip Settings")).show(ui, |ui| {
+                            collapsible_section(ui, tr("Clip Settings"), false, |ui| {
                                 clip_settings(ui, &mut c, rate);
                                 if !still && !is_title {
                                     conform = video_settings(
@@ -444,8 +459,9 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                     Page::Audio => {
                         let target = audio.as_mut().unwrap_or(&mut c);
                         audio_controls(ui, target, rate);
-                        egui::CollapsingHeader::new(tr("Clip Settings"))
-                            .show(ui, |ui| clip_settings(ui, target, rate));
+                        collapsible_section(ui, tr("Clip Settings"), false, |ui| {
+                            clip_settings(ui, target, rate)
+                        });
                     }
                     Page::Speed => {
                         let mut playback = c.rate as f32;
@@ -488,11 +504,12 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                             &mut c.animation_in
                         };
                         animation_tiles(ui, animation, c.duration);
-                        section(ui, tr("Fades and transition"));
-                        fades(ui, &mut c, rate);
-                        ui.label(tr("Transition in"));
-                        transition_choice(ui, &mut c);
-                        transition_params(ui, app, &project, id, &mut c);
+                        collapsible_section(ui, tr("Fades and transition"), true, |ui| {
+                            fades(ui, &mut c, rate);
+                            ui.label(tr("Transition in"));
+                            transition_choice(ui, &mut c);
+                            transition_params(ui, app, &project, id, &mut c);
+                        });
                     }
                     Page::Adjust => super::color::inspector(ui, app, id),
                     Page::Tracking => {
@@ -572,6 +589,22 @@ fn store_clip(ui: &egui::Ui, app: &mut BananaApp, before: &Clip, after: Clip) {
         app.set_fx_params(key, after.effects, chain, set);
     } else {
         apply_clip(app, key, before, after);
+    }
+}
+
+/// The standard disclosure for groups of related controls in Properties.
+pub(crate) fn collapsible_section(
+    ui: &mut egui::Ui,
+    title: &str,
+    default_open: bool,
+    content: impl FnOnce(&mut egui::Ui),
+) {
+    if theme::premium() {
+        egui::CollapsingHeader::new(title)
+            .default_open(default_open)
+            .show(ui, content);
+    } else {
+        classic::group(ui, title, default_open, content);
     }
 }
 
@@ -771,8 +804,15 @@ fn transform(ui: &mut egui::Ui, tf: &mut Transform) {
             }
         }
     });
-    value_slider(ui, tr("Rotation"), &mut tf.rotation_deg, -180.0..=180.0, 1, "°");
-    egui::CollapsingHeader::new(tr("Crop")).show(ui, |ui| {
+    value_slider(
+        ui,
+        tr("Rotation"),
+        &mut tf.rotation_deg,
+        -180.0..=180.0,
+        1,
+        "°",
+    );
+    collapsible_section(ui, tr("Crop"), false, |ui| {
         percent(ui, tr("Crop left"), &mut tf.crop_left, 0.0..=95.0);
         percent(ui, tr("Crop right"), &mut tf.crop_right, 0.0..=95.0);
         percent(ui, tr("Crop top"), &mut tf.crop_top, 0.0..=95.0);
@@ -821,15 +861,28 @@ fn video_settings(
 }
 
 fn audio_controls(ui: &mut egui::Ui, c: &mut Clip, rate: FrameRate) {
-    section(ui, tr("Basic"));
-    let mut db = bv_mixer_gain_db(c.level);
-    if value_slider(ui, tr("Volume"), &mut db, -60.0..=12.0, 1, " dB") {
-        c.level = if db <= -59.9 { 0.0 } else { 10f32.powf(db / 20.0) };
-    }
-    fades(ui, c, rate);
-    crate::widgets::checkbox(ui, &mut c.auto_normalize, tr("Auto Normalize"));
-    section(ui, tr("Pitch"));
-    value_slider(ui, tr("Pitch change (semitones):"), &mut c.pitch, -48.0..=48.0, 2, "");
+    collapsible_section(ui, tr("Basic"), true, |ui| {
+        let mut db = bv_mixer_gain_db(c.level);
+        if value_slider(ui, tr("Volume"), &mut db, -60.0..=12.0, 1, " dB") {
+            c.level = if db <= -59.9 {
+                0.0
+            } else {
+                10f32.powf(db / 20.0)
+            };
+        }
+        fades(ui, c, rate);
+        crate::widgets::checkbox(ui, &mut c.auto_normalize, tr("Auto Normalize"));
+    });
+    collapsible_section(ui, tr("Pitch"), true, |ui| {
+        value_slider(
+            ui,
+            tr("Pitch change (semitones):"),
+            &mut c.pitch,
+            -48.0..=48.0,
+            2,
+            "",
+        );
+    });
 }
 
 fn fades(ui: &mut egui::Ui, c: &mut Clip, rate: FrameRate) {
@@ -1073,33 +1126,34 @@ fn mask(
         if mask.paths.is_empty() {
             return None;
         }
-        section(ui, tr("Mask settings"));
         picked = picked.min(mask.paths.len() - 1);
-        egui::ComboBox::from_id_salt("mask-path")
-            .selected_text(trf!("Mask {}", picked + 1))
-            .show_ui(ui, |ui| {
-                for i in 0..mask.paths.len() {
-                    ui.selectable_value(&mut picked, i, trf!("Mask {}", i + 1));
+        collapsible_section(ui, tr("Mask settings"), true, |ui| {
+            egui::ComboBox::from_id_salt("mask-path")
+                .selected_text(trf!("Mask {}", picked + 1))
+                .show_ui(ui, |ui| {
+                    for i in 0..mask.paths.len() {
+                        ui.selectable_value(&mut picked, i, trf!("Mask {}", i + 1));
+                    }
+                });
+            ui.data_mut(|d| d.insert_temp(key, picked));
+            let units = bv_timeline::pancrop::local_units(local);
+            if let Some(mut path) = mask.paths_at_units(units).into_iter().nth(picked) {
+                let mut feather = if path.feather == MaskFeather::None {
+                    0.0
+                } else {
+                    path.feather_pct as f32
+                };
+                if value_slider(ui, tr("Feather"), &mut feather, 0.0..=100.0, 1, " %") {
+                    path.feather_pct = f64::from(feather);
+                    if feather == 0.0 {
+                        path.feather = MaskFeather::None;
+                    } else if path.feather == MaskFeather::None {
+                        path.feather = MaskFeather::Both;
+                    }
+                    mask.set_look_at(local, picked, &path);
                 }
-            });
-        ui.data_mut(|d| d.insert_temp(key, picked));
-        let units = bv_timeline::pancrop::local_units(local);
-        if let Some(mut path) = mask.paths_at_units(units).into_iter().nth(picked) {
-            let mut feather = if path.feather == MaskFeather::None {
-                0.0
-            } else {
-                path.feather_pct as f32
-            };
-            if value_slider(ui, tr("Feather"), &mut feather, 0.0..=100.0, 1, " %") {
-                path.feather_pct = f64::from(feather);
-                if feather == 0.0 {
-                    path.feather = MaskFeather::None;
-                } else if path.feather == MaskFeather::None {
-                    path.feather = MaskFeather::Both;
-                }
-                mask.set_look_at(local, picked, &path);
             }
-        }
+        });
         Some(picked)
     });
     if ui.button(tr("Open Pan/Crop…")).clicked() {

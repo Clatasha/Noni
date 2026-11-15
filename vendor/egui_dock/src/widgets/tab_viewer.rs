@@ -121,7 +121,7 @@ pub trait TabViewer {
 
     /// BananaV: the room kept at the right end of every tab bar for
     /// [`Self::leaf_buttons`] (0, as published: none).
-    fn leaf_buttons_width(&self) -> f32 {
+    fn leaf_buttons_width(&self, _tabs: &[Self::Tab]) -> f32 {
         0.0
     }
 

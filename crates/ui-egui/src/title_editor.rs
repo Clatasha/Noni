@@ -503,28 +503,25 @@ pub(crate) fn inspector(
                 edit.typography(ui, false);
                 ui.add_space(6.0);
                 edit.presets(ui, app);
-                egui::CollapsingHeader::new(tr("More Text Options")).show(ui, |ui| edit.layout(ui));
-                egui::CollapsingHeader::new(tr("Transform"))
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        transform_controls(ui, &mut edit, transform);
-                    });
-                egui::CollapsingHeader::new(tr("Compositing"))
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        let mut opacity = clip.level * 100.0;
-                        if crate::tabs::properties::value_slider(
-                            ui,
-                            tr("Opacity"),
-                            &mut opacity,
-                            0.0..=100.0,
-                            0,
-                            " %",
-                        ) {
-                            clip.level = opacity / 100.0;
-                        }
-                        edit.fill(ui);
-                    });
+                use crate::tabs::properties::collapsible_section;
+                collapsible_section(ui, tr("More Text Options"), false, |ui| edit.layout(ui));
+                collapsible_section(ui, tr("Transform"), true, |ui| {
+                    transform_controls(ui, &mut edit, transform);
+                });
+                collapsible_section(ui, tr("Compositing"), true, |ui| {
+                    let mut opacity = clip.level * 100.0;
+                    if crate::tabs::properties::value_slider(
+                        ui,
+                        tr("Opacity"),
+                        &mut opacity,
+                        0.0..=100.0,
+                        0,
+                        " %",
+                    ) {
+                        clip.level = opacity / 100.0;
+                    }
+                    edit.fill(ui);
+                });
             });
         if keyframes && crate::ofx::prepare_title_keys(&mut app.ofx, &edit.key, &edit.fx, place) {
             ui.horizontal_wrapped(|ui| {

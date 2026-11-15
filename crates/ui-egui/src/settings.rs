@@ -1589,6 +1589,9 @@ pub struct UiSettings {
     /// Project Media's Quick Tags: the tags Ctrl+1 to Ctrl+9 give.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub quick_tags: Vec<String>,
+    /// Size of the thumbnail cards in Project Media.
+    #[serde(default)]
+    pub media_thumbnail_size: crate::tabs::media::ThumbnailSize,
     /// Project Media's Views › Media Tags: the tags' panel shows.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub media_tags_panel: bool,

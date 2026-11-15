@@ -449,6 +449,8 @@ pub struct BananaApp {
     /// F11 and its kin: the docking areas hidden (the layout as it was).
     pub(crate) docks_hidden: Option<crate::dock::Hidden>,
     /// A docked window maximized by its tab bar's button.
+    /// The layout to restore after temporarily docking Properties full height.
+    pub(crate) properties_layout: Option<egui_dock::DockState<Tab>>,
     pub(crate) dock_maximized: Option<crate::dock::Maximized>,
     /// What a key or a button asked of the layout, done where it is drawn.
     pub(crate) dock_request: Option<crate::dock::DockRequest>,
@@ -710,6 +712,7 @@ impl BananaApp {
             zoom_applied: None,
             dock_peek: false,
             docks_hidden: None,
+            properties_layout: None,
             dock_maximized: None,
             dock_request: None,
             timeline_maximized: false,
@@ -1012,13 +1015,18 @@ impl BananaApp {
     /// user arranged it (the docking areas F11 hid back, a maximized window
     /// at its size again) and its bars.
     fn session_now(&self) -> Option<crate::settings::Session> {
-        let mut dock = match &self.docks_hidden {
-            Some(hidden) => hidden.full().clone(),
-            None => self.dock.clone()?,
+        let dock = if let Some(layout) = &self.properties_layout {
+            layout.clone()
+        } else {
+            let mut dock = match &self.docks_hidden {
+                Some(hidden) => hidden.full().clone(),
+                None => self.dock.clone()?,
+            };
+            if let Some(m) = &self.dock_maximized {
+                dock::restore(&mut dock, m);
+            }
+            dock
         };
-        if let Some(m) = &self.dock_maximized {
-            dock::restore(&mut dock, m);
-        }
         Some(crate::settings::Session {
             dock: serde_json::to_value(&dock).ok()?,
             timeline_top: self.timeline_top,

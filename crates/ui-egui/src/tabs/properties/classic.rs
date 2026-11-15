@@ -48,7 +48,7 @@ pub(super) fn ui(
                 app.clip_windows.pan_crop = Some(id);
             }
             ui.add_space(8.0);
-            egui::CollapsingHeader::new(tr("Clip Settings")).show(ui, |ui| settings(ui, clip));
+            group(ui, tr("Clip Settings"), false, |ui| settings(ui, clip));
             if show_keys {
                 body(ui, |ui| keyframe_panel(ui, app, clip));
                 let scrolled = footer_id.with("scrolled");
@@ -92,7 +92,7 @@ fn reset_transform(clip: &mut Clip) {
 fn header(
     ui: &mut Ui,
     title: &str,
-    enabled: &mut bool,
+    enabled: Option<&mut bool>,
     default_open: bool,
     actions: impl FnOnce(&mut Ui),
 ) -> bool {
@@ -103,39 +103,41 @@ fn header(
         .inner_margin(egui::Margin::symmetric(10, 6))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                let (rect, response) =
-                    ui.allocate_exact_size(vec2(24.0, 14.0), egui::Sense::click());
-                if response.clicked() {
-                    *enabled = !*enabled;
+                if let Some(enabled) = enabled {
+                    let (rect, response) =
+                        ui.allocate_exact_size(vec2(24.0, 14.0), egui::Sense::click());
+                    if response.clicked() {
+                        *enabled = !*enabled;
+                    }
+                    let color = if *enabled {
+                        theme::banana()
+                    } else {
+                        theme::text_dim()
+                    };
+                    ui.painter().rect(
+                        rect.shrink(0.5),
+                        7.0,
+                        theme::panel_dark(),
+                        egui::Stroke::new(1.0, color),
+                        egui::StrokeKind::Inside,
+                    );
+                    let x = if *enabled {
+                        rect.right() - 7.0
+                    } else {
+                        rect.left() + 7.0
+                    };
+                    ui.painter()
+                        .circle_filled(egui::pos2(x, rect.center().y), 4.1, color);
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::Checkbox,
+                            ui.is_enabled(),
+                            *enabled,
+                            title,
+                        )
+                    });
+                    response.on_hover_text(tr("Enable or bypass"));
                 }
-                let color = if *enabled {
-                    theme::banana()
-                } else {
-                    theme::text_dim()
-                };
-                ui.painter().rect(
-                    rect.shrink(0.5),
-                    7.0,
-                    theme::panel_dark(),
-                    egui::Stroke::new(1.0, color),
-                    egui::StrokeKind::Inside,
-                );
-                let x = if *enabled {
-                    rect.right() - 7.0
-                } else {
-                    rect.left() + 7.0
-                };
-                ui.painter()
-                    .circle_filled(egui::pos2(x, rect.center().y), 4.1, color);
-                response.widget_info(|| {
-                    egui::WidgetInfo::selected(
-                        egui::WidgetType::Checkbox,
-                        ui.is_enabled(),
-                        *enabled,
-                        title,
-                    )
-                });
-                response.on_hover_text(tr("Enable or bypass"));
                 let text = ui.painter().layout_no_wrap(
                     title.to_owned(),
                     egui::TextStyle::Button.resolve(ui.style()),
@@ -175,6 +177,12 @@ fn header(
         });
     ui.data_mut(|d| d.insert_temp(id, open));
     open
+}
+
+pub(super) fn group(ui: &mut Ui, title: &str, default_open: bool, content: impl FnOnce(&mut Ui)) {
+    if header(ui, title, None, default_open, |_| {}) {
+        body(ui, content);
+    }
 }
 
 fn body(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
@@ -243,7 +251,7 @@ fn transform_section(
     let mut reset = false;
     let keyed = (clip.visual.transform_keyed || clip.pan_crop.keys.len() > 1)
         && clip.pan_crop.keys.iter().any(|point| point.at == local);
-    let open = header(ui, tr("Transform"), &mut enabled, true, |ui| {
+    let open = header(ui, tr("Transform"), Some(&mut enabled), true, |ui| {
         key |= diamond(ui, keyed, tr("Add Transform Keyframe"));
         reset = reset_button(ui);
     });
@@ -430,7 +438,7 @@ fn compositing_section(
     let envelope = clip.envelope(OPACITY);
     let keyed = envelope.is_some_and(|env| env.points.iter().any(|point| point.at == local));
     let mut opacity = envelope.map_or(clip.level, |env| env.value_at(local)) * 100.0;
-    let open = header(ui, tr("Compositing"), &mut enabled, true, |ui| {
+    let open = header(ui, tr("Compositing"), Some(&mut enabled), true, |ui| {
         add_key |= diamond(ui, keyed, tr("Add Opacity Keyframe"));
     });
     clip.visual.compositing_bypass = !enabled;
@@ -507,7 +515,13 @@ fn blend_name(mode: CompositeMode) -> &'static str {
 
 fn extras(ui: &mut Ui, clip: &mut Clip) {
     let v = &mut clip.visual;
-    if header(ui, tr("Background"), &mut v.background_on, false, |_| {}) {
+    if header(
+        ui,
+        tr("Background"),
+        Some(&mut v.background_on),
+        false,
+        |_| {},
+    ) {
         body(ui, |ui| {
             ui.add_enabled_ui(v.background_on, |ui| {
                 ui.horizontal(|ui| {
@@ -517,7 +531,13 @@ fn extras(ui: &mut Ui, clip: &mut Clip) {
             });
         });
     }
-    if header(ui, tr("Auto Enhance"), &mut v.enhance_on, false, |_| {}) {
+    if header(
+        ui,
+        tr("Auto Enhance"),
+        Some(&mut v.enhance_on),
+        false,
+        |_| {},
+    ) {
         body(ui, |ui| {
             ui.add_enabled_ui(v.enhance_on, |ui| {
                 let mut strength = v.enhance_strength * 100.0;
@@ -527,7 +547,7 @@ fn extras(ui: &mut Ui, clip: &mut Clip) {
             });
         });
     }
-    if header(ui, tr("Drop Shadow"), &mut v.shadow_on, false, |_| {}) {
+    if header(ui, tr("Drop Shadow"), Some(&mut v.shadow_on), false, |_| {}) {
         body(ui, |ui| {
             ui.add_enabled_ui(v.shadow_on, |ui| {
                 let look = &mut v.shadow;
@@ -622,7 +642,7 @@ mod tests {
     fn section_visibility_does_not_change_its_enabled_state() {
         let mut harness = Harness::new_ui_state(
             |ui, enabled| {
-                if header(ui, "Transform", enabled, true, |_| {}) {
+                if header(ui, "Transform", Some(enabled), true, |_| {}) {
                     ui.label("Scale X");
                 }
             },

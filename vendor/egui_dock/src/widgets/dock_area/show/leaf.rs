@@ -275,7 +275,10 @@ impl<Tab> DockArea<'_, Tab> {
         }
 
         // BananaV: the viewer's own buttons at the right end.
-        let own_buttons = tab_viewer.leaf_buttons_width();
+        let own_buttons = self
+            .dock_state
+            .leaf(path)
+            .map_or(0.0, |leaf| tab_viewer.leaf_buttons_width(&leaf.tabs));
         available_width -= own_buttons;
 
         let (actual_width, tab_hovered) = {

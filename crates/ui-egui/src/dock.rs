@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::app::BananaApp;
 use crate::app::actions::LayoutPreset;
 use crate::egui::{
-    Color32, CornerRadius, Id, Margin, Rect, Sense, Stroke, StrokeKind, Ui, WidgetText, vec2,
+    self, Color32, CornerRadius, Id, Margin, Rect, Sense, Stroke, StrokeKind, Ui, WidgetText, vec2,
 };
 use crate::icons::{self, Icon};
 use crate::tabs;
@@ -256,6 +256,7 @@ pub enum DockRequest {
     /// Every one (F11).
     All,
     Maximize(Tab),
+    FullHeightProperties,
     LibraryCategory(Tab),
     Restore,
 }
@@ -366,6 +367,45 @@ pub fn restore(dock: &mut DockState<Tab>, m: &Maximized) {
     }
 }
 
+/// Moves Properties to the outer right edge, taking its room from all rows.
+fn full_height_properties(dock: &mut DockState<Tab>) -> bool {
+    let Some(path) = dock.find_tab(&Tab::Properties) else {
+        return false;
+    };
+    let tree = dock.main_surface();
+    if tree.find_tab(&Tab::Timeline).is_none() {
+        return false;
+    }
+    let width = tree[NodeIndex::root()]
+        .rect()
+        .map_or(0.0, |rect| rect.width());
+    let properties_width = dock
+        .leaf(path.node_path())
+        .map_or(0.0, |leaf| leaf.rect.width());
+    let share = if width > 0.0 && properties_width > 0.0 {
+        (properties_width / width).clamp(0.25, 0.65)
+    } else {
+        0.32
+    };
+    dock.remove_tab(path);
+    let [_, pane] =
+        dock.main_surface_mut()
+            .split_right(NodeIndex::root(), 1.0 - share, vec![Tab::Properties]);
+    dock.main_surface_mut().set_focused_node(pane);
+    true
+}
+
+fn properties_at_edge(dock: &DockState<Tab>) -> bool {
+    let tree = dock.main_surface();
+    matches!(tree.iter().next(), Some(Node::Horizontal(_)))
+        && tree.find_tab(&Tab::Properties).is_some_and(|(node, _)| {
+            node == NodeIndex::root().right()
+                && tree[node]
+                    .tabs()
+                    .is_some_and(|tabs| tabs == [Tab::Properties])
+        })
+}
+
 /// Does what `req` asks of `dock`.
 fn apply(dock: &mut DockState<Tab>, app: &mut BananaApp, req: DockRequest) {
     if let DockRequest::LibraryCategory(tab) = req {
@@ -382,7 +422,23 @@ fn apply(dock: &mut DockState<Tab>, app: &mut BananaApp, req: DockRequest) {
             return;
         }
     }
+    if matches!(req, DockRequest::Area(_) | DockRequest::All)
+        && let Some(previous) = app.properties_layout.take()
+    {
+        *dock = previous;
+    }
     match req {
+        DockRequest::FullHeightProperties => {
+            if let Some(previous) = app.properties_layout.take() {
+                *dock = previous;
+            } else {
+                let previous = dock.clone();
+                if full_height_properties(dock) {
+                    focus(dock, &[Tab::Properties]);
+                    app.properties_layout = Some(previous);
+                }
+            }
+        }
         DockRequest::Area(a) => toggle_area(dock, &mut app.docks_hidden, a),
         DockRequest::All => toggle_all(dock, &mut app.docks_hidden),
         DockRequest::Maximize(tab) => app.dock_maximized = maximize(dock, tab),
@@ -559,8 +615,12 @@ impl TabViewer for Viewer<'_> {
             && LIBRARY_CATEGORIES.iter().all(|(tab, _)| tabs.contains(tab))
     }
 
-    fn leaf_buttons_width(&self) -> f32 {
-        18.0
+    fn leaf_buttons_width(&self, tabs: &[Tab]) -> f32 {
+        if tabs.contains(&Tab::Properties) {
+            36.0
+        } else {
+            18.0
+        }
     }
 
     /// Maximize, or Restore on the window maximized.
@@ -570,7 +630,45 @@ impl TabViewer for Viewer<'_> {
             .dock_maximized
             .as_ref()
             .is_some_and(|m| tabs.contains(&m.tab));
-        let r = Rect::from_center_size(rect.center(), vec2(16.0, 16.0));
+        if tabs.contains(&Tab::Properties) {
+            let full = self.app.properties_layout.is_some();
+            let r = Rect::from_center_size(
+                egui::pos2(rect.left() + 9.0, rect.center().y),
+                vec2(16.0, 16.0),
+            );
+            let tip = if full {
+                tr("Restore Properties Layout")
+            } else {
+                tr("Full-height Properties")
+            };
+            let response = ui.interact(r, Id::new("full-height-properties"), Sense::click());
+            let painter = ui.painter();
+            if full || response.hovered() {
+                painter.rect_filled(r, 2.0, theme::hover());
+            }
+            let color = if full || response.hovered() {
+                theme::text_strong()
+            } else {
+                theme::text_dim()
+            };
+            let icon = r.shrink2(vec2(2.0, 3.0));
+            painter.rect_stroke(icon, 1.0, Stroke::new(1.0, color), StrokeKind::Inside);
+            let sidebar = Rect::from_min_max(
+                egui::pos2(icon.right() - 4.0, icon.top() + 1.0),
+                icon.right_bottom() - vec2(1.0, 1.0),
+            );
+            painter.rect_filled(sidebar, 0.0, color);
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(egui::WidgetType::Button, true, full, tip)
+            });
+            if response.on_hover_text(tip).clicked() {
+                self.app.dock_request = Some(DockRequest::FullHeightProperties);
+            }
+        }
+        let r = Rect::from_center_size(
+            egui::pos2(rect.right() - 9.0, rect.center().y),
+            vec2(16.0, 16.0),
+        );
         let id = Id::new(("dock-maximizar", tabs.first().copied()));
         let resp = ui.interact(r, id, Sense::click());
         let color = if resp.hovered() {
@@ -816,6 +914,9 @@ pub fn show(ui: &mut Ui, dock: &mut DockState<Tab>, app: &mut BananaApp) {
     {
         app.master_width = Some(now / strips);
     }
+    if app.properties_layout.is_some() && !properties_at_edge(dock) {
+        app.properties_layout = None;
+    }
     if let Some(req) = app.dock_request.take() {
         apply(dock, app, req);
     }
@@ -898,6 +999,26 @@ mod tests {
     use egui_kittest::Harness;
 
     /// The default layout drawn once (its windows' places known).
+    #[test]
+    fn properties_can_take_the_full_right_edge_and_restore_the_layout() {
+        let mut app = BananaApp::new(egui::Context::default());
+        let mut dock = default_layout();
+        let before = serde_json::to_value(&dock).unwrap();
+        apply(&mut dock, &mut app, DockRequest::FullHeightProperties);
+        assert!(properties_at_edge(&dock));
+        let timeline = dock.main_surface().find_tab(&Tab::Timeline).unwrap().0;
+        let mut side = timeline;
+        while let Some(parent) = side.parent() {
+            if parent == NodeIndex::root() {
+                break;
+            }
+            side = parent;
+        }
+        assert_eq!(side, NodeIndex::root().left());
+        apply(&mut dock, &mut app, DockRequest::FullHeightProperties);
+        assert_eq!(serde_json::to_value(dock).unwrap(), before);
+    }
+
     fn drawn() -> DockState<Tab> {
         struct Tabs;
         impl TabViewer for Tabs {

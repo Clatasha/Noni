@@ -96,6 +96,37 @@ impl Project {
         Ok(())
     }
 
+    /// Files and subclips remain in the project. Only bin memberships change.
+    /// Validate the batch before changing either bin.
+    pub fn move_bin_media(
+        &mut self,
+        source: Option<BinId>,
+        destination: BinId,
+        media: &[MediaId],
+    ) -> Result<()> {
+        if let Some(id) = source {
+            self.bin_mut(id)?;
+            if id == destination {
+                return Ok(());
+            }
+        }
+        for &id in media {
+            if self.media(id).is_none() && self.subclip(id).is_none() {
+                return Err(EditError::UnknownMedia(id));
+            }
+        }
+        let bin = self.bin_mut(destination)?;
+        for &id in media {
+            if !bin.media.contains(&id) {
+                bin.media.push(id);
+            }
+        }
+        if let Some(id) = source {
+            self.bin_mut(id)?.media.retain(|item| !media.contains(item));
+        }
+        Ok(())
+    }
+
     /// Takes media out of the bin; it stays in the project.
     pub fn remove_from_bin(&mut self, id: BinId, media: MediaId) -> Result<()> {
         self.bin_mut(id)?.media.retain(|&m| m != media);
@@ -143,6 +174,27 @@ mod tests {
         assert!(p.bin(day1).is_none() && p.bin(shots).is_none());
         assert!(p.bin(b_roll).is_some());
         assert!(p.add_bin(Some(shots), "x").is_err(), "no such bin");
+    }
+
+    #[test]
+    fn moving_a_batch_keeps_assets_and_validates_before_mutating_membership() {
+        let (mut p, one) = project_with_media();
+        let two = p.add_media(MediaInfo::generated(Generator::ColorBars, &p.settings));
+        let source = p.add_bin(None, "Imports").unwrap();
+        let destination = p.add_bin(None, "Overlays").unwrap();
+        p.move_bin_media(None, source, &[one, two]).unwrap();
+        p.add_to_bin(destination, two).unwrap();
+        assert!(
+            p.move_bin_media(Some(source), destination, &[one, MediaId(u64::MAX)])
+                .is_err()
+        );
+        assert_eq!(p.bin(source).unwrap().media, [one, two]);
+        assert_eq!(p.bin(destination).unwrap().media, [two]);
+        p.move_bin_media(Some(source), destination, &[one, two])
+            .unwrap();
+        assert!(p.bin(source).unwrap().media.is_empty());
+        assert_eq!(p.bin(destination).unwrap().media, [two, one]);
+        assert!(p.media(one).is_some() && p.media(two).is_some());
     }
 
     #[test]

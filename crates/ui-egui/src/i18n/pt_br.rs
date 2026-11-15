@@ -3919,6 +3919,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Full-frame message generation:",
         "Envio de mensagens de quadro completo:",
     ),
+    ("Full-height Properties", "Propriedades em altura total"),
     (
         "Full-resolution rendering quality:",
         "Qualidade da renderização completa:",
@@ -6421,6 +6422,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Move timeline cursor when clicking on an event",
         "Mover o cursor da timeline ao clicar num evento",
     ),
+    ("Move to Folder", "Mover para pasta"),
     ("Move Track", "Mover trilha"),
     ("Move Up", "Mover para cima"),
     (
@@ -6571,6 +6573,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     ("New Audio Track", "Nova trilha de áudio"),
     ("New Bin", "Novo compartimento"),
     ("New Empty Project", "Novo projeto vazio"),
+    ("New Folder", "Nova pasta"),
     (
         "New length (timecode or seconds):",
         "Nova duração (timecode ou segundos):",
@@ -7951,6 +7954,10 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
     (
         "Restore Previous Time Selection",
         "Restaurar a seleção de tempo anterior",
+    ),
+    (
+        "Restore Properties Layout",
+        "Restaurar layout de propriedades",
     ),
     ("Restore Track Height", "Restaurar a altura da trilha"),
     ("Restored", "Restaurado"),
@@ -11104,6 +11111,7 @@ pub(super) const ENTRIES: &[(&str, &str)] = &[
         "Campo de fluxo óptico limiarizado",
     ),
     ("Thumbnail", "Miniatura"),
+    ("Thumbnail Size", "Tamanho da miniatura"),
     ("Thumbnails", "Miniaturas"),
     (
         "Thumbnails to show in video events:",

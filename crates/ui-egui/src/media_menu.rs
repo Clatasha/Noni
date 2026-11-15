@@ -49,6 +49,20 @@ fn file_of(app: &BananaApp, id: MediaId) -> Option<PathBuf> {
     }
 }
 
+fn folder_path(project: &bv_timeline::Project, folder: &bv_timeline::MediaBin) -> String {
+    let mut parts = vec![folder.name.as_str()];
+    let mut parent = folder.parent;
+    while let Some(bin) = parent.and_then(|id| project.bin(id)) {
+        if parts.len() == 16 {
+            break;
+        }
+        parts.push(&bin.name);
+        parent = bin.parent;
+    }
+    parts.reverse();
+    parts.join(" / ")
+}
+
 /// The menu of media `m`, right-clicked in Project Media; `at` is where
 /// (Rename's box goes there).
 pub(crate) fn media_menu(ui: &mut Ui, app: &mut BananaApp, m: &MediaInfo, at: egui::Pos2) {
@@ -178,6 +192,27 @@ pub(crate) fn media_menu(ui: &mut Ui, app: &mut BananaApp, m: &MediaInfo, at: eg
         ui.close();
     }
     ui.separator();
+    let source = match app.media_window.bin {
+        BinChoice::Custom(id) => Some(id),
+        _ => None,
+    };
+    let folders: Vec<_> = app
+        .project()
+        .bins
+        .iter()
+        .filter(|b| Some(b.id) != source)
+        .map(|b| (b.id, folder_path(app.project(), b)))
+        .collect();
+    if !folders.is_empty() {
+        ui.menu_button(tr("Move to Folder"), |ui| {
+            for (id, path) in folders {
+                if ui.button(path).clicked() {
+                    app.move_media_to_folder(source, id, &targets);
+                    ui.close();
+                }
+            }
+        });
+    }
     if icon_item(ui, tr("Remove from Current Bin"), None, "", in_bin) {
         match app.media_window.bin.clone() {
             BinChoice::Custom(b) => app.modify(|p| {

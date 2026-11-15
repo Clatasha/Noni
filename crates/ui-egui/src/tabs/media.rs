@@ -81,6 +81,30 @@ pub enum MediaView {
     Thumbnail,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ThumbnailSize {
+    #[default]
+    Standard,
+    Half,
+    Quarter,
+}
+
+impl ThumbnailSize {
+    fn factor(self) -> f32 {
+        match self {
+            Self::Standard => 1.0,
+            Self::Half => 0.5,
+            Self::Quarter => 0.25,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Marquee {
+    origin: egui::Pos2,
+    previous: Vec<MediaId>,
+}
+
 #[derive(Debug)]
 pub struct MediaWindow {
     pub bin: BinChoice,
@@ -116,6 +140,7 @@ pub struct MediaWindow {
     pub(crate) hovered: Option<(MediaId, Tick)>,
     /// A thumbnail's part being dragged.
     part_drag: Option<(MediaId, super::thumb_part::PartDrag)>,
+    marquee: Option<Marquee>,
     /// Where each thumbnail's picture was drawn (the tests' pointer).
     pub(crate) thumb_rects: HashMap<MediaId, Rect>,
     /// Where the media being dragged came from: a custom bin or a
@@ -160,6 +185,7 @@ impl Default for MediaWindow {
             parts: HashMap::new(),
             hovered: None,
             part_drag: None,
+            marquee: None,
             drag_from: None,
             dwell: None,
             thumb_rects: HashMap::new(),
@@ -520,6 +546,13 @@ fn toolbar(ui: &mut Ui, app: &mut BananaApp) {
             crate::menus::soon(ui, tr("Extract Audio from CD"), "");
             crate::menus::soon(ui, tr("Get Media from the Web"), "");
         });
+        if icon_button(ui, Icon::Folder, tr("New Folder")).clicked() {
+            let parent = match app.media_window.bin {
+                BinChoice::Custom(id) => Some(id),
+                _ => None,
+            };
+            new_bin(app, parent);
+        }
         // Swap Media: the project's video files swapped for those of the
         // same names in a folder (as the menu's Swap Video Files).
         if icon_button_ex(ui, Icon::Swap, tr("Swap Media"), false, true).clicked() {
@@ -629,6 +662,22 @@ fn toolbar(ui: &mut Ui, app: &mut BananaApp) {
                 }
             }
             ui.separator();
+            ui.label(tr("Thumbnail Size"));
+            for (size, label) in [
+                (ThumbnailSize::Standard, "100%"),
+                (ThumbnailSize::Half, "50%"),
+                (ThumbnailSize::Quarter, "25%"),
+            ] {
+                if crate::widgets::radio(ui, app.settings.media_thumbnail_size == size, label)
+                    .clicked()
+                {
+                    app.settings.media_thumbnail_size = size;
+                    w.view = MediaView::Thumbnail;
+                    let _ = app.settings.save();
+                    ui.close();
+                }
+            }
+            ui.separator();
             let shown = app.settings.media_tags_panel;
             if crate::menus::toggle_item(ui, tr("Media Tags"), shown) {
                 app.settings.media_tags_panel = !shown;
@@ -705,7 +754,7 @@ struct RowResponse {
     toggled: bool,
     clicked: bool,
     /// Media dropped on it.
-    dropped: Option<MediaId>,
+    dropped: Option<Vec<MediaId>>,
     response: Option<egui::Response>,
 }
 
@@ -733,12 +782,18 @@ fn bin_row(
         egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, ready, selected, name)
     });
     // Media dragged over a bin it can go into.
-    let dragging = match app.media_drag {
-        Some(MediaDrag::Media(id) | MediaDrag::MediaPart(id, _)) if drop_target => Some(id),
-        _ => None,
+    let dragging = if drop_target {
+        match app.media_drag.as_ref() {
+            Some(MediaDrag::Many(ids)) if icon == Icon::Folder => Some(ids.as_slice()),
+            Some(MediaDrag::Media(id) | MediaDrag::MediaPart(id, _)) => {
+                Some(std::slice::from_ref(id))
+            }
+            _ => None,
+        }
+    } else {
+        None
     };
-    let pointer = ui.input(|i| i.pointer.latest_pos());
-    let under = dragging.is_some() && pointer.is_some_and(|p| rect.contains(p));
+    let under = dragging.is_some() && drag_over(ui, rect);
     let painter = ui.painter();
     if under {
         painter.rect_stroke(
@@ -810,7 +865,11 @@ fn bin_row(
     RowResponse {
         toggled: open.is_some() && (resp.double_clicked() || (resp.clicked() && on_arrow)),
         clicked: resp.clicked() && !on_arrow,
-        dropped: if under && released { dragging } else { None },
+        dropped: if under && released {
+            dragging.map(<[MediaId]>::to_vec)
+        } else {
+            None
+        },
         response: Some(resp),
     }
 }
@@ -892,7 +951,7 @@ fn bins_ui(ui: &mut Ui, app: &mut BananaApp) {
                 app.media_window.bin = choice;
             }
             // Media let go on a tag get it.
-            if let Some(media) = row.dropped {
+            if let Some(media) = row.dropped.as_deref().and_then(|ids| ids.first()).copied() {
                 app.media_drag = None;
                 app.modify(|p| p.add_tag(media, &tag));
             }
@@ -1061,7 +1120,7 @@ fn storyboard_bins(ui: &mut Ui, app: &mut BananaApp) {
             app.media_window.bin = BinChoice::Storyboard(id);
             app.media_window.story.picked.clear();
         }
-        if let Some(media) = row.dropped {
+        if let Some(media) = row.dropped.as_deref().and_then(|ids| ids.first()).copied() {
             let part = match app.media_drag.take() {
                 Some(MediaDrag::MediaPart(_, r)) => Some(r),
                 _ => None,
@@ -1238,7 +1297,7 @@ fn renamed(
         r.request_focus();
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             done = Some(None);
-        } else if r.lost_focus() {
+        } else if r.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             done = Some(Some(text.trim().to_string()));
         }
     });
@@ -1255,7 +1314,7 @@ fn renamed(
 
 /// A new bin in `parent`, named "New Bin", ready to be renamed.
 fn new_bin(app: &mut BananaApp, parent: Option<BinId>) {
-    let name = tr("New Bin");
+    let name = tr("New Folder");
     if let Ok(id) = app.modify(|p| p.add_bin(parent, name)) {
         if let Some(p) = parent {
             app.media_window.open_bins.insert(p);
@@ -1310,10 +1369,7 @@ fn custom_bins(ui: &mut Ui, app: &mut BananaApp, parent: Option<BinId>, depth: u
             app.media_window.bin = BinChoice::Custom(id);
         }
         if let Some(media) = row.dropped {
-            app.media_drag = None;
-            app.modify(|p| {
-                let _ = p.add_to_bin(id, media);
-            });
+            drop_into_folder(ui, app, id, &media);
         }
         if let Some(resp) = row.response {
             resp.context_menu(|ui| {
@@ -1386,42 +1442,231 @@ fn shown(app: &BananaApp) -> Vec<MediaInfo> {
         .collect()
 }
 
-/// The chosen bin's media, as the view says.
+fn drag_over(ui: &Ui, rect: Rect) -> bool {
+    ui.rect_contains_pointer(rect)
+}
+
+fn folder_drag(app: &BananaApp) -> Option<&[MediaId]> {
+    match app.media_drag.as_ref() {
+        Some(MediaDrag::Many(ids)) => Some(ids),
+        Some(MediaDrag::Media(id) | MediaDrag::MediaPart(id, _)) => Some(std::slice::from_ref(id)),
+        _ => None,
+    }
+}
+
+fn drop_into_folder(ui: &Ui, app: &mut BananaApp, id: BinId, media: &[MediaId]) {
+    let copy = ui.input(|i| i.modifiers.command || i.modifiers.ctrl);
+    let source = match app.media_window.drag_from.take() {
+        Some(DragFrom::Bin(source)) if !copy => Some(source),
+        _ => None,
+    };
+    app.media_drag = None;
+    app.move_media_to_folder(source, id, media);
+}
+
+impl BananaApp {
+    pub(crate) fn move_media_to_folder(
+        &mut self,
+        source: Option<BinId>,
+        destination: BinId,
+        media: &[MediaId],
+    ) {
+        if let Err(error) = self.modify(|p| p.move_bin_media(source, destination, media)) {
+            self.report_error(error.to_string());
+        }
+    }
+}
+
+/// Folders and their contents look the same in thumbnail, list and detail views.
 fn list_ui(ui: &mut Ui, app: &mut BananaApp) {
     let media = shown(app);
     let view = app.media_window.view;
+    let folder_parent = match app.media_window.bin {
+        BinChoice::All => Some(None),
+        BinChoice::Custom(id) => Some(Some(id)),
+        _ => None,
+    };
+    let folders: Vec<_> = folder_parent
+        .map(|parent| app.project().bins_in(parent).into_iter().cloned().collect())
+        .unwrap_or_default();
+    let scale = app.settings.media_thumbnail_size.factor();
+    let thumb = THUMB * scale;
+    app.media_window.thumb_rects.clear();
+    app.media_window.hovered = None;
     egui::ScrollArea::vertical()
         .id_salt("project-media-list")
         .auto_shrink([false, false])
-        .show(ui, |ui| match view {
-            MediaView::Thumbnail => {
-                ui.add_space(6.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(12.0, 10.0);
+        .show(ui, |ui| {
+            // Register the empty-space gesture first so the tiles and rows
+            // still receive their own clicks, scrubs and item drags.
+            let background =
+                ui.interact(ui.clip_rect(), ui.id().with("media-marquee"), Sense::drag());
+            let mut positions = Vec::with_capacity(media.len());
+            match view {
+                MediaView::Thumbnail => {
                     ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing =
+                            vec2(12.0 * scale.max(0.5), 10.0 * scale.max(0.5));
+                        ui.add_space(6.0);
+                        for folder in &folders {
+                            folder_item(ui, app, folder, Some(thumb));
+                        }
+                        for m in &media {
+                            positions.push((m.id, thumbnail_cell(ui, app, m, thumb)));
+                        }
+                    });
+                }
+                MediaView::List | MediaView::Details => {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    let details = view == MediaView::Details;
+                    if details {
+                        details_header(ui);
+                    }
+                    for folder in &folders {
+                        folder_item(ui, app, folder, None);
+                    }
                     for m in &media {
-                        thumbnail_cell(ui, app, m);
+                        let (rect, resp) = ui.allocate_exact_size(
+                            vec2(ui.available_width(), ROW_H + 2.0),
+                            Sense::click_and_drag(),
+                        );
+                        if ui.is_rect_visible(rect) {
+                            paint_row(ui, app, m, rect, &resp, details);
+                        }
+                        media_interactions(app, m, resp, false);
+                        positions.push((m.id, rect));
                     }
-                });
-            }
-            MediaView::List | MediaView::Details => {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                let details = view == MediaView::Details;
-                if details {
-                    details_header(ui);
-                }
-                for m in &media {
-                    let (rect, resp) = ui.allocate_exact_size(
-                        vec2(ui.available_width(), ROW_H + 2.0),
-                        Sense::click_and_drag(),
-                    );
-                    if ui.is_rect_visible(rect) {
-                        paint_row(ui, app, m, rect, &resp, details);
-                    }
-                    media_interactions(app, m, resp, false);
                 }
             }
+            marquee(ui, app, &background, &positions);
         });
+}
+
+fn marquee(ui: &Ui, app: &mut BananaApp, response: &egui::Response, positions: &[(MediaId, Rect)]) {
+    let anchor = ui.min_rect().min;
+    if response.drag_started_by(egui::PointerButton::Primary)
+        && let Some(start) = ui.input(|i| i.pointer.press_origin())
+    {
+        let additive = ui.input(|i| i.modifiers.command || i.modifiers.ctrl);
+        let previous = if !additive {
+            Vec::new()
+        } else if app.media_window.picked.is_empty() {
+            app.selected_media.into_iter().collect()
+        } else {
+            app.media_window.picked.clone()
+        };
+        app.media_window.marquee = Some(Marquee {
+            origin: pos2(start.x - anchor.x, start.y - anchor.y),
+            previous,
+        });
+    }
+    if let Some(drag) = &app.media_window.marquee
+        && let Some(pointer) = ui.input(|i| i.pointer.latest_pos())
+    {
+        let rect = Rect::from_two_pos(anchor + drag.origin.to_vec2(), pointer);
+        let visible = rect.intersect(ui.clip_rect());
+        ui.painter().rect(
+            visible,
+            0.0,
+            theme::selection().gamma_multiply(0.23),
+            Stroke::new(1.0, theme::selection()),
+            egui::StrokeKind::Inside,
+        );
+        let mut picked = drag.previous.clone();
+        for &(id, cell) in positions {
+            if cell.intersects(visible) && !picked.contains(&id) {
+                picked.push(id);
+            }
+        }
+        app.selected_media = app
+            .selected_media
+            .filter(|id| picked.contains(id))
+            .or_else(|| picked.last().copied());
+        app.media_window.picked = picked;
+    }
+    if !ui.input(|i| i.pointer.primary_down()) || response.drag_stopped() {
+        app.media_window.marquee = None;
+    }
+}
+
+fn folder_item(
+    ui: &mut Ui,
+    app: &mut BananaApp,
+    folder: &bv_timeline::MediaBin,
+    thumb: Option<egui::Vec2>,
+) {
+    let size = thumb.map_or_else(
+        || vec2(ui.available_width(), ROW_H + 2.0),
+        thumbnail_card_size,
+    );
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    let over = folder_drag(app).is_some() && drag_over(ui, rect);
+    let painter = ui.painter_at(rect);
+    if response.hovered() || over {
+        painter.rect_filled(rect, 3.0, theme::hover());
+    }
+    if over {
+        painter.rect_stroke(
+            rect,
+            3.0,
+            Stroke::new(1.5, theme::banana()),
+            egui::StrokeKind::Inside,
+        );
+    }
+    if ui.is_rect_visible(rect) {
+        if let Some(thumb) = thumb {
+            let pic = Rect::from_min_size(rect.min, thumb);
+            painter.rect_filled(pic, 3.0, theme::panel_dark());
+            let shown = folder.media.iter().any(|&id| {
+                let p = app.project();
+                let media = p.media(id).cloned().or_else(|| p.subclip_info(id));
+                media.is_some_and(|m| {
+                    m.video.is_some() && paint_thumbnail(ui, app, &painter, &m, Tick::ZERO, pic)
+                })
+            });
+            let icon = if shown {
+                Rect::from_min_size(pic.min + vec2(3.0, 3.0), vec2(16.0, 14.0))
+            } else {
+                Rect::from_center_size(pic.center(), vec2(thumb.y * 0.55, thumb.y * 0.55))
+            };
+            if shown {
+                painter.rect_filled(icon.expand(2.0), 2.0, theme::panel_dark());
+            }
+            icons::paint(&painter, icon, Icon::Folder, theme::banana());
+            thumbnail_name(&painter, rect, pic, &folder.name);
+        } else {
+            let icon =
+                Rect::from_center_size(pos2(rect.left() + 13.0, rect.center().y), vec2(15.0, 15.0));
+            icons::paint(&painter, icon, Icon::Folder, theme::banana());
+            painter.text(
+                pos2(icon.right() + 6.0, rect.center().y),
+                Align2::LEFT_CENTER,
+                &folder.name,
+                FontId::proportional(13.0),
+                theme::text(),
+            );
+        }
+    }
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &folder.name));
+    if response.double_clicked() {
+        if let Some(parent) = folder.parent {
+            app.media_window.open_bins.insert(parent);
+        }
+        app.media_window.bin = BinChoice::Custom(folder.id);
+        app.media_window.custom_open = true;
+        app.media_window.picked.clear();
+        app.selected_media = None;
+        ui.scroll_to_cursor(Some(egui::Align::Min));
+    }
+    if over
+        && ui.input(|i| i.pointer.any_released())
+        && let Some(media) = folder_drag(app).map(<[MediaId]>::to_vec)
+    {
+        drop_into_folder(ui, app, folder.id, &media);
+    }
+    response.on_hover_text(&folder.name);
 }
 
 /// The details' columns: name, length, video, audio, tags.
@@ -1626,12 +1871,64 @@ fn place_part(app: &mut BananaApp, id: MediaId, at: Tick) {
 
 /// A media of the Thumbnail view: its picture (scrubbing through the video
 /// under the pointer; a part picked lighter) and its name.
-fn thumbnail_cell(ui: &mut Ui, app: &mut BananaApp, m: &MediaInfo) {
-    let (rect, resp) =
-        ui.allocate_exact_size(vec2(THUMB.x, THUMB.y + 32.0), Sense::click_and_drag());
-    let pic = Rect::from_min_size(rect.min, THUMB);
+fn thumbnail_card_size(pic: egui::Vec2) -> egui::Vec2 {
+    vec2(pic.x, pic.y + if pic.x == THUMB.x { 32.0 } else { 18.0 })
+}
+
+fn thumbnail_name(painter: &egui::Painter, rect: Rect, pic: Rect, name: &str) {
+    if pic.width() < THUMB.x {
+        crate::widgets::fit_text(
+            painter,
+            pos2(rect.center().x, pic.bottom() + 3.0),
+            Align2::CENTER_TOP,
+            name,
+            FontId::proportional(11.0),
+            theme::text(),
+            rect.width(),
+        );
+    } else {
+        let galley = painter.layout(
+            name.to_owned(),
+            FontId::proportional(12.0),
+            theme::text(),
+            pic.width(),
+        );
+        let at = pos2(rect.center().x - galley.size().x / 2.0, pic.bottom() + 3.0);
+        painter.galley(at, galley, theme::text());
+    }
+}
+
+fn paint_thumbnail(
+    ui: &Ui,
+    app: &mut BananaApp,
+    painter: &egui::Painter,
+    media: &MediaInfo,
+    at: Tick,
+    rect: Rect,
+) -> bool {
+    let height = (rect.height() * ui.ctx().pixels_per_point()).round() as u32;
+    let Some(thumbnail) = app.engine.thumbnail(media, at, height) else {
+        return false;
+    };
+    let id = app.textures.get(ui.ctx(), &thumbnail);
+    let aspect = thumbnail.width as f32 / thumbnail.height as f32;
+    let width = (rect.height() * aspect).min(rect.width());
+    let image = Rect::from_center_size(rect.center(), vec2(width, width / aspect));
+    painter.image(
+        id,
+        image,
+        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
+    true
+}
+
+fn thumbnail_cell(ui: &mut Ui, app: &mut BananaApp, m: &MediaInfo, thumb: egui::Vec2) -> Rect {
+    let (rect, resp) = ui.allocate_exact_size(thumbnail_card_size(thumb), Sense::click_and_drag());
+    let pic = Rect::from_min_size(rect.min, thumb);
     app.media_window.thumb_rects.insert(m.id, pic);
-    let taken = part_drag(app, m, pic, &resp);
+    let batch = app.media_window.picked.len() > 1 && app.media_window.picked.contains(&m.id);
+    let taken = !batch && part_drag(app, m, pic, &resp);
     if ui.is_rect_visible(rect) {
         let selected = app.selected_media == Some(m.id) || app.media_window.picked.contains(&m.id);
         let painter = ui.painter_at(rect);
@@ -1666,22 +1963,11 @@ fn thumbnail_cell(ui: &mut Ui, app: &mut BananaApp, m: &MediaInfo) {
             let t = super::thumb_part::time_across(pic, p.x, m.duration, rate);
             app.media_window.hovered = Some((m.id, t));
         }
-        let h = (pic.height() * ui.ctx().pixels_per_point()).round() as u32;
-        if let Some(t) = app.engine.thumbnail(m, at, h) {
-            let id = app.textures.get(ui.ctx(), &t);
-            let aspect = t.width as f32 / t.height as f32;
-            let w = (pic.height() * aspect).min(pic.width());
-            let r = Rect::from_center_size(pic.center(), vec2(w, w / aspect));
-            painter.image(
-                id,
-                r,
-                Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-                Color32::WHITE,
-            );
-        } else {
+        if !paint_thumbnail(ui, app, &painter, m, at, pic) {
+            let icon_size = (pic.height() * 0.5).min(34.0);
             icons::paint(
                 &painter,
-                pic.shrink(28.0),
+                Rect::from_center_size(pic.center(), egui::Vec2::splat(icon_size)),
                 MediaType::of(m).icon(),
                 theme::text_dim(),
             );
@@ -1694,19 +1980,18 @@ fn thumbnail_cell(ui: &mut Ui, app: &mut BananaApp, m: &MediaInfo) {
             let x = pic.left() + pic.width() * k;
             painter.vline(x, pic.y_range(), Stroke::new(1.0, theme::banana()));
         }
-        let galley = painter.layout(
-            crate::i18n::media_name(m).to_string(),
-            FontId::proportional(12.0),
-            theme::text(),
-            THUMB.x,
-        );
-        let at = pos2(rect.center().x - galley.size().x / 2.0, pic.bottom() + 3.0);
-        painter.galley(at, galley, theme::text());
+        thumbnail_name(&painter, rect, pic, &crate::i18n::media_name(m));
     }
     resp.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, true, crate::i18n::media_name(m))
     });
-    media_interactions(app, m, resp, taken);
+    media_interactions(
+        app,
+        m,
+        resp.on_hover_text(crate::i18n::media_name(m)),
+        taken,
+    );
+    rect
 }
 
 /// Start Preview on media `id` (a subclip: its part of its parent).
@@ -1727,16 +2012,15 @@ fn media_interactions(app: &mut BananaApp, m: &MediaInfo, resp: egui::Response, 
         let mods = resp.ctx.input(|i| i.modifiers);
         let picked = &mut app.media_window.picked;
         if mods.ctrl || mods.command {
+            if picked.is_empty() {
+                picked.extend(app.selected_media);
+            }
             if let Some(k) = picked.iter().position(|&p| p == m.id) {
                 picked.remove(k);
-            } else {
-                if picked.is_empty()
-                    && let Some(sel) = app.selected_media
-                {
-                    picked.push(sel);
-                }
-                picked.push(m.id);
+                app.selected_media = picked.last().copied();
+                return;
             }
+            picked.push(m.id);
         } else if mods.shift
             && let Some(sel) = app.selected_media
         {
@@ -1842,13 +2126,18 @@ pub(crate) mod tests {
     }
 
     fn harness(app: BananaApp) -> Harness<'static, BananaApp> {
+        let mut theme_ready = false;
         let mut h = Harness::builder()
             .with_size(vec2(1600.0, 960.0))
             .with_step_dt(1.0 / 60.0)
             .build_ui_state(
-                |ui, app: &mut BananaApp| {
-                    crate::apply_theme(ui.ctx());
-                    app.frame(ui);
+                move |ui, app: &mut BananaApp| {
+                    if theme_ready {
+                        app.frame(ui);
+                    } else {
+                        crate::apply_theme(ui.ctx());
+                        theme_ready = true;
+                    }
                 },
                 app,
             );
@@ -1864,6 +2153,44 @@ pub(crate) mod tests {
             modifiers: Modifiers::NONE,
         });
         h.step();
+    }
+
+    #[test]
+    fn compact_thumbnails_and_marquee_keep_media_available_for_a_batch_folder_drop() {
+        let mut app = BananaApp::new(egui::Context::default());
+        app.welcome_for_review("closed");
+        app.settings.media_thumbnail_size = ThumbnailSize::Quarter;
+        let folder = app.modify(|p| p.add_bin(None, "Overlays")).unwrap();
+        let first = offline_video(&mut app, "First");
+        let second = offline_video(&mut app, "Second");
+        app.show_tab(Tab::ProjectMedia, false);
+        let mut h = harness(app);
+        let a = h.state().media_window.thumb_rects[&first];
+        let b = h.state().media_window.thumb_rects[&second];
+        assert!((a.width() - THUMB.x / 4.0).abs() < 0.5);
+        let start = pos2(a.left() - 3.0, a.bottom() + 28.0);
+        let end = pos2(b.right() + 3.0, a.top() - 3.0);
+        h.event(Event::PointerMoved(start));
+        h.step();
+        button(&mut h, start, true);
+        h.event(Event::PointerMoved(end));
+        h.step();
+        button(&mut h, end, false);
+        assert_eq!(h.state().media_window.picked, [first, second]);
+        h.event(Event::PointerMoved(a.center()));
+        h.step();
+        button(&mut h, a.center(), true);
+        let dest = pos2(a.left() - a.width() * 0.5 - 6.0, a.center().y);
+        h.event(Event::PointerMoved(dest));
+        h.step();
+        assert!(
+            matches!(&h.state().media_drag, Some(MediaDrag::Many(ids)) if ids == &[first, second])
+        );
+        button(&mut h, dest, false);
+        assert_eq!(
+            h.state().project().bin(folder).unwrap().media,
+            [first, second]
+        );
     }
 
     /// A drag across a thumbnail picks a part, I and O move its ends where
