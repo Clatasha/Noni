@@ -94,11 +94,18 @@ fn waveform(
 ) {
     let zoom_id = id.with("waveform-zoom");
     let mut zoom = ui.data(|d| d.get_temp::<f32>(zoom_id)).unwrap_or(1.0);
-    let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), 64.0), Sense::click());
+    let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), 92.0), Sense::click());
     let p = ui.painter_at(r);
     p.rect_filled(r, 6.0, theme::clip_audio().gamma_multiply(0.45));
     let mut sound = r.shrink2(vec2(7.0, 4.0));
-    sound.set_top(r.top() + 24.0);
+    sound.set_top(r.top() + 26.0);
+    let waveform_painter = p.with_clip_rect(sound);
+    let mid = sound.center().y;
+    waveform_painter.hline(
+        sound.x_range(),
+        mid,
+        Stroke::new(1.0, theme::clip_audio().gamma_multiply(0.52)),
+    );
     let relative = (app.cursor - clip.start).clamp(Tick::ZERO, clip.duration);
     let inside = app.cursor >= clip.start && app.cursor < clip.end();
     let span = clip.duration.as_seconds_f64() / f64::from(zoom);
@@ -113,29 +120,30 @@ fn waveform(
     if let Some(media) = media
         && let Some(wave) = app.engine.waveform(media, clip.audio_stream)
     {
+        let columns = sound.width().clamp(2.0, 1200.0).round() as usize;
+        let duration = media.duration.max(Tick::ZERO);
+        let peaks: Vec<_> = (0..columns)
+            .map(|i| {
+                let at = |n| clip.source_time(clip.start + local_at(n as f64 / columns as f64));
+                let (a, b) = (at(i), at(i + 1));
+                waveform_peak(&wave, a.min(b), a.max(b), duration, clip.looped)
+            })
+            .collect();
+        let scale = waveform_reference(&peaks);
+        let half = sound.height() * 0.46;
         let color = theme::clip_audio();
-        let columns = sound.width().clamp(1.0, 1200.0).round() as usize;
-        for i in 0..columns {
-            let f = i as f64 / columns as f64;
-            let source = |local| {
-                clip.media_time(clip.start + local, media.duration)
-                    .clamp(Tick::ZERO, media.duration.max(Tick::ZERO))
-            };
-            let a = source(local_at(f));
-            let b = source(local_at((i + 1) as f64 / columns as f64));
-            let (lo, hi) = (0..wave.peaks.len().min(2)).fold((0.0f32, 0.0f32), |(lo, hi), ch| {
-                let (min, max) = wave.range(ch, a.min(b), a.max(b));
-                (lo.min(min), hi.max(max))
-            });
-            let x = sound.left() + sound.width() * f as f32;
-            let mid = sound.center().y;
-            let half = sound.height() * 0.48;
-            p.vline(
-                x,
-                (mid - hi.clamp(0.0, 1.0) * half)..=(mid - lo.clamp(-1.0, 0.0) * half),
-                Stroke::new(1.0, color),
-            );
+        let mut mesh = egui::Mesh::default();
+        for (i, &(lo, hi)) in peaks.iter().enumerate() {
+            let x = sound.left() + sound.width() * i as f32 / (columns - 1) as f32;
+            mesh.colored_vertex(pos2(x, mid - display_peak(hi, scale) * half), color);
+            mesh.colored_vertex(pos2(x, mid - display_peak(lo, scale) * half), color);
+            if i > 0 {
+                let top = 2 * i as u32;
+                mesh.add_triangle(top - 2, top - 1, top);
+                mesh.add_triangle(top, top - 1, top + 1);
+            }
         }
+        waveform_painter.add(egui::Shape::mesh(mesh));
     }
     if inside && span > 0.0 {
         let x = sound.left()
@@ -172,6 +180,59 @@ fn waveform(
         let fraction = f64::from((pos.x - sound.left()) / sound.width().max(1.0));
         app.seek(clip.start + local_at(fraction));
     }
+}
+
+/// Combine the stereo peaks for a column, preserving silence outside the
+/// source and splitting ranges that cross the end of a loop.
+fn waveform_peak(
+    wave: &bv_engine::Waveform,
+    a: Tick,
+    b: Tick,
+    duration: Tick,
+    looped: bool,
+) -> (f32, f32) {
+    let range = |from, to| {
+        (0..wave.peaks.len().min(2)).fold((0.0f32, 0.0f32), |(lo, hi), ch| {
+            let (min, max) = wave.range(ch, from, to);
+            (lo.min(min), hi.max(max))
+        })
+    };
+    if duration <= Tick::ZERO {
+        return (0.0, 0.0);
+    }
+    if !looped {
+        return if b <= Tick::ZERO || a >= duration {
+            (0.0, 0.0)
+        } else {
+            range(a.max(Tick::ZERO), b.min(duration))
+        };
+    }
+    if b - a >= duration {
+        return range(Tick::ZERO, duration);
+    }
+    let start = Tick(a.0.rem_euclid(duration.0));
+    let end = start + (b - a);
+    if end <= duration {
+        range(start, end)
+    } else {
+        let (lo, hi) = range(start, duration);
+        let (wrap_lo, wrap_hi) = range(Tick::ZERO, end - duration);
+        (lo.min(wrap_lo), hi.max(wrap_hi))
+    }
+}
+
+/// Scale the drawing to the visible audio with a floor so low-level noise
+/// does not fill the display. This is independent of clip gain.
+fn waveform_reference(peaks: &[(f32, f32)]) -> f32 {
+    peaks.iter().fold(0.01f32, |reference, (lo, hi)| {
+        reference.max(lo.abs()).max(hi.abs())
+    })
+}
+
+fn display_peak(amplitude: f32, reference: f32) -> f32 {
+    ((amplitude.abs() / reference).clamp(0.0, 1.0))
+        .sqrt()
+        .copysign(amplitude)
 }
 
 fn adjust(
@@ -555,6 +616,17 @@ fn denoise(ui: &mut Ui, clip: &mut Clip) {
 mod tests {
     use super::*;
     use egui_kittest::{Harness, kittest::Queryable};
+
+    #[test]
+    fn a_quiet_waveform_fills_the_graph_without_moving_its_center() {
+        let peaks = [(0.0, 0.0), (-0.022, 0.022), (-0.0022, 0.0022)];
+        let reference = waveform_reference(&peaks);
+        assert_eq!(display_peak(0.0, reference), 0.0);
+        assert_eq!(display_peak(-0.022, reference), -1.0);
+        assert_eq!(display_peak(0.022, reference), 1.0);
+        assert!(display_peak(0.0022, reference) > 0.25);
+        assert!(display_peak(0.00001, waveform_reference(&[(0.0, 0.00001)])) < 0.04);
+    }
 
     #[test]
     fn audio_properties_saves_a_clip_volume_key_from_the_header() {

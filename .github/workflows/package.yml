@@ -28,6 +28,7 @@ on:
   # One-time rebuild request: Classic video and image Properties with drawn collapse arrows.
   # One-time rebuild request: Properties docking and Media Bin controls.
   # One-time rebuild request: Audio Properties and track ducking.
+  # One-time rebuild request: larger centered Audio Properties waveform.
   push:
     branches: [noni-branding]
     paths:
