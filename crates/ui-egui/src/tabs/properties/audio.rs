@@ -151,15 +151,17 @@ fn waveform(
         p.vline(x, sound.y_range(), Stroke::new(1.0, theme::cursor()));
     }
     let slider = egui::Rect::from_min_size(pos2(r.right() - 85.0, r.top() + 3.0), vec2(77.0, 18.0));
-    ui.scope_builder(egui::UiBuilder::new().max_rect(slider), |ui| {
-        ui.spacing_mut().slider_width = slider.width();
-        ui.add(
+    // The zoom sits inside the waveform's allocated rectangle.
+    // A scope would advance the parent cursor from the zoom's position.
+    let mut controls = ui.new_child(egui::UiBuilder::new().id_salt(zoom_id).max_rect(slider));
+    controls.spacing_mut().slider_width = slider.width();
+    controls
+        .add(
             egui::Slider::new(&mut zoom, 1.0..=12.0)
                 .logarithmic(true)
                 .show_value(false),
         )
         .on_hover_text(tr("Waveform Zoom"));
-    });
     ui.data_mut(|d| d.insert_temp(zoom_id, zoom));
     if let Some(media) = media {
         widgets::fit_text(
@@ -616,6 +618,26 @@ fn denoise(ui: &mut Ui, clip: &mut Clip) {
 mod tests {
     use super::*;
     use egui_kittest::{Harness, kittest::Queryable};
+
+    #[test]
+    fn adjustment_starts_below_the_waveform_and_its_zoom_control() {
+        let mut app = BananaApp::new(egui::Context::default());
+        let clip = Clip::new(
+            bv_timeline::ClipId(1),
+            bv_timeline::MediaId(1),
+            Tick::ZERO,
+            Tick::from_seconds(2),
+        );
+        let _ = Harness::builder()
+            .with_size(vec2(410.0, 280.0))
+            .build_ui(|ui| {
+                let top = ui.next_widget_position().y;
+                let id = ui.id();
+                waveform(ui, &mut app, &clip, None, id);
+                let next = ui.label("Adjustment").rect;
+                assert!(next.top() >= top + 92.0);
+            });
+    }
 
     #[test]
     fn a_quiet_waveform_fills_the_graph_without_moving_its_center() {

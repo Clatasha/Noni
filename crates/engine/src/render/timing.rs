@@ -30,6 +30,7 @@ pub(super) enum Stage {
     SharedCpuWait,
     #[cfg(windows)]
     SharedMux,
+    DuckingAnalysis,
     AudioMix,
     AudioWrite,
     QueueWait,
@@ -324,6 +325,7 @@ impl Timing {
                 Stage::SourcePrepare,
             ),
             ("Video encoding and writing", Stage::VideoWrite),
+            ("Ducking analysis before rendering", Stage::DuckingAnalysis),
             ("Audio mixing", Stage::AudioMix),
             ("Audio encoding and writing", Stage::AudioWrite),
             ("Waiting to hand work to the writer", Stage::QueueWait),
@@ -424,6 +426,7 @@ mod tests {
         let report = std::fs::read_to_string(&path).expect("read report");
         assert!(report.contains("Status: completed"));
         assert!(report.contains("GPU scene setup:"));
+        assert!(report.contains("Ducking analysis before rendering: 0.000 s"));
         assert!(report.contains("Effect preparation and synchronous work:"));
         assert!(report.contains("Shared NV12 submission and synchronization:"));
         assert!(report.contains("Output units: 2 / 2"));

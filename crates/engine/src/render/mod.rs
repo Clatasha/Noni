@@ -541,7 +541,9 @@ impl RenderJob {
                             progress.lock().expect("progress").stage =
                                 "Analyzing audio for ducking".into();
                             repaint();
-                            crate::ducking::prepare_export(&mut project, s.range, &cancel)
+                            Timing::measure(timing.as_deref(), Stage::DuckingAnalysis, || {
+                                crate::ducking::prepare_export(&mut project, s.range, &cancel)
+                            })
                         } else {
                             Ok(())
                         };
