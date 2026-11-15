@@ -30,6 +30,7 @@ on:
   # One-time rebuild request: Audio Properties and track ducking.
   # One-time rebuild request: larger centered Audio Properties waveform.
   # One-time rebuild request: Audio Properties spacing and export timing diagnostics.
+  # One-time rebuild request: bounded GPU blending for overlays.
   push:
     branches: [noni-branding]
     paths:

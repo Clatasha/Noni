@@ -232,6 +232,42 @@ fn compositing_modes_and_groups() {
 }
 
 #[test]
+fn small_overlay_blends_at_its_current_placement() {
+    let Some(mut c) = gpu() else { return };
+    let (mut p, _, _) = bars_and_gradient();
+    let top = p.insert_track_at(TrackKind::Video, 0);
+    let graphic = media(
+        &mut p,
+        Generator::SolidColor {
+            rgba: [0.8, 0.2, 0.4, 0.6],
+        },
+    );
+    let id = p
+        .insert_media(graphic, Tick::ZERO, Some(top), None)
+        .unwrap()[0];
+    p.track_by_id_mut(top).unwrap().level = 0.8;
+    p.clip_mut(id).unwrap().level = 0.7;
+    for (name, x, y, rotation_deg) in [
+        ("small overlay", 0.31, -0.22, 0.0),
+        ("overlay clipped by the edge", -0.48, 0.35, 13.0),
+        ("overlay entirely offscreen", 1.0, 0.0, 0.0),
+    ] {
+        p.set_clip_framing(
+            id,
+            &Transform {
+                x,
+                y,
+                rotation_deg,
+                scale: 0.23,
+                ..Transform::default()
+            },
+        )
+        .unwrap();
+        check(&mut c, name, &p, Tick::ZERO, TOL);
+    }
+}
+
+#[test]
 fn track_effects_after_compositing() {
     let Some(mut c) = gpu() else { return };
     // The gradient a compositing parent of the bars: its Invert before

@@ -84,6 +84,8 @@ struct Img {
     buf: wgpu::Buffer,
     w: u32,
     h: u32,
+    /// Exclusive placement bounds, when pixels outside them are transparent black.
+    placement_bounds: Option<[i32; 4]>,
 }
 
 /// Timings for GPU composition and output delivery.
@@ -576,6 +578,7 @@ impl Compositor {
             buf: self.buffer(w as u64 * h as u64 * 16),
             w,
             h,
+            placement_bounds: None,
         }
     }
 
@@ -620,6 +623,7 @@ impl Compositor {
             buf,
             w: img.width,
             h: img.height,
+            placement_bounds: None,
         };
         if let Some(o) = owner {
             self.uploaded.insert(o, (img.clone(), i.clone()));
@@ -780,6 +784,9 @@ impl Compositor {
                 Grid::Pixels(w, h),
             );
         }
+        if track.fade.is_some() || pre.iter().any(|effect| effect.enabled) {
+            layer.placement_bounds = None;
+        }
         match &track.motion {
             Some(m) => self.moved(enc, &layer, m),
             None => layer,
@@ -863,13 +870,22 @@ impl Compositor {
     ) {
         let mut p = Params::sized(under.w, under.h).with_f(&[level]);
         p.j[0] = mode.index();
-        self.kernel(
-            enc,
-            K::Blend,
-            p,
-            &[&top.buf, &under.buf],
-            Grid::Pixels(under.w, under.h),
-        );
+        let grid = if mode == bv_timeline::CompositeMode::SourceAlpha
+            && level.is_finite()
+            && let Some([left, top, right, bottom]) = top.placement_bounds
+        {
+            if left >= right || top >= bottom {
+                return;
+            }
+            let (width, height) = ((right - left) as u32, (bottom - top) as u32);
+            if (width, height) != (under.w, under.h) {
+                p.o = [left as u32, top as u32, right as u32, bottom as u32];
+            }
+            Grid::Pixels(width, height)
+        } else {
+            Grid::Pixels(under.w, under.h)
+        };
+        self.kernel(enc, K::Blend, p, &[&top.buf, &under.buf], grid);
     }
 
     /// Draws `units` (top first) over `under`, the bottom one first, as
@@ -1083,6 +1099,7 @@ impl Compositor {
         if let Some(m) = &e.source {
             let visual = &m.clip.visual;
             if let Some(effect) = visual.enhancement() {
+                img.placement_bounds = None;
                 self.effect(enc, &mut img, &effect, scene.scale);
             }
             if visual.shadow_on || visual.background_on {
@@ -1108,6 +1125,9 @@ impl Compositor {
                 self.over(enc, &img, &under);
                 img = under;
             }
+        }
+        if !e.level.is_finite() || e.fade.is_some_and(|level| !level.is_finite()) {
+            img.placement_bounds = None;
         }
         self.scale(enc, &img, e.level);
         if let Some(f) = e.fade {
@@ -1403,6 +1423,11 @@ impl Compositor {
                 );
                 img = plain;
             }
+        }
+        // Both placement kernels write zero outside this rectangle. Later
+        // processing may spread the image, so only reuse unmodified bounds.
+        if m.effects.is_empty() && mask.is_none() && !m.clip.reduce_flicker {
+            img.placement_bounds = Some(m.placement.pixels((img.w, img.h)));
         }
         img
     }

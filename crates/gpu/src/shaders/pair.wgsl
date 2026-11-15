@@ -432,28 +432,40 @@ fn mix_mode(mode: u32, cb: f32, cs: f32) -> f32 {
 
 @compute @workgroup_size(16, 16)
 fn blend(@builtin(global_invocation_id) id: vec3<u32>) {
-    let o = out_index(id);
+    // A bounded layer dispatches only its placement rectangle. The last
+    // workgroup on either axis can extend past the rectangle's end.
+    let pos = id.xy + P.o.xy;
+    if P.o.z != 0u && any(pos >= P.o.zw) {
+        return;
+    }
+    let o = out_index(vec3<u32>(pos, 0u));
     if o < 0 {
         return;
     }
-    let d = dst[o];
     let mode = P.j.x;
     // An adjustment track: `dst` moved `f[0]` of the way to `src`.
     if mode == 100u {
+        let d = dst[o];
         dst[o] = d + (src[o] - d) * pf(0u);
         return;
     }
     // Pan/Crop masks: `dst` as far as `src`'s alpha keeps it, or what it
     // leaves.
     if mode == 101u {
-        dst[o] = d * src[o].w;
+        dst[o] = dst[o] * src[o].w;
         return;
     }
     if mode == 102u {
-        dst[o] = d * (1.0 - src[o].w);
+        dst[o] = dst[o] * (1.0 - src[o].w);
         return;
     }
     let s = src[o] * pf(0u);
+    // Full-size title images can still contain large transparent areas.
+    // Check all channels to preserve any nonzero premultiplied RGB.
+    if mode == 1u && all(s == vec4<f32>(0.0)) {
+        return;
+    }
+    let d = dst[o];
     var r = s + d * (1.0 - s.w);
     if mode == 2u {
         r = vec4<f32>(s.xyz + d.xyz, min(s.w + d.w, 1.0));
