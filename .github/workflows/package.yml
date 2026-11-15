@@ -27,6 +27,7 @@ on:
   # One-time rebuild request: quick video and image orientation controls, with icon coordinate fix.
   # One-time rebuild request: Classic video and image Properties with drawn collapse arrows.
   # One-time rebuild request: Properties docking and Media Bin controls.
+  # One-time rebuild request: Audio Properties and track ducking.
   push:
     branches: [noni-branding]
     paths:

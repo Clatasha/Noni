@@ -1041,25 +1041,10 @@ impl Engine {
     /// in the background: see [`ducking_progress`](Engine::ducking_progress).
     /// Events that play no sound are left out; `false` when none does.
     pub fn start_ducking_analysis(&mut self, clips: &[bv_timeline::ClipId]) -> bool {
-        let p = &self.project;
-        let sources: Vec<ducking::DuckSource> = clips
+        let sources: Vec<_> = clips
             .iter()
-            .filter_map(|&id| {
-                let c = p.clip(id)?;
-                let info = p.media(c.media)?;
-                info.audio_stream(c.audio_stream)?;
-                let (a, b) = (c.source_time(c.start), c.source_time(c.end()));
-                let around = Tick::from_seconds_f64(ducking::AROUND);
-                let from = (a.min(b) - around).max(Tick::ZERO);
-                let to = (a.max(b) + around).min(info.duration.max(a.max(b)));
-                (to > from).then(|| ducking::DuckSource {
-                    clip: id,
-                    info: info.clone(),
-                    stream: c.audio_stream,
-                    from,
-                    to,
-                })
-            })
+            .filter_map(|&id| self.project.clip(id))
+            .filter_map(|clip| ducking::DuckSource::of(&self.project, clip))
             .collect();
         if sources.is_empty() {
             return false;

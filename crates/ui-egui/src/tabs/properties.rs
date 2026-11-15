@@ -1,5 +1,6 @@
 //! Selection-specific controls for timeline clips.
 
+mod audio;
 mod classic;
 
 use crate::i18n::tr;
@@ -399,6 +400,14 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
             return;
         }
 
+        if page == Page::Audio {
+            let target = audio.as_mut().unwrap_or(&mut c);
+            if let Some(track) = project.clip_track(target.id) {
+                audio::ui(ui, app, target, track, project.media(target.media), rate);
+            }
+            return;
+        }
+
         egui::ScrollArea::vertical()
             .id_salt((
                 id.0,
@@ -456,13 +465,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                             });
                         }
                     },
-                    Page::Audio => {
-                        let target = audio.as_mut().unwrap_or(&mut c);
-                        audio_controls(ui, target, rate);
-                        collapsible_section(ui, tr("Clip Settings"), false, |ui| {
-                            clip_settings(ui, target, rate)
-                        });
-                    }
+                    Page::Audio => {}
                     Page::Speed => {
                         let mut playback = c.rate as f32;
                         ui.add_enabled_ui(!group_locked, |ui| {
@@ -624,25 +627,35 @@ pub(crate) fn value_slider(
     unit: &str,
 ) -> bool {
     ui.label(label);
-    ui.push_id(label, |ui| {
-        ui.horizontal(|ui| {
-            let field_width = 64.0;
-            ui.spacing_mut().slider_width =
-                (ui.available_width() - field_width - ui.spacing().item_spacing.x).max(28.0);
-            let slider = ui.add(
-                crate::fmt::slider(value, range.clone(), decimals, unit)
-                    .clamping(egui::SliderClamping::Edits)
-                    .show_value(false),
-            );
-            let field = ui.add_sized(
-                [field_width, ui.spacing().interact_size.y],
-                crate::fmt::drag(value, decimals, unit)
-                    .range(range)
-                    .clamp_existing_to_range(false),
-            );
-            slider.changed() || field.changed()
-        }).inner
-    }).inner
+    ui.push_id(label, |ui| slider_field(ui, value, range, decimals, unit))
+        .inner
+}
+
+fn slider_field(
+    ui: &mut egui::Ui,
+    value: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+    decimals: usize,
+    unit: &str,
+) -> bool {
+    ui.horizontal(|ui| {
+        let field_width = 64.0;
+        ui.spacing_mut().slider_width =
+            (ui.available_width() - field_width - ui.spacing().item_spacing.x).max(28.0);
+        let slider = ui.add(
+            crate::fmt::slider(value, range.clone(), decimals, unit)
+                .clamping(egui::SliderClamping::Edits)
+                .show_value(false),
+        );
+        let field = ui.add_sized(
+            [field_width, ui.spacing().interact_size.y],
+            crate::fmt::drag(value, decimals, unit)
+                .range(range)
+                .clamp_existing_to_range(false),
+        );
+        slider.changed() || field.changed()
+    })
+    .inner
 }
 
 #[derive(Clone, Copy)]
@@ -857,32 +870,8 @@ fn video_settings(
     ui.add_enabled(
         !group_locked && video.is_some_and(|v| v.frame_rate != rate),
         egui::Button::new(tr("Conform to Project Frame Rate")),
-    ).clicked()
-}
-
-fn audio_controls(ui: &mut egui::Ui, c: &mut Clip, rate: FrameRate) {
-    collapsible_section(ui, tr("Basic"), true, |ui| {
-        let mut db = bv_mixer_gain_db(c.level);
-        if value_slider(ui, tr("Volume"), &mut db, -60.0..=12.0, 1, " dB") {
-            c.level = if db <= -59.9 {
-                0.0
-            } else {
-                10f32.powf(db / 20.0)
-            };
-        }
-        fades(ui, c, rate);
-        crate::widgets::checkbox(ui, &mut c.auto_normalize, tr("Auto Normalize"));
-    });
-    collapsible_section(ui, tr("Pitch"), true, |ui| {
-        value_slider(
-            ui,
-            tr("Pitch change (semitones):"),
-            &mut c.pitch,
-            -48.0..=48.0,
-            2,
-            "",
-        );
-    });
+    )
+    .clicked()
 }
 
 fn fades(ui: &mut egui::Ui, c: &mut Clip, rate: FrameRate) {

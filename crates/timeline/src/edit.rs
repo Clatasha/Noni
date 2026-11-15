@@ -167,6 +167,7 @@ impl Project {
             group: None,
             color: None,
             ducking: None,
+            duck_others: None,
             duck_listener: false,
             output: Default::default(),
             sends: Vec::new(),

@@ -182,6 +182,9 @@ impl BananaApp {
     /// Preferences › General says to keep them ("Save active prerenders on
     /// project close").
     pub(crate) fn closing_project(&mut self) {
+        self.engine.cancel_ducking_analysis();
+        self.duck_failures.clear();
+        self.duck_dialog = None;
         // The parent timelines waiting go with it (they were saved).
         self.parent_timelines.clear();
         self.engine.cancel_prerender();

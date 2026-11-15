@@ -54,6 +54,7 @@ fn plain_track(track: &Track) -> bool {
         && !track.invert_phase
         && track.surround.is_none()
         && track.ducking.is_none()
+        && track.duck_others.is_none()
         && !track.duck_listener
         && track.output.is_master()
         && track.sends.is_empty()
@@ -64,6 +65,7 @@ fn plain_clip(clip: &Clip) -> bool {
         return false;
     }
     clip.level == 1.0
+        && clip.audio_balance == 0.0
         && clip.rate == 1.0
         && clip.fade_in == Tick::ZERO
         && clip.fade_out == Tick::ZERO

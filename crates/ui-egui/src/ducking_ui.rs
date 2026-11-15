@@ -82,28 +82,51 @@ impl BananaApp {
         }
     }
 
-    /// Once the analysis ended: each event's loudness (its own reductions
-    /// kept), or what went wrong.
+    /// Commit finished results and begin reading any newly added voice clips.
     pub(crate) fn poll_ducking(&mut self) {
-        let Some(p) = self.engine.ducking_progress().filter(|p| p.finished) else {
-            return;
-        };
-        self.engine.cancel_ducking_analysis();
-        if !p.results.is_empty() {
-            self.modify(|proj| {
-                for (id, levels) in &p.results {
-                    if let Some(c) = proj.clip_mut(*id) {
-                        let own = c.duck_levels.as_ref().and_then(|l| l.own);
-                        c.duck_levels = Some(DuckLevels {
-                            own,
-                            ..levels.clone()
+        if let Some(progress) = self.engine.ducking_progress() {
+            if !progress.finished {
+                return;
+            }
+            self.engine.cancel_ducking_analysis();
+            if !progress.results.is_empty() {
+                self.modify_untracked(|proj| {
+                    for (id, levels) in &progress.results {
+                        let same = proj.clip(*id).is_some_and(|c| {
+                            proj.media(c.media).is_some_and(|m| levels.matches(c, m))
                         });
+                        if same && let Some(c) = proj.clip_mut(*id) {
+                            let own = c.duck_levels.as_ref().and_then(|l| l.own);
+                            c.duck_levels = Some(DuckLevels {
+                                own,
+                                ..levels.clone()
+                            });
+                        }
                     }
+                });
+            }
+            for (id, _) in &progress.errors {
+                if let Some(c) = self.project().clip(*id) {
+                    self.duck_failures.insert((c.id, c.media, c.audio_stream));
                 }
-            });
+            }
+            if let Some((_, e)) = progress.errors.first() {
+                self.notify(trf!("The sound of an event could not be read: {}", e));
+            }
         }
-        if let Some((_, e)) = p.errors.first() {
-            self.notify(trf!("The sound of an event could not be read: {}", e));
+
+        let unread: Vec<_> = self
+            .project()
+            .pending_duck_clips()
+            .map(|c| (c.id, c.media, c.audio_stream))
+            .filter(|key| !self.duck_failures.contains(key))
+            .collect();
+        if !unread.is_empty() {
+            self.engine.set_project(self.history.current());
+            let ids: Vec<_> = unread.iter().map(|key| key.0).collect();
+            if !self.engine.start_ducking_analysis(&ids) {
+                self.duck_failures.extend(unread);
+            }
         }
     }
 

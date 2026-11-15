@@ -632,6 +632,9 @@ pub struct Clip {
     pub group: Option<GroupId>,
     /// Opacidade (vídeo) ou ganho linear (áudio).
     pub level: f32,
+    /// Audio event balance: attenuate one side of the first stereo pair.
+    #[serde(default, skip_serializing_if = "is_zero_f32")]
+    pub audio_balance: f32,
     #[serde(default, skip_serializing_if = "ClipVisual::is_default")]
     pub visual: ClipVisual,
     /// Fade de entrada a partir do início do clipe (além do crossfade
@@ -812,6 +815,7 @@ impl Clip {
             source_in: Tick::ZERO,
             group: None,
             level: 1.0,
+            audio_balance: 0.0,
             visual: ClipVisual::default(),
             fade_in: Tick::ZERO,
             fade_out: Tick::ZERO,
@@ -862,6 +866,12 @@ impl Clip {
         kind: crate::envelope::EnvelopeKind,
     ) -> Option<&crate::envelope::Envelope> {
         self.envelopes.iter().find(|e| e.kind == kind)
+    }
+
+    /// Audio event volume before fades, on the project timeline.
+    pub fn audio_gain_at(&self, t: Tick) -> f32 {
+        self.envelope(crate::envelope::EnvelopeKind::Volume)
+            .map_or(self.level, |e| e.value_at(t - self.start))
     }
 
     /// Its velocity envelope (video events), if it has one.
@@ -1148,6 +1158,9 @@ pub struct Track {
     /// these reductions ([`crate::ducking`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ducking: Option<crate::ducking::Ducking>,
+    /// Audio Properties' reduction of other tracks, as a fraction of gain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duck_others: Option<f32>,
     /// An Auto Ducking listener: the controllers' sound lowers its own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub duck_listener: bool,

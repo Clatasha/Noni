@@ -415,6 +415,7 @@ pub struct BananaApp {
     pub(crate) generated_copies: Option<crate::generated_copies::Question>,
     /// The Auto Ducking dialog's track or event, while it is open.
     pub(crate) duck_dialog: Option<crate::ducking_ui::DuckTarget>,
+    pub(crate) duck_failures: std::collections::HashSet<(ClipId, MediaId, u16)>,
     /// The Transitions window's pictures of plug-ins' transitions.
     pub(crate) transition_previews: crate::tabs::transitions::Previews,
     /// OFX plug-ins: the scan, the instances answering effects' settings.
@@ -694,6 +695,7 @@ impl BananaApp {
             defaults_watch: Default::default(),
             generated_copies: None,
             duck_dialog: None,
+            duck_failures: Default::default(),
             transition_previews: Default::default(),
             ofx: crate::ofx::OfxUi::new(ctx.clone()),
             vst: Default::default(),
@@ -3528,6 +3530,7 @@ impl BananaApp {
                     from,
                     levels,
                     own: None,
+                    source: None,
                 });
             }
             if let Some(t) = p.track_by_id_mut(controller) {

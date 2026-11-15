@@ -37,6 +37,49 @@ pub(crate) struct DuckSource {
     pub to: Tick,
 }
 
+impl DuckSource {
+    pub(crate) fn of(project: &bv_timeline::Project, clip: &bv_timeline::Clip) -> Option<Self> {
+        let info = project.media(clip.media)?;
+        info.audio_stream(clip.audio_stream)?;
+        let (a, b) = bv_timeline::ducking::source_range(clip, info);
+        let around = Tick::from_seconds_f64(AROUND);
+        let from = (a.min(b) - around).max(Tick::ZERO);
+        let to = (a.max(b) + around).min(info.duration);
+        (to > from).then(|| Self {
+            clip: clip.id,
+            info: info.clone(),
+            stream: clip.audio_stream,
+            from,
+            to,
+        })
+    }
+}
+
+/// Finish any missing simple-ducking analysis before exporting sound.
+pub(crate) fn prepare_export(
+    project: &mut Arc<bv_timeline::Project>,
+    range: bv_core::TimeRange,
+    cancel: &AtomicBool,
+) -> Result<(), String> {
+    let sources: Vec<_> = project
+        .pending_duck_clips()
+        .filter(|c| c.start < range.end() && c.end() > range.start)
+        .filter_map(|c| DuckSource::of(project, c))
+        .collect();
+    for source in sources {
+        let levels = read(&source, &mut |_| !cancel.load(Ordering::Relaxed)).map_err(|error| {
+            format!(
+                "Could not read audio for ducking ({}): {error}",
+                source.info.name
+            )
+        })?;
+        if let Some(clip) = Arc::make_mut(project).clip_mut(source.clip) {
+            clip.duck_levels = Some(levels);
+        }
+    }
+    Ok(())
+}
+
 /// Media samples read at a time.
 const BLOCK: usize = 1 << 16;
 /// Media time read past each end of an event (seconds).
@@ -135,5 +178,7 @@ fn read(s: &DuckSource, tick: &mut dyn FnMut(f64) -> bool) -> Result<DuckLevels,
             return Err("canceled".into());
         }
     }
-    Ok(meter.finish(s.from))
+    let mut levels = meter.finish(s.from);
+    levels.source = Some((s.info.id, s.stream, s.info.source.clone()));
+    Ok(levels)
 }

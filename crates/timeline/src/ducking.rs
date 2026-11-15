@@ -49,11 +49,15 @@ impl Ducking {
     /// The reduction (dB, 0 or less) a controller sounding at `level`
     /// dBFS gives its listeners.
     pub fn reduction_db(&self, level: f32) -> f32 {
-        let x = ((level - GATE_DB) / GATE_SPAN_DB).clamp(0.0, 1.0);
-        let sounding = x * x * (3.0 - 2.0 * x);
+        let sounding = activity(level);
         let peak = self.peak.clamp(0.0, 1.0) * (level - PEAK_FROM_DB).max(0.0);
         (self.floor_db.min(0.0) * sounding - peak * sounding).max(DEEPEST_DB)
     }
+}
+
+fn activity(level: f32) -> f32 {
+    let x = ((level - GATE_DB) / GATE_SPAN_DB).clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
 }
 
 /// An event's loudness as Auto Ducking read it, and its own reductions.
@@ -64,12 +68,28 @@ pub struct DuckLevels {
     /// The level (dBFS, rounded; quick to rise, slow to fall) every
     /// 1 ⁄ [`LEVELS_PER_SECOND`] of a second of the media.
     pub levels: Vec<i8>,
+    /// Identity of the audio used, for rejecting results from a replaced take.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<(crate::MediaId, u16, crate::MediaSource)>,
     /// Its own reductions (`None`: its track's).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub own: Option<Ducking>,
 }
 
 impl DuckLevels {
+    pub fn matches(&self, clip: &crate::Clip, media: &crate::MediaInfo) -> bool {
+        self.source.as_ref().is_some_and(|(id, stream, source)| {
+            *id == clip.media && *stream == clip.audio_stream && *source == media.source
+        })
+    }
+
+    fn covers(&self, clip: &crate::Clip, media: &crate::MediaInfo) -> bool {
+        let (start, end) = source_range(clip, media);
+        let analyzed_end =
+            self.from + Tick::from_seconds_f64((self.levels.len() + 1) as f64 / LEVELS_PER_SECOND);
+        self.matches(clip, media) && self.from <= start && analyzed_end >= end
+    }
+
     /// The level at media time `m` (dBFS): between its values, silence
     /// outside them.
     pub fn level_at(&self, m: Tick) -> f32 {
@@ -84,6 +104,22 @@ impl DuckLevels {
         let b = self.levels.get(i + 1).copied().unwrap_or(a);
         let k = (f - i as f64) as f32;
         f32::from(a) + (f32::from(b) - f32::from(a)) * k
+    }
+}
+
+/// The source gap an event can read, including the wrap of a looping event.
+pub fn source_range(clip: &crate::Clip, media: &crate::MediaInfo) -> (Tick, Tick) {
+    let duration = media.duration.max(Tick::ZERO);
+    let a = clip.source_time(clip.start);
+    let b = clip.source_time(clip.end());
+    let (a, b) = (a.min(b), a.max(b));
+    if clip.looped && duration > Tick::ZERO && (a < Tick::ZERO || b > duration) {
+        (Tick::ZERO, duration)
+    } else {
+        (
+            a.clamp(Tick::ZERO, duration),
+            b.clamp(Tick::ZERO, duration),
+        )
     }
 }
 
@@ -122,69 +158,107 @@ impl LevelMeter {
             self.count += 1;
             self.taken += 1.0;
             if self.taken >= self.next {
-                let mean = self.squares / f64::from(self.count.max(1));
-                let db = (10.0 * (mean + 1e-10).log10()) as f32;
-                // Quick to rise (about 10 ms), slow to fall (about 300 ms).
-                let k = if db > self.smooth { 0.98 } else { 0.125 };
-                self.smooth += (db - self.smooth) * k;
-                self.levels
-                    .push(self.smooth.clamp(QUIETEST_DB, 0.0).round() as i8);
-                self.squares = 0.0;
-                self.count = 0;
+                self.record();
                 self.next += self.hop;
             }
         }
     }
 
+    fn record(&mut self) {
+        let mean = self.squares / f64::from(self.count.max(1));
+        let db = (10.0 * (mean + 1e-10).log10()) as f32;
+        // Quick to rise (about 10 ms), slow to fall (about 300 ms).
+        let k = if db > self.smooth { 0.98 } else { 0.125 };
+        self.smooth += (db - self.smooth) * k;
+        self.levels
+            .push(self.smooth.clamp(QUIETEST_DB, 0.0).round() as i8);
+        self.squares = 0.0;
+        self.count = 0;
+    }
+
     /// The levels, the first at media time `from`.
-    pub fn finish(self, from: Tick) -> DuckLevels {
+    pub fn finish(mut self, from: Tick) -> DuckLevels {
+        if self.count > 0 {
+            self.record();
+        }
         DuckLevels {
             from,
             levels: self.levels,
+            source: None,
             own: None,
         }
     }
 }
 
 impl Project {
-    /// The gain (linear) Auto Ducking gives listener track `track` at `t`:
-    /// the deepest reduction of the controllers sounding then (1 when it
-    /// is no listener, or none sounds).
+    /// The strongest reduction from another active controller track.
+    /// The simple control applies to all other audio tracks. Legacy
+    /// controllers still address only their manually chosen listeners.
     pub fn ducking_gain(&self, track: &Track, t: Tick) -> f32 {
-        if !track.duck_listener {
-            return 1.0;
-        }
-        let mut db = 0.0f32;
-        for c in self
-            .tracks
-            .iter()
-            .filter(|c| c.kind == TrackKind::Audio && c.id != track.id && !c.muted)
-        {
-            let Some(d) = c.ducking else {
-                continue;
+        let mut gain = 1.0f32;
+        for controller in &self.tracks {
+            let simple = controller.duck_others;
+            let legacy = controller.ducking.filter(|_| track.duck_listener);
+            let available = if simple.is_some() {
+                self.is_audible(controller) && controller.level > 0.0
+            } else {
+                controller.kind == crate::TrackKind::Audio && !controller.muted
             };
-            for clip in c.clips_at(t).filter(|k| !k.muted) {
-                let Some(l) = &clip.duck_levels else {
+            if controller.id == track.id || (simple.is_none() && legacy.is_none()) || !available {
+                continue;
+            }
+            for clip in controller.clips_at(t).filter(|clip| {
+                !clip.muted
+                    && (simple.is_none() || clip.freeze.is_none() && clip.audio_gain_at(t) > 0.0)
+            }) {
+                let Some(levels) = &clip.duck_levels else {
                     continue;
                 };
-                let level = l.level_at(clip.source_time(t));
-                db = db.min(l.own.unwrap_or(d).reduction_db(level));
+                if let Some(amount) = simple {
+                    let Some(media) = self.media(clip.media).filter(|m| levels.matches(clip, m))
+                    else {
+                        continue;
+                    };
+                    let level = levels.level_at(clip.media_time(t, media.duration));
+                    gain = gain.min(1.0 - amount.clamp(0.0, 1.0) * activity(level));
+                } else if let Some(settings) = legacy {
+                    let level = levels.level_at(clip.source_time(t));
+                    let db = levels.own.unwrap_or(settings).reduction_db(level);
+                    gain = gain.min(10f32.powf(db / 20.0));
+                }
             }
         }
-        if db >= 0.0 {
-            1.0
-        } else {
-            10f32.powf(db / 20.0)
-        }
+        gain
     }
 
-    /// Whether some track is a listener with a controller to listen to.
     pub fn has_ducking(&self) -> bool {
-        self.tracks.iter().any(|t| t.duck_listener)
-            && self
-                .tracks
-                .iter()
-                .any(|t| t.ducking.is_some() && t.kind == TrackKind::Audio)
+        self.tracks
+            .iter()
+            .any(|t| t.duck_others.is_some_and(|n| n > 0.0))
+            || self.tracks.iter().any(|t| t.duck_listener)
+                && self
+                    .tracks
+                    .iter()
+                    .any(|t| t.ducking.is_some() && t.kind == TrackKind::Audio)
+    }
+
+    /// Clips on simple controller tracks whose waveform analysis is missing.
+    pub fn pending_duck_clips(&self) -> impl Iterator<Item = &crate::Clip> {
+        self.tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::Audio && t.duck_others.is_some_and(|n| n > 0.0))
+            .flat_map(|t| &t.clips)
+            .filter(|c| {
+                !c.muted
+                    && c.freeze.is_none()
+                    && self.media(c.media).is_some_and(|m| {
+                        if m.duration <= Tick::ZERO || m.audio_stream(c.audio_stream).is_none() {
+                            return false;
+                        }
+                        let (start, end) = source_range(c, m);
+                        end > start && c.duck_levels.as_ref().is_none_or(|l| !l.covers(c, m))
+                    })
+            })
     }
 }
 

@@ -89,7 +89,7 @@ fn reset_transform(clip: &mut Clip) {
     clip.visual.transform_bypass = false;
 }
 
-fn header(
+pub(super) fn header(
     ui: &mut Ui,
     title: &str,
     enabled: Option<&mut bool>,
@@ -185,7 +185,7 @@ pub(super) fn group(ui: &mut Ui, title: &str, default_open: bool, content: impl 
     }
 }
 
-fn body(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
+pub(super) fn body(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
     egui::Frame::new()
         .fill(theme::panel())
         .inner_margin(egui::Margin::symmetric(11, 12))
@@ -196,7 +196,7 @@ fn body(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
         });
 }
 
-fn diamond(ui: &mut Ui, selected: bool, tip: &str) -> bool {
+pub(super) fn diamond(ui: &mut Ui, selected: bool, tip: &str) -> bool {
     let (rect, response) = ui.allocate_exact_size(vec2(23.0, 20.0), egui::Sense::click());
     let c = rect.center();
     let color = if selected || response.hovered() {
@@ -604,7 +604,7 @@ fn keyframe_panel(ui: &mut Ui, app: &mut BananaApp, clip: &mut Clip) {
     }
 }
 
-fn keyframe_rows(
+pub(super) fn keyframe_rows(
     ui: &mut Ui,
     app: &mut BananaApp,
     start: Tick,

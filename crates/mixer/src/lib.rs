@@ -837,7 +837,8 @@ fn fade_clip(
     let (fade_in, fade_out) = track.effective_fades(clip, project.auto_crossfade);
     let q_len = quick_fade();
     let quick = project.quick_fades && q_len > Tick::ZERO && (fade_in < q_len || fade_out < q_len);
-    if fade_in > Tick::ZERO || fade_out > Tick::ZERO || quick {
+    let volume = clip.envelope(bv_timeline::EnvelopeKind::Volume);
+    if fade_in > Tick::ZERO || fade_out > Tick::ZERO || quick || volume.is_some() {
         let gains: Vec<f32> = (0..n)
             .map(|i| {
                 let t = rate.sample_start(s0 + i as i64);
@@ -846,7 +847,8 @@ fn fade_clip(
                 } else {
                     1.0
                 };
-                fade_gain(clip, fade_in, fade_out, t) * q
+                let automation = volume.map_or(1.0, |env| env.value_at(t - clip.start));
+                fade_gain(clip, fade_in, fade_out, t) * q * automation
             })
             .collect();
         for ch in src.iter_mut() {
@@ -1135,7 +1137,8 @@ fn add_track(
         let mut any = false;
         for clip in track.clips_overlapping(block) {
             // Quadro congelado é coisa do vídeo: o áudio do clipe fica mudo.
-            if clip.level <= 0.0 || clip.muted || clip.freeze.is_some() {
+            let animated = clip.envelope(bv_timeline::EnvelopeKind::Volume).is_some();
+            if (!animated && clip.level <= 0.0) || clip.muted || clip.freeze.is_some() {
                 continue;
             }
             let Some(info) = project.media(clip.media) else {
@@ -1146,6 +1149,7 @@ fn add_track(
             if s1 <= s0 {
                 continue;
             }
+            let gain = if animated { 1.0 } else { clip.level };
             let quality = project.settings.resample_quality;
             // Its media's effects, then its own (before fades and level);
             // effects that answer late (a plug-in's latency) have it read
@@ -1180,7 +1184,13 @@ fn add_track(
                     })
                     .collect();
                 fade_clip(project, track, clip, rate, s0, &mut src);
-                add_mapped(&mut bus, &src, (s0 - start) as usize, clip.level);
+                add_mapped(
+                    &mut bus,
+                    &src,
+                    (s0 - start) as usize,
+                    gain,
+                    clip.audio_balance,
+                );
                 any = true;
                 continue;
             }
@@ -1249,7 +1259,13 @@ fn add_track(
                 );
             }
             fade_clip(project, track, clip, rate, s0, &mut src);
-            add_mapped(&mut bus, &src, (s0 - start) as usize, clip.level);
+            add_mapped(
+                &mut bus,
+                &src,
+                (s0 - start) as usize,
+                gain,
+                clip.audio_balance,
+            );
             any = true;
         }
         if any || !track_fx.is_empty() {
@@ -1270,7 +1286,7 @@ fn add_track(
             }
             // Auto Ducking: a listener goes down while its controllers
             // sound.
-            if track.duck_listener && project.has_ducking() {
+            if project.has_ducking() {
                 duck(project, track, start, &mut bus);
             }
             // Its sends: from before its volume and mute (and their
@@ -1826,13 +1842,21 @@ fn apply_switches(clip: &Clip, src: &mut [Vec<f32>]) {
 }
 
 /// Soma `src` em `dst` a partir de `offset`, adaptando o número de canais.
-fn add_mapped(dst: &mut AudioBuffer, src: &[Vec<f32>], offset: usize, gain: f32) {
+fn add_mapped(dst: &mut AudioBuffer, src: &[Vec<f32>], offset: usize, gain: f32, balance: f32) {
     let out_ch = dst.channel_count();
     let in_ch = src.len();
     if in_ch == 0 {
         return;
     }
+    let balance = balance.clamp(-1.0, 1.0);
     for (o, out) in dst.channels.iter_mut().enumerate() {
+        let gain = gain
+            * match (out_ch, o) {
+                (1, _) => 1.0,
+                (_, 0) => 1.0 - balance.max(0.0),
+                (_, 1) => 1.0 - (-balance).max(0.0),
+                _ => 1.0,
+            };
         let target = &mut out[offset..];
         if in_ch == 1 {
             // Mono vai igual para todos os canais.
@@ -1841,8 +1865,13 @@ fn add_mapped(dst: &mut AudioBuffer, src: &[Vec<f32>], offset: usize, gain: f32)
             }
         } else if out_ch == 1 {
             // Para mono: média de todos os canais.
-            let k = gain / in_ch as f32;
-            for ch in src {
+            for (i, ch) in src.iter().enumerate() {
+                let side = match i {
+                    0 => 1.0 - balance.max(0.0),
+                    1 => 1.0 - (-balance).max(0.0),
+                    _ => 1.0,
+                };
+                let k = gain * side / in_ch as f32;
                 for (d, s) in target.iter_mut().zip(ch) {
                     *d += s * k;
                 }
@@ -1871,6 +1900,48 @@ mod tests {
         p.add_media(info)
     }
 
+    #[test]
+    fn audio_event_volume_points_and_balance_are_mixed_together() {
+        use bv_timeline::{Envelope, EnvelopeKind, EnvelopePoint, KeyCurve};
+        let mut p = Project::default();
+        p.quick_fades = false;
+        let track = p.tracks[1].id;
+        let media = tone(&mut p, 440.0, -12.0);
+        let id = p
+            .insert_media(media, Tick::ZERO, None, Some(track))
+            .unwrap()[0];
+        let c = p.clip_mut(id).unwrap();
+        c.level = 0.0;
+        c.audio_balance = 0.5;
+        c.envelopes.push(Envelope {
+            kind: EnvelopeKind::Volume,
+            points: vec![
+                EnvelopePoint {
+                    at: Tick::ZERO,
+                    value: 0.0,
+                    curve: KeyCurve::Linear,
+                },
+                EnvelopePoint {
+                    at: Tick::from_seconds(1),
+                    value: 1.0,
+                    curve: KeyCurve::Linear,
+                },
+            ],
+        });
+        let peak = |at: i64| {
+            mix(&p, at, 480, &mut AudioPool::new())
+                .channels
+                .iter()
+                .map(|c| c.iter().fold(0.0f32, |p, x| p.max(x.abs())))
+                .collect::<Vec<_>>()
+        };
+        let middle = peak(24_000);
+        let end = peak(48_000);
+        assert!(end[1] > 0.05);
+        assert!((end[0] / end[1] - 0.5).abs() < 0.01);
+        assert!((middle[1] / end[1] - 0.5).abs() < 0.02);
+    }
+
     /// Auto Ducking: music on a listener track goes down by the
     /// controller's Floor Reduction while its narration sounds, and back up
     /// after.
@@ -1891,6 +1962,7 @@ mod tests {
             from: Tick::ZERO,
             levels,
             own: None,
+            source: None,
         });
         // Only the music is heard here.
         p.track_by_id_mut(voice).unwrap().level = 0.0;

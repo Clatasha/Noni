@@ -535,40 +535,55 @@ impl RenderJob {
                             Some("native") => true,
                             _ => !direct_nvenc_candidate,
                         };
-                    let native = use_native.then(|| {
-                        #[cfg(all(windows, target_arch = "x86_64"))]
-                        {
-                            native::try_export(&project, &s, &progress, &cancel, &repaint, started)
-                        }
-                        #[cfg(not(all(windows, target_arch = "x86_64")))]
-                        {
-                            Err("The Noni native MP4 exporter is available on Windows x64.".to_string())
-                        }
-                    });
-                    let native = native.and_then(|result| match result {
-                        Ok(result) => Some(result),
-                        Err(reason) => {
-                            *progress.lock().expect("progress") = RenderProgress {
-                                stage: "Preparing".into(),
-                                native_fallback: Some(reason),
-                                ..RenderProgress::default()
-                            };
+                    let mut project = project;
+                    let preparation =
+                        if s.audio.is_some() && project.pending_duck_clips().next().is_some() {
+                            progress.lock().expect("progress").stage =
+                                "Analyzing audio for ducking".into();
                             repaint();
-                            None
-                        }
-                    });
-                    let result = native.unwrap_or_else(|| {
-                        run(
-                            &project,
-                            &s,
-                            &progress,
-                            &cancel,
-                            &shown,
-                            &repaint,
-                            started,
-                            &mut painter,
-                            timing.as_ref(),
-                        )
+                            crate::ducking::prepare_export(&mut project, s.range, &cancel)
+                        } else {
+                            Ok(())
+                        };
+                    let result = preparation.and_then(|()| {
+                        let native = use_native.then(|| {
+                            #[cfg(all(windows, target_arch = "x86_64"))]
+                            {
+                                native::try_export(
+                                    &project, &s, &progress, &cancel, &repaint, started,
+                                )
+                            }
+                            #[cfg(not(all(windows, target_arch = "x86_64")))]
+                            {
+                                Err("The Noni native MP4 exporter is available on Windows x64."
+                                    .to_string())
+                            }
+                        });
+                        let native = native.and_then(|result| match result {
+                            Ok(result) => Some(result),
+                            Err(reason) => {
+                                *progress.lock().expect("progress") = RenderProgress {
+                                    stage: "Preparing".into(),
+                                    native_fallback: Some(reason),
+                                    ..RenderProgress::default()
+                                };
+                                repaint();
+                                None
+                            }
+                        });
+                        native.unwrap_or_else(|| {
+                            run(
+                                &project,
+                                &s,
+                                &progress,
+                                &cancel,
+                                &shown,
+                                &repaint,
+                                started,
+                                &mut painter,
+                                timing.as_ref(),
+                            )
+                        })
                     });
                     let result = match swap {
                         Some((target, temp)) => swapped(result, &target, &temp, &cancel),
@@ -1649,6 +1664,73 @@ mod tests {
         );
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
         assert!(!temp.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wav_export_analyzes_ducking_and_lowers_the_other_track_by_a_quarter() {
+        use bv_timeline::{Generator, MediaInfo, TrackKind};
+        let mut project = Project::default();
+        project.quick_fades = false;
+        let backing = project.tracks[1].id;
+        let voice = project.add_track(TrackKind::Audio);
+        let settings = project.settings;
+        let tone = |hz| {
+            MediaInfo::generated(
+                Generator::TestTone {
+                    frequency_hz: hz,
+                    level_db: -12.0,
+                },
+                &settings,
+            )
+        };
+        let music = project.add_media(tone(440.0));
+        project
+            .insert_media(music, Tick::ZERO, None, Some(backing))
+            .unwrap();
+        let narration = project.add_media(tone(1000.0));
+        let event = project
+            .insert_media(narration, Tick::from_seconds(1), None, Some(voice))
+            .unwrap()[0];
+        project.trim_end(event, Tick::from_seconds(2)).unwrap();
+        project.clip_mut(event).unwrap().audio_balance = -1.0;
+        project.track_by_id_mut(voice).unwrap().duck_others = Some(0.25);
+        assert_eq!(project.pending_duck_clips().count(), 1);
+
+        let dir = std::env::temp_dir().join(format!("noni-duck-wav-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("ducked.wav");
+        let mut engine = crate::Engine::new(Arc::new(|| {}));
+        engine.set_project(&project);
+        engine.start_render(RenderSettings {
+            format: FileFormat::Wav,
+            path: file.clone(),
+            range: TimeRange::new(Tick::ZERO, Tick::from_seconds(3)),
+            video: None,
+            audio: Some(AudioParams::default()),
+            options: RenderOptions::default(),
+            project_file: None,
+        });
+        let start = Instant::now();
+        loop {
+            let progress = engine.render_progress().unwrap();
+            if progress.finished {
+                assert!(progress.error.is_none(), "{:?}", progress.error);
+                break;
+            }
+            assert!(start.elapsed().as_secs() < 20, "export did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let mut wav = bv_wav::WavReader::new(std::fs::File::open(&file).unwrap()).unwrap();
+        let mut peak = |at: i64| {
+            wav.read_planar(at, 4800).unwrap()[1]
+                .iter()
+                .fold(0.0f32, |p, x| p.max(x.abs()))
+        };
+        let normal = peak(24_000);
+        assert!(normal > 0.05);
+        assert!((peak(72_000) / normal - 0.75).abs() < 0.01);
+        assert!((peak(120_000) / normal - 1.0).abs() < 0.01);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
