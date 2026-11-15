@@ -3,6 +3,7 @@
 use crate::i18n::tr;
 use bv_core::{FrameRate, Tick, timecode};
 use bv_timeline::mask::{MaskFeather, MaskPath, PanCropMask};
+use bv_timeline::pancrop::PanCropKey;
 use bv_timeline::{
     AnimationPreset, Clip, ClipAnimation, ClipId, Effect, EffectKind, FadeCurve, ParamKind,
     Project, TrackKind, Transform, Transition, VideoStreamInfo,
@@ -309,6 +310,7 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
     let mut tf = framing;
     let mut conform = false;
     let mut reset_framing = false;
+    let mut orientation = None;
     let mut speed = None;
     let mut preserve_linked_pitch = None;
     let key = ui.id().with(("clip-properties", id.0));
@@ -391,6 +393,13 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
                         _ => {
                             if is_title && ui.button(tr("Edit Text")).clicked() {
                                 app.open_generated_media(id);
+                            }
+                            if !is_title && let Some(box_key) = shown {
+                                orientation = ui
+                                    .add_enabled_ui(!clip.locked, |ui| {
+                                        orientation_strip(ui, &box_key)
+                                    })
+                                    .inner;
                             }
                             pan_crop(ui, &mut tf);
                             if ui.button(tr("Open Pan/Crop…")).clicked() {
@@ -503,7 +512,17 @@ pub fn ui(ui: &mut egui::Ui, app: &mut BananaApp) {
         });
     }
 
-    if !reset_framing
+    if let Some(next) = orientation {
+        let edit_at = match clip.pan_crop.keys.as_slice() {
+            [] => clip.start,
+            [key] => clip.start + key.at,
+            _ => at,
+        };
+        let preferences = app.settings.prefs.new_motion_keys();
+        app.modify(|p| {
+            let _ = p.set_clip_box_at(id, edit_at, next, preferences);
+        });
+    } else if !reset_framing
         && tf != framing
         && let (Some(place), Some(was)) = (place, shown)
     {
@@ -577,6 +596,143 @@ pub(crate) fn value_slider(
             slider.changed() || field.changed()
         }).inner
     }).inner
+}
+
+#[derive(Clone, Copy)]
+enum Orientation {
+    FlipHorizontal,
+    FlipVertical,
+    Clockwise,
+    Counterclockwise,
+}
+
+impl Orientation {
+    fn apply(self, key: &PanCropKey) -> PanCropKey {
+        use std::f64::consts::FRAC_PI_2;
+        match self {
+            // The signs of the box dimensions reverse its output axes.
+            Self::FlipHorizontal => PanCropKey {
+                width: -key.width,
+                ..*key
+            },
+            Self::FlipVertical => PanCropKey {
+                height: -key.height,
+                ..*key
+            },
+            Self::Clockwise | Self::Counterclockwise => {
+                // The box turns opposite to the rendered picture. One
+                // mirrored axis reverses that relationship.
+                let clockwise = matches!(self, Self::Clockwise);
+                let mirrored = key.width.is_sign_negative() != key.height.is_sign_negative();
+                key.turned(if clockwise != mirrored {
+                    -FRAC_PI_2
+                } else {
+                    FRAC_PI_2
+                })
+            }
+        }
+    }
+
+    fn paint(self, painter: &egui::Painter, center: egui::Pos2, color: Color32) {
+        use egui::{Rect, Stroke, StrokeKind, vec2};
+        let stroke = Stroke::new(1.15, color);
+        match self {
+            Self::FlipHorizontal | Self::FlipVertical => {
+                let point = |x, y| {
+                    center
+                        + match self {
+                            Self::FlipVertical => vec2(y, x),
+                            _ => vec2(x, y),
+                        }
+                };
+                painter.line_segment([point(0.0, -7.0), point(0.0, 7.0)], stroke);
+                for sign in [-1.0, 1.0] {
+                    let rect = Rect::from_center_size(point(sign * 5.0, 0.0), vec2(5.0, 5.0));
+                    painter.rect_stroke(rect, 0.8, stroke, StrokeKind::Inside);
+                    painter.circle_filled(point(sign * 5.0, -0.5), 0.7, color);
+                }
+            }
+            Self::Clockwise | Self::Counterclockwise => {
+                let direction = if matches!(self, Self::Clockwise) {
+                    1.0
+                } else {
+                    -1.0
+                };
+                let point = |x, y| center + vec2(direction * x, y);
+                let rect = Rect::from_center_size(center + vec2(0.0, 2.0), vec2(8.0, 7.0));
+                painter.rect_stroke(rect, 1.0, stroke, StrokeKind::Inside);
+                let tip = point(7.0, -1.0);
+                painter.add(egui::Shape::line(
+                    vec![
+                        point(-5.0, -4.0),
+                        point(-2.0, -6.5),
+                        point(2.0, -7.0),
+                        point(5.5, -5.0),
+                        tip,
+                    ],
+                    stroke,
+                ));
+                painter.line_segment([point(3.5, -2.0), tip], stroke);
+                painter.line_segment([point(8.0, -4.4), tip], stroke);
+            }
+        }
+    }
+}
+
+fn orientation_strip(ui: &mut egui::Ui, key: &PanCropKey) -> Option<PanCropKey> {
+    ui.label(tr("Flip"));
+    ui.horizontal(|ui| {
+        let gap = ui.spacing().item_spacing.x;
+        let width = ((ui.available_width() - 3.0 * gap) / 4.0).max(18.0);
+        let mut picked = None;
+        for (action, label, on) in [
+            (
+                Orientation::FlipHorizontal,
+                tr("Flip Horizontal"),
+                key.width < 0.0,
+            ),
+            (
+                Orientation::FlipVertical,
+                tr("Flip Vertical"),
+                key.height < 0.0,
+            ),
+            (Orientation::Clockwise, tr("Rotate 90° Clockwise"), false),
+            (
+                Orientation::Counterclockwise,
+                tr("Rotate 90° Counterclockwise"),
+                false,
+            ),
+        ] {
+            let response =
+                ui.add_sized(egui::vec2(width, 26.0), egui::Button::new("").selected(on));
+            if theme::premium() && ui.is_enabled() {
+                theme::paint_premium_button(
+                    ui.painter(),
+                    response.rect,
+                    on,
+                    response.hovered(),
+                    false,
+                );
+            }
+            let color = if theme::premium() && on && ui.is_enabled() {
+                Color32::WHITE
+            } else {
+                ui.style()
+                    .interact_selectable(&response, on)
+                    .fg_stroke
+                    .color
+            };
+            action.paint(ui.painter(), response.rect.center(), color);
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+            });
+            if response.on_hover_text(label).clicked() {
+                picked = Some(action.apply(key));
+            }
+        }
+        picked
+    })
+    .inner
 }
 
 fn transform(ui: &mut egui::Ui, tf: &mut Transform) {
@@ -1502,5 +1658,51 @@ pub fn param_slider(
             }
             r
         }
+    }
+}
+
+#[cfg(test)]
+mod orientation_tests {
+    use super::*;
+    use bv_timeline::pancrop::{PlaceIn, place};
+
+    #[test]
+    fn quarter_turns_and_flips_follow_the_preview_axes() {
+        let pane = PlaceIn {
+            media: [100.0, 100.0],
+            media_aspect: 1.0,
+            frame: [100.0, 100.0],
+            frame_aspect: 1.0,
+            keep_aspect: true,
+            fill: true,
+            adjust: 1.0,
+        };
+        let whole = PanCropKey {
+            crop: [0.1, 0.05, 0.0, 0.0],
+            ..PanCropKey::whole(pane.media)
+        };
+        let position = |key: PanCropKey| {
+            assert_eq!(key.crop, whole.crop);
+            assert_eq!(key.pivot, whole.pivot);
+            place(&key, &pane)
+                .on_frame_point([70.0, 60.0])
+                .map(f64::round)
+        };
+        let turn = Orientation::Clockwise.apply(&whole);
+        assert_eq!(position(turn), [40.0, 70.0]);
+        assert_eq!(
+            position(Orientation::Counterclockwise.apply(&turn)),
+            [70.0, 60.0]
+        );
+        let flipped = Orientation::FlipHorizontal.apply(&turn);
+        assert_eq!(position(flipped), [60.0, 70.0]);
+        assert_eq!(
+            position(Orientation::FlipVertical.apply(&turn)),
+            [40.0, 30.0]
+        );
+        assert_eq!(
+            position(Orientation::Clockwise.apply(&flipped)),
+            [30.0, 60.0]
+        );
     }
 }
