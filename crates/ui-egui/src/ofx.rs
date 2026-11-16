@@ -947,7 +947,13 @@ pub fn params(
             own,
             depth: 0,
         };
-        let units = ctx.shown("");
+        let mut units = ctx.shown("");
+        if key.id == crate::tabs::generators::CREDIT_ROLL_ID
+            && matches!(key.owner, EditorOwner::Generator(_))
+            && let Some(i) = units.iter().position(|info| info.name == "text")
+        {
+            ctx.credit_text(ui, units.remove(i));
+        }
         let weights: Vec<usize> = units.iter().map(|i| ctx.weight(i, 0)).collect();
         let parts = split_columns(&weights, columns);
         let grids = ui.horizontal_top(|ui| {
@@ -1529,6 +1535,74 @@ struct Rows<'a> {
 }
 
 impl<'a> Rows<'a> {
+    fn credit_text(&mut self, ui: &mut Ui, info: &ParamInfo) {
+        let now = value_now(info, self.fx, self.place);
+        let mut text = now.text().to_owned();
+        let label = say(self.own, &info.label);
+        let reset = ui
+            .horizontal(|ui| {
+                let label =
+                    ui.add_enabled(info.enabled, egui::Label::new(label).sense(Sense::click()));
+                let reset = label.double_clicked() && resets(info);
+                if !info.hint.is_empty() {
+                    label.on_hover_text(say(self.own, &info.hint));
+                }
+                self.animation(ui, info);
+                reset
+            })
+            .inner;
+        let id = ui.id().with(("credit-roll-text", &self.key.owner));
+        let changed = ui
+            .add_enabled_ui(info.enabled, |ui| {
+                crate::widgets::resizable_multiline(
+                    ui,
+                    id,
+                    &mut text,
+                    ui.available_width(),
+                    142.0,
+                    true,
+                )
+                .response
+                .changed()
+            })
+            .inner;
+        if changed {
+            set_now(info, self.fx, self.place, Value::Text(text));
+            self.touched.push(info.name.clone());
+        } else if reset && now != info.default {
+            set_now(info, self.fx, self.place, info.default.clone());
+            self.touched.push(info.name.clone());
+        }
+        ui.add_space(6.0);
+    }
+
+    fn animation(&mut self, ui: &mut Ui, info: &ParamInfo) -> bool {
+        if !info.animates || !info.ty.has_value() {
+            return false;
+        }
+        let animated = self
+            .fx
+            .params
+            .get(&info.name)
+            .is_some_and(|p| !p.keys.is_empty());
+        let tip = if animated {
+            tr("Animated: changes set keyframes. Click to stop animating.")
+        } else {
+            tr("Animate")
+        };
+        if ui
+            .add_enabled_ui(info.enabled, |ui| {
+                crate::ofx_controls::animate(ui, animated, tip).on_hover_text(tip)
+            })
+            .inner
+            .clicked()
+        {
+            toggle_animation(info, self.fx, self.place);
+            self.touched.push(info.name.clone());
+        }
+        true
+    }
+
     /// The parameters shown under `parent`.
     fn shown(&self, parent: &str) -> Vec<&'a ParamInfo> {
         // A transition's progress is the host's to set.
@@ -1776,27 +1850,7 @@ impl<'a> Rows<'a> {
             self.touched.push(info.name.clone());
         }
         // The clock.
-        let animated = self
-            .fx
-            .params
-            .get(&info.name)
-            .is_some_and(|p| !p.keys.is_empty());
-        if info.animates && info.ty.has_value() {
-            let tip = if animated {
-                tr("Animated: changes set keyframes. Click to stop animating.")
-            } else {
-                tr("Animate")
-            };
-            let r = ui
-                .add_enabled_ui(info.enabled, |ui| {
-                    crate::ofx_controls::animate(ui, animated, tip).on_hover_text(tip)
-                })
-                .inner;
-            if r.clicked() {
-                toggle_animation(info, self.fx, self.place);
-                self.touched.push(info.name.clone());
-            }
-        } else {
+        if !self.animation(ui, info) {
             ui.label("");
         }
         ui.end_row();
@@ -2260,6 +2314,7 @@ impl<'a> Rows<'a> {
                             &mut s,
                             (available - 40.0).max(SLIDER_W),
                             112.0,
+                            false,
                         );
                         changed = out.response.changed();
                         // Rich text: the part selected, kept while the

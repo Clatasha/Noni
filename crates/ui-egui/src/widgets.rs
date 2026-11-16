@@ -13,12 +13,21 @@ pub(crate) fn resizable_multiline(
     text: &mut String,
     width: f32,
     initial_height: f32,
+    resize_width: bool,
 ) -> egui::text_edit::TextEditOutput {
     let height_id = id.with("height");
+    let width_id = id.with("width");
     let height = ui
         .data(|data| data.get_temp::<f32>(height_id))
         .unwrap_or(initial_height);
-    let width = width.min(ui.available_width()).max(32.0);
+    let max_width = ui.available_width().max(32.0);
+    let width = if resize_width {
+        ui.data(|data| data.get_temp::<f32>(width_id))
+            .unwrap_or(width)
+    } else {
+        width
+    }
+    .clamp(32.0, max_width);
     let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     let p = ui.painter_at(rect);
     p.rect(
@@ -62,6 +71,13 @@ pub(crate) fn resizable_multiline(
         if next != height {
             ui.data_mut(|data| data.insert_temp(height_id, next));
             ui.request_repaint();
+        }
+        if resize_width && grip.drag_delta().x != 0.0 {
+            let next = (width + grip.drag_delta().x).clamp(120.0_f32.min(max_width), max_width);
+            if next != width {
+                ui.data_mut(|data| data.insert_temp(width_id, next));
+                ui.request_repaint();
+            }
         }
     }
     output
@@ -1155,7 +1171,7 @@ mod tests {
         let mut harness = egui_kittest::Harness::new_ui_state(
             |ui, text| {
                 let start = ui.next_widget_position();
-                resizable_multiline(ui, id, text, 250.0, 76.0);
+                resizable_multiline(ui, id, text, 250.0, 76.0, false);
                 let spacing = ui.spacing().item_spacing.y;
                 bounds.set(Rect::from_min_max(
                     start,
@@ -1182,6 +1198,39 @@ mod tests {
                 settings.data(|data| data.get_temp::<f32>(id.with("height"))),
                 Some(expected),
             );
+        }
+    }
+
+    #[test]
+    fn the_credit_text_corner_drags_horizontally() {
+        use std::cell::Cell;
+        let start = Cell::new(egui::Pos2::ZERO);
+        let width = Cell::new(0.0);
+        let id = egui::Id::new("resizable-credit-text");
+        let mut harness = egui_kittest::Harness::new_ui_state(
+            |ui, text| {
+                start.set(ui.next_widget_position());
+                resizable_multiline(ui, id, text, 250.0, 76.0, true);
+                width.set(
+                    ui.data(|data| data.get_temp::<f32>(id.with("width")))
+                        .unwrap_or(250.0),
+                );
+            },
+            "Opening Credits\nDirector\tName".to_owned(),
+        );
+        harness.run();
+        let mut corner = start.get() + vec2(245.0, 71.0);
+        for (delta, expected) in [(60.0, 310.0), (-35.0, 275.0)] {
+            harness.hover_at(corner);
+            harness.run_steps(2);
+            harness.drag_at(corner);
+            harness.run_steps(1);
+            corner.x += delta;
+            harness.hover_at(corner);
+            harness.run_steps(3);
+            harness.drop_at(corner);
+            harness.run();
+            assert_eq!(width.get(), expected);
         }
     }
 

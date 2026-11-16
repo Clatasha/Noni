@@ -88,6 +88,7 @@ impl<'a> Controls<'a> {
             &mut text,
             ui.available_width(),
             68.0,
+            false,
         );
         let selection = crate::ofx::rich_text_selection(&self.key, "text");
         if let Some(range) = edit.cursor_range.filter(|range| !range.is_empty()) {

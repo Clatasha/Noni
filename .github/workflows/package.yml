@@ -15,7 +15,7 @@
 name: Packages
 
 on:
-  # Build on pushes only when this packaging workflow changes.
+  # Build on noni-branding only when this packaging workflow changes.
   # One-time rebuild request: UI fixes batch (mask/text/properties/banner).
   # One-time rebuild request: automatic Noni Direct NVENC rendering and export labels.
   # One-time rebuild request: title editor and text fitting.
@@ -37,8 +37,9 @@ on:
   # One-time rebuild request: tiled text uploads and separate credit roll timing.
   # One-time rebuild request: cached credit roll line rasters.
   # One-time rebuild request: restore the measured bounded blending baseline with diagnostics.
+  # One-time rebuild request: verified GPU credits and a wider Credit Roll editor.
   push:
-    branches: [noni-branding, credit-roll-gpu]
+    branches: [noni-branding]
     paths:
       - .github/workflows/package.yml
   workflow_dispatch:

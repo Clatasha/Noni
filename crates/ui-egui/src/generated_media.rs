@@ -250,7 +250,7 @@ impl GeneratedMediaWindow {
             .id(egui::Id::new("generated-media-window"))
             .collapsible(false)
             .resizable(credit_roll)
-            .default_size(egui::vec2(630.0, 655.0))
+            .default_size(egui::vec2(if credit_roll { 740.0 } else { 630.0 }, 655.0))
             .open(&mut open)
             .show(ctx, |ui| {
                 if credit_roll {
