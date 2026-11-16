@@ -103,12 +103,54 @@ pub struct ReadbackTiming {
     pub source_uploads: u64,
     pub belt_uploads: u64,
     pub direct_overlay_blends: u64,
+    pub titles: OverlayTiming,
+    pub still_images: OverlayTiming,
     /// Packing, submitting and synchronizing the shared encoder texture.
     pub shared_output: Duration,
     /// Submission through mapping, including GPU execution and the transfer.
     pub wait: Duration,
     /// Reading and unpacking the mapped bytes into the owned result.
     pub copy: Duration,
+}
+
+/// Host work and dispatched pixel area for ordinary overlay layers.
+#[derive(Debug, Default)]
+pub struct OverlayTiming {
+    pub read: Duration,
+    pub read_count: u64,
+    pub upload: Duration,
+    pub upload_bytes: u64,
+    pub place: Duration,
+    pub place_pixels: u64,
+    pub blend: Duration,
+    pub blend_pixels: u64,
+}
+
+#[derive(Clone, Copy)]
+enum OverlayKind {
+    Title,
+    StillImage,
+}
+
+impl OverlayKind {
+    fn of(info: &bv_timeline::MediaInfo) -> Option<Self> {
+        if matches!(&info.source, MediaSource::Generated(Generator::Plugin(fx))
+            if fx.id == bv_timeline::fcp_import::TITLES_PLUGIN || fx.id == "org.bananav.CreditRoll")
+        {
+            Some(Self::Title)
+        } else if info.still {
+            Some(Self::StillImage)
+        } else {
+            None
+        }
+    }
+
+    fn timing(self, timing: &mut ReadbackTiming) -> &mut OverlayTiming {
+        match self {
+            Self::Title => &mut timing.titles,
+            Self::StillImage => &mut timing.still_images,
+        }
+    }
 }
 
 /// Draws frames on a graphics card. Keeps its buffers and the pictures it
@@ -130,6 +172,7 @@ pub struct Compositor {
     #[cfg(windows)]
     nv12_copy: Option<crate::nv12::CopyNv12>,
     readback_timing: Option<ReadbackTiming>,
+    single_pass_overlays: bool,
     /// Buffers CUDA shares, all of one size: a frame's plug-ins that
     /// render with CUDA use them one after another.
     shared: Vec<Shared>,
@@ -194,6 +237,7 @@ impl Compositor {
             #[cfg(windows)]
             nv12_copy: None,
             readback_timing: None,
+            single_pass_overlays: std::env::var("NONI_SINGLE_PASS_OVERLAYS").as_deref() == Ok("1"),
             shared: Vec::new(),
             plugin_readbacks: Vec::new(),
         }
@@ -201,6 +245,16 @@ impl Compositor {
 
     pub fn measure_readback(&mut self, on: bool) {
         self.readback_timing = on.then(ReadbackTiming::default);
+    }
+
+    /// Override the experimental single-pass path for controlled comparisons.
+    pub fn set_single_pass_overlays(&mut self, enabled: bool) {
+        self.single_pass_overlays = enabled;
+    }
+
+    fn overlay_timer(&self, info: &bv_timeline::MediaInfo) -> Option<(OverlayKind, Instant)> {
+        self.readback_timing.as_ref()?;
+        Some((OverlayKind::of(info)?, Instant::now()))
     }
 
     pub fn take_readback_timing(&mut self) -> ReadbackTiming {
@@ -869,7 +923,7 @@ impl Compositor {
         under: &Img,
         mode: bv_timeline::CompositeMode,
         level: f32,
-    ) {
+    ) -> u64 {
         let mut p = Params::sized(under.w, under.h).with_f(&[level]);
         p.j[0] = mode.index();
         let grid = if mode == bv_timeline::CompositeMode::SourceAlpha
@@ -877,17 +931,24 @@ impl Compositor {
             && let Some([left, top, right, bottom]) = top.placement_bounds
         {
             if left >= right || top >= bottom {
-                return;
+                return 0;
             }
             let (width, height) = ((right - left) as u32, (bottom - top) as u32);
             if (width, height) != (under.w, under.h) {
                 p.o = [left as u32, top as u32, right as u32, bottom as u32];
             }
-            Grid::Pixels(width, height)
+            (width, height)
         } else {
-            Grid::Pixels(under.w, under.h)
+            (under.w, under.h)
         };
-        self.kernel(enc, K::Blend, p, &[&top.buf, &under.buf], grid);
+        self.kernel(
+            enc,
+            K::Blend,
+            p,
+            &[&top.buf, &under.buf],
+            Grid::Pixels(grid.0, grid.1),
+        );
+        u64::from(grid.0) * u64::from(grid.1)
     }
 
     /// Draws `units` (top first) over `under`, the bottom one first, as
@@ -907,7 +968,9 @@ impl Compositor {
                     self.adjust(enc, scene, t, pool, under);
                     continue;
                 }
-                if !self.draw_simple_overlay(enc, scene, t, pool, under) {
+                if !(self.single_pass_overlays
+                    && self.draw_simple_overlay(enc, scene, t, pool, under))
+                {
                     let layer = self.finished_layer(enc, scene, t, pool, under);
                     self.blend_track(enc, scene, t, &layer, under);
                 }
@@ -951,10 +1014,8 @@ impl Compositor {
             return false;
         };
         let visual = &media.clip.visual;
-        let text = matches!(&media.info.source, MediaSource::Generated(Generator::Plugin(fx))
-            if fx.id == bv_timeline::fcp_import::TITLES_PLUGIN || fx.id == "org.bananav.CreditRoll");
         let fade = event.fade.unwrap_or(1.0);
-        if !(media.info.still || text)
+        if OverlayKind::of(media.info).is_none()
             || track.mode != CompositeMode::SourceAlpha
             || track.compositor.is_some()
             || track.motion.is_some()
@@ -1023,7 +1084,19 @@ impl Compositor {
         under: &Img,
     ) {
         if !self.composite(enc, scene, t, false, layer, under, t.level) {
-            self.blend(enc, layer, under, t.mode, t.level);
+            let timer = match &t.content {
+                TrackContent::Event(event) => event
+                    .source
+                    .as_ref()
+                    .and_then(|m| self.overlay_timer(m.info)),
+                _ => None,
+            };
+            let pixels = self.blend(enc, layer, under, t.mode, t.level);
+            if let (Some((kind, start)), Some(timing)) = (timer, &mut self.readback_timing) {
+                let overlay = kind.timing(timing);
+                overlay.blend += start.elapsed();
+                overlay.blend_pixels += pixels;
+            }
         }
     }
 
@@ -1331,12 +1404,12 @@ impl Compositor {
                 }
                 img
             }
-            None => match pool.picture(owner, m.info, ask) {
+            None => match self.read_overlay_picture(pool, m, owner, ask) {
                 Ok(Picture::Decoded(f)) => {
                     self.decoded(enc, &f, m.min_size, light.map(|p| p.input), m.video_levels)
                 }
                 Ok(Picture::Linear(img)) => {
-                    let up = self.upload(Some(owner), &img);
+                    let up = self.upload_overlay_picture(m.info, owner, &img);
                     match light {
                         // On a copy: the upload is kept for the next frames.
                         Some(p) => {
@@ -1377,6 +1450,44 @@ impl Compositor {
             Some(h) => self.deinterlace(enc, &img, h),
             None => img,
         })
+    }
+
+    fn read_overlay_picture(
+        &mut self,
+        pool: &mut VideoPool,
+        m: &MediaLayer<'_>,
+        owner: u64,
+        ask: Ask,
+    ) -> bv_media::Result<Picture> {
+        let timer = self.overlay_timer(m.info);
+        let picture = pool.picture(owner, m.info, ask);
+        if let (Some((kind, start)), Some(timing)) = (timer, &mut self.readback_timing) {
+            let overlay = kind.timing(timing);
+            overlay.read += start.elapsed();
+            overlay.read_count += 1;
+        }
+        picture
+    }
+
+    fn upload_overlay_picture(
+        &mut self,
+        info: &bv_timeline::MediaInfo,
+        owner: u64,
+        image: &Arc<ImageRgbaF32>,
+    ) -> Img {
+        let timer = self.overlay_timer(info).filter(|_| {
+            !self
+                .uploaded
+                .get(&owner)
+                .is_some_and(|(previous, _)| Arc::ptr_eq(previous, image))
+        });
+        let uploaded = self.upload(Some(owner), image);
+        if let (Some((kind, start)), Some(timing)) = (timer, &mut self.readback_timing) {
+            let overlay = kind.timing(timing);
+            overlay.upload += start.elapsed();
+            overlay.upload_bytes += image.data.len() as u64 * size_of::<[f32; 4]>() as u64;
+        }
+        uploaded
     }
 
     /// The media's picture placed in the frame, with its effects; the
@@ -1425,6 +1536,7 @@ impl Compositor {
             }
             (src, fx_scale)
         };
+        let timer = self.overlay_timer(m.info);
         let mut img = self.place_box(
             enc,
             &src,
@@ -1432,6 +1544,13 @@ impl Compositor {
             &m.placement,
             m.quality,
         );
+        if let (Some((kind, start)), Some(timing)) = (timer, &mut self.readback_timing) {
+            let overlay = kind.timing(timing);
+            overlay.place += start.elapsed();
+            if !m.placement.empty {
+                overlay.place_pixels += u64::from(img.w) * u64::from(img.h);
+            }
+        }
         // Reduce Interlace Flicker: on the framed picture, before the
         // event's effects.
         if m.clip.reduce_flicker {

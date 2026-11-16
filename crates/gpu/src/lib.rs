@@ -20,7 +20,7 @@ mod shared;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-pub use compositor::{Compositor, Output, ReadbackTiming, Rendered, draws};
+pub use compositor::{Compositor, Output, OverlayTiming, ReadbackTiming, Rendered, draws};
 #[cfg(windows)]
 pub use nv12::SharedNv12;
 

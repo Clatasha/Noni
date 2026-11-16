@@ -32,6 +32,7 @@ on:
   # One-time rebuild request: Audio Properties spacing and export timing diagnostics.
   # One-time rebuild request: bounded GPU blending for overlays.
   # One-time rebuild request: direct GPU placement and blending for simple overlays.
+  # One-time rebuild request: export overlay and source profiling with bounded blending by default.
   push:
     branches: [noni-branding]
     paths:

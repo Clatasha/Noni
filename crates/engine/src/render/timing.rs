@@ -11,6 +11,7 @@ use crate::GpuStatus;
 pub(super) enum Stage {
     Draw,
     SourcePrepare,
+    SourceRead,
     DecodeWait,
     SceneSetup,
     GpuCompose,
@@ -44,6 +45,8 @@ pub(crate) struct Timing {
     source_uploads: AtomicU64,
     belt_uploads: AtomicU64,
     direct_overlay_blends: AtomicU64,
+    titles: OverlayTotals,
+    still_images: OverlayTotals,
     painters: AtomicU64,
     prepared_frames: AtomicU64,
     prepared_pictures: AtomicU64,
@@ -57,6 +60,66 @@ pub(crate) struct Timing {
     #[cfg(windows)]
     shared_nv12_pooled: AtomicU64,
     shared_nv12_status: std::sync::OnceLock<String>,
+}
+
+#[derive(Default)]
+struct OverlayTotals {
+    read: AtomicU64,
+    read_count: AtomicU64,
+    upload: AtomicU64,
+    upload_bytes: AtomicU64,
+    place: AtomicU64,
+    place_pixels: AtomicU64,
+    blend: AtomicU64,
+    blend_pixels: AtomicU64,
+}
+
+impl OverlayTotals {
+    fn add(&self, timing: bv_gpu::OverlayTiming) {
+        for (counter, value) in [
+            (&self.read, timing.read.as_nanos() as u64),
+            (&self.read_count, timing.read_count),
+            (&self.upload, timing.upload.as_nanos() as u64),
+            (&self.upload_bytes, timing.upload_bytes),
+            (&self.place, timing.place.as_nanos() as u64),
+            (&self.place_pixels, timing.place_pixels),
+            (&self.blend, timing.blend.as_nanos() as u64),
+            (&self.blend_pixels, timing.blend_pixels),
+        ] {
+            if value != 0 {
+                counter.fetch_add(value, Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn report(&self, file: &mut impl Write, label: &str) -> io::Result<()> {
+        let count = self.read_count.load(Ordering::Relaxed);
+        let seconds = |value: &AtomicU64| value.load(Ordering::Relaxed) as f64 / 1e9;
+        let megapixels = |value: &AtomicU64| value.load(Ordering::Relaxed) as f64 / 1e6;
+        writeln!(
+            file,
+            "    {label} source reads (including cached): {:.3} s / {count}",
+            seconds(&self.read)
+        )?;
+        writeln!(
+            file,
+            "    {label} RGBA uploads (host): {:.3} s / {:.1} MiB",
+            seconds(&self.upload),
+            self.upload_bytes.load(Ordering::Relaxed) as f64 / 1048576.0
+        )?;
+        writeln!(
+            file,
+            "    {label} placement commands (host): {:.3} s / {:.1} MP",
+            seconds(&self.place),
+            megapixels(&self.place_pixels)
+        )?;
+        writeln!(
+            file,
+            "    {label} track blend commands (host): {:.3} s / {:.1} MP",
+            seconds(&self.blend),
+            megapixels(&self.blend_pixels)
+        )
+    }
 }
 
 impl Timing {
@@ -111,6 +174,8 @@ impl Timing {
             .fetch_add(gpu.belt_uploads, Ordering::Relaxed);
         self.direct_overlay_blends
             .fetch_add(gpu.direct_overlay_blends, Ordering::Relaxed);
+        self.titles.add(gpu.titles);
+        self.still_images.add(gpu.still_images);
         self.add(Stage::SharedOutput, gpu.shared_output);
         self.add(Stage::GpuWait, gpu.wait);
         self.add(Stage::ReadbackCopy, gpu.copy);
@@ -299,6 +364,8 @@ impl Timing {
             "    Single-pass overlay blends: {}",
             self.direct_overlay_blends.load(Ordering::Relaxed)
         )?;
+        self.titles.report(&mut file, "Title and credit roll")?;
+        self.still_images.report(&mut file, "Still image")?;
         writeln!(
             file,
             "    Decoded YUV upload staging (host time): {:.3} s",
@@ -331,6 +398,10 @@ impl Timing {
             (
                 "Shared source preparation (overlaps drawing)",
                 Stage::SourcePrepare,
+            ),
+            (
+                "  Shared video reader fetch and decode (within source preparation)",
+                Stage::SourceRead,
             ),
             ("Video encoding and writing", Stage::VideoWrite),
             ("Ducking analysis before rendering", Stage::DuckingAnalysis),
@@ -435,6 +506,11 @@ mod tests {
         assert!(report.contains("Status: completed"));
         assert!(report.contains("GPU scene setup:"));
         assert!(report.contains("Ducking analysis before rendering: 0.000 s"));
+        assert!(report.contains("Title and credit roll source reads (including cached):"));
+        assert!(report.contains("Still image RGBA uploads (host):"));
+        assert!(
+            report.contains("Shared video reader fetch and decode (within source preparation):")
+        );
         assert!(report.contains("Effect preparation and synchronous work:"));
         assert!(report.contains("Shared NV12 submission and synchronization:"));
         assert!(report.contains("Output units: 2 / 2"));

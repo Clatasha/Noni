@@ -1451,7 +1451,8 @@ fn run(
                             bv_media::needs_of(clip.0, m, bv_media::Want::Decoded)
                         })
                         .collect();
-                    let pool = source.prepare(&needs);
+                    let pool =
+                        Timing::measure(timing, Stage::SourceRead, || source.prepare(&needs));
                     if let (Some(timing), Some(start)) = (timing, start) {
                         timing.prepared_sources(start.elapsed(), needs.len());
                     }

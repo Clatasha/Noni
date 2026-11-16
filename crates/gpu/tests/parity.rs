@@ -235,6 +235,7 @@ fn compositing_modes_and_groups() {
 fn small_overlay_blends_at_its_current_placement() {
     let Some(mut c) = gpu() else { return };
     c.measure_readback(true);
+    c.set_single_pass_overlays(false);
     let (mut p, _, _) = bars_and_gradient();
     let top = p.insert_track_at(TrackKind::Video, 0);
     let mut graphic = MediaInfo::generated(
@@ -267,14 +268,21 @@ fn small_overlay_blends_at_its_current_placement() {
         )
         .unwrap();
         check(&mut c, name, &p, Tick::ZERO, TOL);
-        assert_eq!(c.take_readback_timing().direct_overlay_blends, dispatches);
-        let direct = gpu_frame(&mut c, &p, Tick::ZERO, 192, 108);
+        let timing = c.take_readback_timing();
+        assert_eq!(timing.direct_overlay_blends, 0);
+        if dispatches != 0 {
+            assert_eq!(timing.still_images.place_pixels, 192 * 108);
+            assert!((1..=192 * 108).contains(&timing.still_images.blend_pixels));
+            if rotation_deg == 0.0 {
+                assert!(timing.still_images.blend_pixels < timing.still_images.place_pixels);
+            }
+        }
+        let layered = gpu_frame(&mut c, &p, Tick::ZERO, 192, 108);
         c.take_readback_timing();
-        // Custom without a compositor uses Source Alpha via the two-pass path.
-        let mut reference = p.clone();
-        reference.track_by_id_mut(top).unwrap().composite_mode = bv_timeline::CompositeMode::Custom;
-        let layered = gpu_frame(&mut c, &reference, Tick::ZERO, 192, 108);
-        assert_eq!(c.take_readback_timing().direct_overlay_blends, 0);
+        c.set_single_pass_overlays(true);
+        let direct = gpu_frame(&mut c, &p, Tick::ZERO, 192, 108);
+        assert_eq!(c.take_readback_timing().direct_overlay_blends, dispatches);
+        c.set_single_pass_overlays(false);
         assert!(max_diff(&direct, &layered) <= 1e-5, "{name}");
     }
 }
