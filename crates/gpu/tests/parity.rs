@@ -234,27 +234,23 @@ fn compositing_modes_and_groups() {
 #[test]
 fn small_overlay_blends_at_its_current_placement() {
     let Some(mut c) = gpu() else { return };
-    c.measure_readback(true);
-    c.set_single_pass_overlays(false);
     let (mut p, _, _) = bars_and_gradient();
     let top = p.insert_track_at(TrackKind::Video, 0);
-    let mut graphic = MediaInfo::generated(
+    let graphic = media(
+        &mut p,
         Generator::SolidColor {
             rgba: [0.8, 0.2, 0.4, 0.6],
         },
-        &p.settings,
     );
-    graphic.still = true;
-    let graphic = p.add_media(graphic);
     let id = p
         .insert_media(graphic, Tick::ZERO, Some(top), None)
         .unwrap()[0];
     p.track_by_id_mut(top).unwrap().level = 0.8;
     p.clip_mut(id).unwrap().level = 0.7;
-    for (name, x, y, rotation_deg, dispatches) in [
-        ("small overlay", 0.31, -0.22, 0.0, 1),
-        ("overlay clipped by the edge", -0.48, 0.35, 13.0, 1),
-        ("overlay entirely offscreen", 1.0, 0.0, 0.0, 0),
+    for (name, x, y, rotation_deg) in [
+        ("small overlay", 0.31, -0.22, 0.0),
+        ("overlay clipped by the edge", -0.48, 0.35, 13.0),
+        ("overlay entirely offscreen", 1.0, 0.0, 0.0),
     ] {
         p.set_clip_framing(
             id,
@@ -268,22 +264,6 @@ fn small_overlay_blends_at_its_current_placement() {
         )
         .unwrap();
         check(&mut c, name, &p, Tick::ZERO, TOL);
-        let timing = c.take_readback_timing();
-        assert_eq!(timing.direct_overlay_blends, 0);
-        if dispatches != 0 {
-            assert_eq!(timing.still_images.place_pixels, 192 * 108);
-            assert!((1..=192 * 108).contains(&timing.still_images.blend_pixels));
-            if rotation_deg == 0.0 {
-                assert!(timing.still_images.blend_pixels < timing.still_images.place_pixels);
-            }
-        }
-        let layered = gpu_frame(&mut c, &p, Tick::ZERO, 192, 108);
-        c.take_readback_timing();
-        c.set_single_pass_overlays(true);
-        let direct = gpu_frame(&mut c, &p, Tick::ZERO, 192, 108);
-        assert_eq!(c.take_readback_timing().direct_overlay_blends, dispatches);
-        c.set_single_pass_overlays(false);
-        assert!(max_diff(&direct, &layered) <= 1e-5, "{name}");
     }
 }
 

@@ -11,11 +11,11 @@ use bv_timeline::fx::grade;
 use bv_timeline::pancrop::Placement;
 use bv_timeline::scene::{
     CardPicture, EventLayer, FrameScene, Framing, MediaLayer, PluginCall, Plugins, TrackContent,
-    TrackScene, fit_rect_par,
+    fit_rect_par,
 };
 use bv_timeline::{
-    CompositeMode, Direction, Effect, EffectKind, Generator, MediaSource, OutputRotation,
-    RenderQuality, Transform, Transition,
+    Direction, Effect, EffectKind, Generator, MediaSource, OutputRotation, RenderQuality, Transform,
+    Transition,
 };
 
 use crate::kernels::{Grid, K, Params};
@@ -102,7 +102,6 @@ pub struct ReadbackTiming {
     pub source_upload: Duration,
     pub source_uploads: u64,
     pub belt_uploads: u64,
-    pub direct_overlay_blends: u64,
     pub titles: OverlayTiming,
     pub credit_rolls: OverlayTiming,
     pub still_images: OverlayTiming,
@@ -121,8 +120,7 @@ pub struct OverlayTiming {
     pub read_count: u64,
     pub upload: Duration,
     pub upload_bytes: u64,
-    pub tiled_uploads: u64,
-    pub full_uploads: u64,
+    pub uploads: u64,
     pub place: Duration,
     pub place_pixels: u64,
     pub blend: Duration,
@@ -180,7 +178,6 @@ pub struct Compositor {
     #[cfg(windows)]
     nv12_copy: Option<crate::nv12::CopyNv12>,
     readback_timing: Option<ReadbackTiming>,
-    single_pass_overlays: bool,
     /// Buffers CUDA shares, all of one size: a frame's plug-ins that
     /// render with CUDA use them one after another.
     shared: Vec<Shared>,
@@ -230,66 +227,6 @@ fn luma(c: [f32; 3]) -> f32 {
     0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
 }
 
-// Keep in sync with `unpack_title_tiles` in pair.wgsl.
-const TITLE_TILE: usize = 32;
-
-/// Each tile has two RGBA entries in the header: a one-based payload
-/// index (zero for flat tiles), and the flat color. Non-flat tiles follow
-/// in row-major order, padded on the right and bottom at the frame edge.
-fn pack_title_tiles(image: &ImageRgbaF32) -> Option<(u32, Vec<[f32; 4]>)> {
-    let (width, height) = (image.width as usize, image.height as usize);
-    let (columns, rows) = (width.div_ceil(TITLE_TILE), height.div_ceil(TITLE_TILE));
-    let header_len = columns * rows * 2;
-    // Dense titles are cheaper to copy directly than to pack and reconstruct.
-    let limit = image.data.len() * 3 / 4;
-    if header_len >= limit {
-        return None;
-    }
-    let mut packed = vec![[0.0; 4]; header_len];
-    let mut active = Vec::new();
-    for tile_y in 0..rows {
-        let y = tile_y * TITLE_TILE;
-        let tile_height = TITLE_TILE.min(height - y);
-        for tile_x in 0..columns {
-            let x = tile_x * TITLE_TILE;
-            let tile_width = TITLE_TILE.min(width - x);
-            let header = 2 * (tile_y * columns + tile_x);
-            let start = y * width + x;
-            let color = image.data[start];
-            let bits = color.map(f32::to_bits);
-            let tile_rows = (0..tile_height).map(|dy| {
-                let offset = start + dy * width;
-                &image.data[offset..offset + tile_width]
-            });
-            if tile_rows
-                .clone()
-                .all(|row| row.iter().all(|pixel| pixel.map(f32::to_bits) == bits))
-            {
-                packed[header + 1] = color;
-            } else {
-                if header_len + (active.len() + 1) * TITLE_TILE * TITLE_TILE >= limit {
-                    return None;
-                }
-                active.push((start, tile_width, tile_height));
-                packed[header][0] = active.len() as f32;
-            }
-        }
-    }
-    packed.reserve_exact(active.len() * TITLE_TILE * TITLE_TILE);
-    for (start, tile_width, tile_height) in active {
-        for y in 0..tile_height {
-            let offset = start + y * width;
-            packed.extend_from_slice(&image.data[offset..offset + tile_width]);
-            packed.resize(packed.len() + TITLE_TILE - tile_width, [0.0; 4]);
-        }
-        packed.resize(
-            packed.len() + (TITLE_TILE - tile_height) * TITLE_TILE,
-            [0.0; 4],
-        );
-    }
-    Some((columns as u32, packed))
-}
-
 impl Compositor {
     pub fn new(gpu: Arc<Gpu>) -> Compositor {
         Compositor {
@@ -305,7 +242,6 @@ impl Compositor {
             #[cfg(windows)]
             nv12_copy: None,
             readback_timing: None,
-            single_pass_overlays: std::env::var("NONI_SINGLE_PASS_OVERLAYS").as_deref() == Ok("1"),
             shared: Vec::new(),
             plugin_readbacks: Vec::new(),
         }
@@ -313,11 +249,6 @@ impl Compositor {
 
     pub fn measure_readback(&mut self, on: bool) {
         self.readback_timing = on.then(ReadbackTiming::default);
-    }
-
-    /// Override the experimental single-pass path for controlled comparisons.
-    pub fn set_single_pass_overlays(&mut self, enabled: bool) {
-        self.single_pass_overlays = enabled;
     }
 
     fn overlay_timer(&self, info: &bv_timeline::MediaInfo) -> Option<(OverlayKind, Instant)> {
@@ -732,7 +663,14 @@ impl Compositor {
         let bytes: &[u8] = bytemuck::cast_slice(&img.data);
         let buf = match owner {
             // Kept apart from the frame's buffers.
-            Some(_) => self.picture_buffer(bytes.len() as u64),
+            Some(_) => self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("picture"),
+                size: (bytes.len() as u64).max(16),
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
             None => self.buffer(bytes.len() as u64),
         };
         self.gpu.queue.write_buffer(&buf, 0, bytes);
@@ -746,58 +684,6 @@ impl Compositor {
             self.uploaded.insert(o, (img.clone(), i.clone()));
         }
         i
-    }
-
-    fn picture_buffer(&self, size: u64) -> wgpu::Buffer {
-        self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("picture"),
-            size: size.max(16),
-            usage: wgpu::BufferUsages::STORAGE
-                | wgpu::BufferUsages::COPY_SRC
-                | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        })
-    }
-
-    /// Reconstruct flat title tiles on the GPU before placement and effects.
-    fn upload_title(
-        &mut self,
-        enc: &mut wgpu::CommandEncoder,
-        owner: u64,
-        image: &Arc<ImageRgbaF32>,
-    ) -> (Img, u64, bool) {
-        if let Some((previous, uploaded)) = self.uploaded.get(&owner)
-            && Arc::ptr_eq(previous, image)
-        {
-            self.seen.push(owner);
-            return (uploaded.clone(), 0, false);
-        }
-        let bytes = size_of_val(image.data.as_slice()) as u64;
-        let Some((columns, packed)) = pack_title_tiles(image) else {
-            return (self.upload(Some(owner), image), bytes, false);
-        };
-        let full = Img {
-            buf: self.picture_buffer(bytes),
-            w: image.width,
-            h: image.height,
-            placement_bounds: None,
-        };
-        let bytes: &[u8] = bytemuck::cast_slice(&packed);
-        let compact = self.buffer(bytes.len() as u64);
-        self.gpu.queue.write_buffer(&compact, 0, bytes);
-        let mut p = Params::sized(full.w, full.h);
-        p.sw = columns;
-        p.sh = 2 * columns * full.h.div_ceil(TITLE_TILE as u32);
-        self.kernel(
-            enc,
-            K::UnpackTitleTiles,
-            p,
-            &[&compact, &full.buf],
-            Grid::Pixels(full.w, full.h),
-        );
-        self.seen.push(owner);
-        self.uploaded.insert(owner, (image.clone(), full.clone()));
-        (full, bytes.len() as u64, true)
     }
 
     /// A transfer curve's table on the card.
@@ -1081,12 +967,8 @@ impl Compositor {
                     self.adjust(enc, scene, t, pool, under);
                     continue;
                 }
-                if !(self.single_pass_overlays
-                    && self.draw_simple_overlay(enc, scene, t, pool, under))
-                {
-                    let layer = self.finished_layer(enc, scene, t, pool, under);
-                    self.blend_track(enc, scene, t, &layer, under);
-                }
+                let layer = self.finished_layer(enc, scene, t, pool, under);
+                self.blend_track(enc, scene, t, &layer, under);
                 self.post_composite(enc, scene, t, under);
             } else {
                 let group = self.transparent(enc, scene.width, scene.height);
@@ -1108,83 +990,6 @@ impl Compositor {
                 }
             }
         }
-    }
-
-    /// Samples and blends a still or built-in text event directly into the
-    /// composite when no operation needs a separate full-frame layer.
-    fn draw_simple_overlay(
-        &mut self,
-        enc: &mut wgpu::CommandEncoder,
-        scene: &FrameScene<'_>,
-        track: &TrackScene<'_>,
-        pool: &mut VideoPool,
-        under: &Img,
-    ) -> bool {
-        let TrackContent::Event(event) = &track.content else {
-            return false;
-        };
-        let Some(media) = &event.source else {
-            return false;
-        };
-        let visual = &media.clip.visual;
-        let fade = event.fade.unwrap_or(1.0);
-        if OverlayKind::of(media.info).is_none()
-            || track.mode != CompositeMode::SourceAlpha
-            || track.compositor.is_some()
-            || track.motion.is_some()
-            || track.fade.is_some()
-            || track.effects[..track.post_from].iter().any(|fx| fx.enabled)
-            || !media.effects.is_empty()
-            || media.info.is_adjustment()
-            || media.blend.is_some()
-            || media.clip.mask.is_some()
-            || media.clip.reduce_flicker
-            || visual.background_on
-            || visual.shadow_on
-            || visual.enhancement().is_some()
-            || ![event.level, fade, track.level]
-                .into_iter()
-                .all(f32::is_finite)
-        {
-            return false;
-        }
-        let Some(src) = self.media_picture(
-            enc,
-            scene,
-            media,
-            pool,
-            event.clip.0,
-            Ask::of(media, Want::Decoded),
-        ) else {
-            return false; // Let the usual path draw the offline placeholder.
-        };
-        let size = (under.w, under.h);
-        let [left, top, right, bottom] = media.placement.pixels(size);
-        if left >= right || top >= bottom {
-            return true;
-        }
-        let (src, mut params) = self.box_sampling(enc, &src, size, &media.placement, media.quality);
-        params.j[1] = u32::from(media.placement.to_box.is_some());
-        // Match the two scale passes, including their near-unity bypass.
-        let scale = |value: f32| {
-            if (value - 1.0).abs() < 1e-6 {
-                1.0
-            } else {
-                value
-            }
-        };
-        params.f[16..19].copy_from_slice(&[scale(event.level), scale(fade), track.level]);
-        self.kernel(
-            enc,
-            K::PlaceOver,
-            params,
-            &[&src.buf, &under.buf],
-            Grid::Pixels((right - left) as u32, (bottom - top) as u32),
-        );
-        if let Some(timing) = &mut self.readback_timing {
-            timing.direct_overlay_blends += 1;
-        }
-        true
     }
 
     /// A track's layer onto what is below it through its compositing mode.
@@ -1522,7 +1327,7 @@ impl Compositor {
                     self.decoded(enc, &f, m.min_size, light.map(|p| p.input), m.video_levels)
                 }
                 Ok(Picture::Linear(img)) => {
-                    let up = self.upload_overlay_picture(enc, m.info, owner, &img);
+                    let up = self.upload_overlay_picture(m.info, owner, &img);
                     match light {
                         // On a copy: the upload is kept for the next frames.
                         Some(p) => {
@@ -1584,7 +1389,6 @@ impl Compositor {
 
     fn upload_overlay_picture(
         &mut self,
-        enc: &mut wgpu::CommandEncoder,
         info: &bv_timeline::MediaInfo,
         owner: u64,
         image: &Arc<ImageRgbaF32>,
@@ -1595,22 +1399,12 @@ impl Compositor {
                 .get(&owner)
                 .is_some_and(|(previous, _)| Arc::ptr_eq(previous, image))
         });
-        let (uploaded, bytes, tiled) = if matches!(OverlayKind::of(info), Some(OverlayKind::Title))
-        {
-            self.upload_title(enc, owner, image)
-        } else {
-            (
-                self.upload(Some(owner), image),
-                size_of_val(image.data.as_slice()) as u64,
-                false,
-            )
-        };
+        let uploaded = self.upload(Some(owner), image);
         if let (Some((kind, start)), Some(timing)) = (timer, &mut self.readback_timing) {
             let overlay = kind.timing(timing);
             overlay.upload += start.elapsed();
-            overlay.upload_bytes += bytes;
-            overlay.tiled_uploads += u64::from(tiled);
-            overlay.full_uploads += u64::from(!tiled);
+            overlay.upload_bytes += size_of_val(image.data.as_slice()) as u64;
+            overlay.uploads += 1;
         }
         uploaded
     }
@@ -2006,29 +1800,10 @@ impl Compositor {
         place: &Placement,
         quality: RenderQuality,
     ) -> Img {
+        let out = self.image(w, h);
         if place.empty {
             return self.transparent(enc, w, h);
         }
-        let out = self.image(w, h);
-        let (s, p) = self.box_sampling(enc, src, (w, h), place, quality);
-        let k = if place.to_box.is_some() {
-            K::PlaceSoft
-        } else {
-            K::PlaceHard
-        };
-        self.kernel(enc, k, p, &[&s.buf, &out.buf], Grid::Pixels(w, h));
-        out
-    }
-
-    /// Shared sampling parameters for ordinary placement and direct blending.
-    fn box_sampling(
-        &mut self,
-        enc: &mut wgpu::CommandEncoder,
-        src: &Img,
-        (w, h): (u32, u32),
-        place: &Placement,
-        quality: RenderQuality,
-    ) -> (Img, Params) {
         // Large reductions go through 2 × 2 averages first (Good and Best).
         let mut s = src.clone();
         if matches!(quality, RenderQuality::Good | RenderQuality::Best) {
@@ -2069,7 +1844,13 @@ impl Compositor {
             RenderQuality::Preview | RenderQuality::Good => 1,
             RenderQuality::Best => 2,
         };
-        (s, p)
+        let k = if place.to_box.is_some() {
+            K::PlaceSoft
+        } else {
+            K::PlaceHard
+        };
+        self.kernel(enc, k, p, &[&s.buf, &out.buf], Grid::Pixels(w, h));
+        out
     }
 
     /// `src` placed in a `w` × `h` layer, framed by `tf` (as
@@ -2675,42 +2456,4 @@ fn copy_in_bands(dst: &mut [u8], src: &[u8]) {
             s.spawn(move || d.copy_from_slice(from));
         }
     });
-}
-
-#[cfg(test)]
-mod title_upload_tests {
-    use super::*;
-
-    #[test]
-    fn tiled_title_upload_round_trips_original_pixels() {
-        let Ok(gpu) = Gpu::open(None) else { return };
-        let mut compositor = Compositor::new(gpu);
-        let (width, height) = (131, 99);
-        let mut sparse = ImageRgbaF32::transparent(width, height);
-        sparse.data.fill([0.1, 0.2, 0.3, 1.0]);
-        *sparse.pixel_mut(7, 10) = [0.0, 0.3, 0.0, 0.5];
-        *sparse.pixel_mut(width - 1, height - 1) = [0.1, 0.0, 0.0, 0.0];
-        let mut dense = ImageRgbaF32::transparent(width, height);
-        for (i, pixel) in dense.data.iter_mut().enumerate() {
-            *pixel = [i as f32 / 16384.0, 0.2, 0.3, 1.0];
-        }
-        let empty = ImageRgbaF32::transparent(width, height);
-        let mut enc = compositor
-            .gpu
-            .device
-            .create_command_encoder(&Default::default());
-        for (image, expected_bytes, tiled) in [
-            (sparse, (40 + 2 * 1024) * 16, true),
-            (dense, u64::from(width * height * 16), false),
-            (empty, 40 * 16, true),
-        ] {
-            let image = Arc::new(image);
-            let (uploaded, bytes, used_tiles) = compositor.upload_title(&mut enc, 1, &image);
-            assert_eq!(used_tiles, tiled);
-            assert_eq!(bytes, expected_bytes);
-            let result = compositor.download(&mut enc, &uploaded).unwrap();
-            assert_eq!(result.data, image.data);
-            assert_eq!(compositor.upload_title(&mut enc, 1, &image).1, 0);
-        }
-    }
 }

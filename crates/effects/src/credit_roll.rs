@@ -15,10 +15,8 @@
 //! soon as one is picked ([`file_picked`]).
 #![allow(unsafe_code)]
 
-use std::collections::{HashMap, VecDeque};
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
 use bv_ofx_sys::extensions::kBananaVParamPropInteract;
 use bv_ofx_sys::names::*;
@@ -27,7 +25,7 @@ use bv_ofx_sys::*;
 use crate::fonts;
 use crate::kit::smooth;
 use crate::ofx::{Draw, Fx, Props, for_rows, interact_props, is, suites};
-use crate::titles::{self, CreditLine};
+use crate::titles::{self, Picture};
 use crate::{Preset, PresetValue};
 
 pub(crate) const ID: &CStr = c"org.bananav.CreditRoll";
@@ -368,7 +366,7 @@ fn places(
 
 /// The frame drawn: `fw` × `fh` units shown `k` pixels to a unit across
 /// and up, as `w` × `h` pixels.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 struct Frame {
     fw: f64,
     fh: f64,
@@ -377,9 +375,9 @@ struct Frame {
     h: usize,
 }
 
-/// The text settings for the one or two columns of this line.
-fn line_titles(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<titles::Settings> {
-    let Frame { fw, fh, .. } = f;
+/// The pictures of `line` placed at `at` in frame `f`.
+fn draw(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<Picture> {
+    let Frame { fw, fh, k, w, h } = f;
     let style = s.style(line);
     let top = at.top + style.above.max(0.0) * style.em(fh);
     let title = |text: &str, x: f64, snap: i32| titles::Settings {
@@ -404,7 +402,7 @@ fn line_titles(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<titles::Se
     };
     let (left, right) = (s.left * fw, s.right * fw);
     let middle = (left + right) / 2.0;
-    match line {
+    let texts = match line {
         Line::Title(t) | Line::Item(t) => {
             let x = match style.snap {
                 0 => left,
@@ -417,132 +415,20 @@ fn line_titles(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<titles::Se
             let gap = s.center_width.max(0.0) * fw / 2.0;
             vec![title(a, middle - gap, 2), title(b, middle + gap, 0)]
         }
-    }
-}
-
-struct PlacedPicture {
-    image: Arc<CreditLine>,
-    x: i64,
-    y: i64,
-    alpha: f32,
-}
-
-/// Quantize only the fractional position. The cache holds at most 16
-/// subpixel phases per moving axis (at most 1/32 pixel of positioning error).
-const PHASES: f64 = 16.0;
-const CACHE_PIXELS: usize = 16 * 1024 * 1024;
-type LineKey = (usize, usize, [u8; 2]);
-
-#[derive(Default)]
-struct RollCache {
-    settings: Option<(Settings, Frame)>,
-    lines: Vec<Line>,
-    rasters: HashMap<LineKey, Arc<CreditLine>>,
-    oldest: VecDeque<LineKey>,
-    pixels: usize,
-}
-
-impl RollCache {
-    fn pictures(&mut self, s: &Settings, f: Frame, time: f64, duration: f64) -> Vec<PlacedPicture> {
-        if !self
-            .settings
-            .as_ref()
-            .is_some_and(|(previous, frame)| previous == s && *frame == f)
-        {
-            *self = Self {
-                settings: Some((s.clone(), f)),
-                lines: lines(&s.text),
-                ..Self::default()
-            };
-        }
-        let mut pictures = Vec::new();
-        for (index, at) in places(s, &self.lines, time, duration, f.fw, f.fh) {
-            for (column, title) in line_titles(s, &self.lines[index], at, f)
-                .into_iter()
-                .enumerate()
-            {
-                if !title.text.trim().is_empty() {
-                    pictures.extend(self.place_line(index, column, title, f, at.alpha));
+    };
+    texts
+        .iter()
+        .filter(|t| !t.text.trim().is_empty())
+        .filter_map(|t| titles::picture(t, fw, fh, k, w, h))
+        .map(|mut p| {
+            if at.alpha < 1.0 {
+                for c in &mut p.rgba {
+                    *c = c.map(|v| v * at.alpha.max(0.0));
                 }
             }
-        }
-        pictures
-    }
-
-    fn place_line(
-        &mut self,
-        index: usize,
-        column: usize,
-        mut title: titles::Settings,
-        f: Frame,
-        alpha: f32,
-    ) -> Option<PlacedPicture> {
-        let location = title.location;
-        let origin = [
-            location[0] * f.fw * f.k[0],
-            (1.0 - location[1]) * f.fh * f.k[1],
-        ];
-        let mut offset = [0; 2];
-        let mut raster = None;
-        if origin.into_iter().all(|v| v.is_finite() && v.abs() < 1e9) {
-            let quantized = origin.map(|v| (v * PHASES).round() as i64);
-            offset = quantized.map(|v| v.div_euclid(PHASES as i64));
-            let phase = quantized.map(|v| v.rem_euclid(PHASES as i64) as u8);
-            let key = (index, column, phase);
-            if let Some(cached) = self.rasters.get(&key) {
-                raster = Some(cached.clone());
-            } else {
-                title.location = [
-                    f64::from(phase[0]) / (PHASES * f.fw * f.k[0]),
-                    1.0 - f64::from(phase[1]) / (PHASES * f.fh * f.k[1]),
-                ];
-                raster = titles::credit_line_picture(&title, f.fw, f.fh, f.k, (f.w, f.h), false)
-                    .map(Arc::new);
-                if let Some(picture) = &raster {
-                    self.remember(key, picture);
-                }
-            }
-        }
-        let image = match raster {
-            Some(picture) => picture,
-            None => {
-                title.location = location;
-                offset = [0; 2];
-                Arc::new(titles::credit_line_picture(
-                    &title,
-                    f.fw,
-                    f.fh,
-                    f.k,
-                    (f.w, f.h),
-                    true,
-                )?)
-            }
-        };
-        Some(PlacedPicture {
-            x: image.region.x + offset[0],
-            y: image.region.y + offset[1],
-            image,
-            alpha: alpha.clamp(0.0, 1.0),
+            p
         })
-    }
-
-    fn remember(&mut self, key: LineKey, picture: &Arc<CreditLine>) {
-        let pixels = picture.alpha.len();
-        if pixels > CACHE_PIXELS {
-            return;
-        }
-        while self.pixels + pixels > CACHE_PIXELS || self.rasters.len() >= 1024 {
-            let Some(old) = self.oldest.pop_front() else {
-                return;
-            };
-            if let Some(old) = self.rasters.remove(&old) {
-                self.pixels -= old.alpha.len();
-            }
-        }
-        self.oldest.push_back(key);
-        self.rasters.insert(key, picture.clone());
-        self.pixels += pixels;
-    }
+        .collect()
 }
 
 /// The plug-in's entry point.
@@ -589,27 +475,13 @@ pub(crate) unsafe extern "C" fn main(
         }
         enable(fx, time);
         kOfxStatOK
-    } else if is(action, kOfxActionCreateInstance) {
-        let cache = Box::into_raw(Box::new(Mutex::new(RollCache::default())));
-        fx.props().set_ptr(kOfxPropInstanceData, cache.cast());
+    } else if is(action, kOfxActionCreateInstance) || is(action, kOfxActionBeginInstanceEdit) {
         enable(fx, 0.0);
         kOfxStatOK
-    } else if is(action, kOfxActionDestroyInstance) {
-        let cache = fx
-            .props()
-            .ptr(kOfxPropInstanceData)
-            .cast::<Mutex<RollCache>>();
-        if !cache.is_null() {
-            fx.props()
-                .set_ptr(kOfxPropInstanceData, std::ptr::null_mut());
-            // SAFETY: CreateInstance allocated it; the host has finished rendering.
-            drop(unsafe { Box::from_raw(cache) });
-        }
-        kOfxStatOK
-    } else if is(action, kOfxActionBeginInstanceEdit) {
-        enable(fx, 0.0);
-        kOfxStatOK
-    } else if is(action, kOfxActionLoad) || is(action, kOfxActionUnload) {
+    } else if is(action, kOfxActionLoad)
+        || is(action, kOfxActionUnload)
+        || is(action, kOfxActionDestroyInstance)
+    {
         kOfxStatOK
     } else {
         kOfxStatReplyDefault
@@ -936,6 +808,7 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
     ];
     let w = ((frame[0] * k[0]).round() as usize).max(1);
     let h = ((frame[1] * k[1]).round() as usize).max(1);
+    let all = lines(&s.text);
     let f = Frame {
         fw: frame[0],
         fh: frame[1],
@@ -943,18 +816,10 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
         w,
         h,
     };
-    let cache = props.ptr(kOfxPropInstanceData).cast::<Mutex<RollCache>>();
-    let pictures = if cache.is_null() {
-        RollCache::default().pictures(&s, f, time, duration)
-    } else {
-        // SAFETY: the cache lives until DestroyInstance. The mutex protects
-        // host frame threads, and the returned pictures own their buffers.
-        let cache = unsafe { &*cache };
-        cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .pictures(&s, f, time, duration)
-    };
+    let pictures: Vec<Picture> = places(&s, &all, time, duration, frame[0], frame[1])
+        .into_iter()
+        .flat_map(|(i, at)| draw(&s, &all[i], at, f))
+        .collect();
     let back = {
         let a = s.background[3].clamp(0.0, 1.0) as f32;
         [
@@ -970,32 +835,17 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
         let Some(row) = out.row(y) else { return };
         // The frame's row, from its top.
         let fy = h as i64 - 1 - (y - first[1]) as i64;
-        let on_row: Vec<_> = pictures
+        let on_row: Vec<&Picture> = pictures
             .iter()
-            .filter(|p| fy >= p.y && fy < p.y + p.image.region.h as i64)
+            .filter(|p| fy >= p.region.y && fy < p.region.y + p.region.h as i64)
             .collect();
-        let drawn = if back == [0.0; 4] {
-            let spans = on_row.iter().map(|p| (p.x, p.x + p.image.region.w as i64));
-            // SAFETY: this worker owns this row and the columns lie inside it.
-            unsafe { crate::titles::clear_outside(&out, row, columns.clone(), first[0], spans) }
-        } else {
-            columns.clone()
-        };
-        for x in drawn {
+        for x in columns.clone() {
             let fx_ = (x - first[0]) as i64;
             let mut v = back;
             for p in &on_row {
-                let width = p.image.region.w;
-                let (i, j) = (fx_ - p.x, fy - p.y);
-                if i >= 0 && (i as usize) < width {
-                    let a = p.image.alpha[j as usize * width + i as usize];
-                    let [r, g, b] = p.image.color;
-                    let t = [
-                        r * a * p.alpha,
-                        g * a * p.alpha,
-                        b * a * p.alpha,
-                        a * p.alpha,
-                    ];
+                let (i, j) = (fx_ - p.region.x, fy - p.region.y);
+                if i >= 0 && (i as usize) < p.region.w {
+                    let t = p.rgba[j as usize * p.region.w + i as usize];
                     let k = 1.0 - t[3];
                     v = [
                         t[0] + v[0] * k,
@@ -1647,67 +1497,6 @@ mod tests {
             item: style(34.0),
             columns: style(34.0),
             center_width: 0.04,
-        }
-    }
-
-    #[test]
-    fn moving_line_reuses_raster_and_matches_reference() {
-        let s = settings(false);
-        let frame = Frame {
-            fw: 640.0,
-            fh: 360.0,
-            k: [1.0; 2],
-            w: 640,
-            h: 360,
-        };
-        let line = Line::Item("Rolling credits".into());
-        let mut cache = RollCache::default();
-        let mut previous: Option<Arc<CreditLine>> = None;
-        for top in [10.25, -4.75, 100.28] {
-            let at = Place {
-                top,
-                shift: 0.125,
-                alpha: 0.75,
-            };
-            let title = line_titles(&s, &line, at, frame).pop().unwrap();
-            let reference =
-                titles::picture(&title, frame.fw, frame.fh, frame.k, frame.w, frame.h).unwrap();
-            let cached = cache.place_line(0, 0, title, frame, at.alpha).unwrap();
-            if let Some(previous) = previous.replace(cached.image.clone()) {
-                assert!(Arc::ptr_eq(&previous, &cached.image));
-            }
-            let index = |region: &titles::Region, x: i64, y: i64, origin: [i64; 2]| {
-                let (x, y) = (x - origin[0], y - origin[1]);
-                if x >= 0 && y >= 0 && (x as usize) < region.w && (y as usize) < region.h {
-                    Some(y as usize * region.w + x as usize)
-                } else {
-                    None
-                }
-            };
-            let mut error = 0.0;
-            let mut coverage = 0.0;
-            for y in 0..frame.h as i64 {
-                for x in 0..frame.w as i64 {
-                    let before = index(
-                        &reference.region,
-                        x,
-                        y,
-                        [reference.region.x, reference.region.y],
-                    )
-                    .map_or(0.0, |i| reference.rgba[i][3] * at.alpha);
-                    let after = index(&cached.image.region, x, y, [cached.x, cached.y])
-                        .map_or(0.0, |i| cached.image.alpha[i] * cached.alpha);
-                    error += (before - after).abs();
-                    coverage += before;
-                }
-            }
-            assert!(coverage > 0.0);
-            let tolerance = if top == 100.28 { 0.03 } else { 0.001 };
-            assert!(
-                error / coverage < tolerance,
-                "at {top}, relative coverage error {}",
-                error / coverage
-            );
         }
     }
 

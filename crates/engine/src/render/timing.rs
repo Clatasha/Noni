@@ -44,7 +44,6 @@ pub(crate) struct Timing {
     draws: AtomicU64,
     source_uploads: AtomicU64,
     belt_uploads: AtomicU64,
-    direct_overlay_blends: AtomicU64,
     titles: OverlayTotals,
     credit_rolls: OverlayTotals,
     still_images: OverlayTotals,
@@ -69,8 +68,7 @@ struct OverlayTotals {
     read_count: AtomicU64,
     upload: AtomicU64,
     upload_bytes: AtomicU64,
-    tiled_uploads: AtomicU64,
-    full_uploads: AtomicU64,
+    uploads: AtomicU64,
     place: AtomicU64,
     place_pixels: AtomicU64,
     blend: AtomicU64,
@@ -84,8 +82,7 @@ impl OverlayTotals {
             (&self.read_count, timing.read_count),
             (&self.upload, timing.upload.as_nanos() as u64),
             (&self.upload_bytes, timing.upload_bytes),
-            (&self.tiled_uploads, timing.tiled_uploads),
-            (&self.full_uploads, timing.full_uploads),
+            (&self.uploads, timing.uploads),
             (&self.place, timing.place.as_nanos() as u64),
             (&self.place_pixels, timing.place_pixels),
             (&self.blend, timing.blend.as_nanos() as u64),
@@ -108,11 +105,10 @@ impl OverlayTotals {
         )?;
         writeln!(
             file,
-            "    {label} RGBA uploads (host): {:.3} s / {:.1} MiB ({} tiled, {} full)",
+            "    {label} RGBA uploads (host): {:.3} s / {:.1} MiB ({} uploads)",
             seconds(&self.upload),
             self.upload_bytes.load(Ordering::Relaxed) as f64 / 1048576.0,
-            self.tiled_uploads.load(Ordering::Relaxed),
-            self.full_uploads.load(Ordering::Relaxed)
+            self.uploads.load(Ordering::Relaxed)
         )?;
         writeln!(
             file,
@@ -179,8 +175,6 @@ impl Timing {
             .fetch_add(gpu.source_uploads, Ordering::Relaxed);
         self.belt_uploads
             .fetch_add(gpu.belt_uploads, Ordering::Relaxed);
-        self.direct_overlay_blends
-            .fetch_add(gpu.direct_overlay_blends, Ordering::Relaxed);
         self.titles.add(gpu.titles);
         self.credit_rolls.add(gpu.credit_rolls);
         self.still_images.add(gpu.still_images);
@@ -367,11 +361,6 @@ impl Timing {
         let shared = self.seconds(Stage::SharedOutput);
         writeln!(file, "  GPU scene setup: {setup:.3} s")?;
         writeln!(file, "  GPU composition (host time): {compose:.3} s")?;
-        writeln!(
-            file,
-            "    Single-pass overlay blends: {}",
-            self.direct_overlay_blends.load(Ordering::Relaxed)
-        )?;
         self.titles.report(&mut file, "Title")?;
         self.credit_rolls.report(&mut file, "Credit roll")?;
         self.still_images.report(&mut file, "Still image")?;

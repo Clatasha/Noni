@@ -923,7 +923,20 @@ pub(crate) fn picture(
     if s.shadow {
         margin += shift[0].abs().max(shift[1].abs()) + 3.0 * sigma;
     }
-    let region = picture_region(l.ink, k, (w, h), margin, px(big), true)?;
+    let [l0, t0, r0, b0] = l.ink;
+    let x0 = ((l0 * k[0] - margin).floor() as i64).max(0);
+    let y0 = ((t0 * k[1] - margin).floor() as i64).max(0);
+    let x1 = ((r0 * k[0] + margin + px(big)).ceil() as i64).min(w as i64);
+    let y1 = ((b0 * k[1] + margin).ceil() as i64).min(h as i64);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    let region = Region {
+        x: x0,
+        y: y0,
+        w: (x1 - x0) as usize,
+        h: (y1 - y0) as usize,
+    };
     let (rw, rh) = (region.w, region.h);
     let text = letters(&fonts, &l, k, &region);
     let edge = if outline > 0.0 {
@@ -986,74 +999,6 @@ pub(crate) fn picture(
         rgba,
         text_bounds: l.bounds,
         em: l.em,
-    })
-}
-
-fn picture_region(
-    ink: [f64; 4],
-    k: [f64; 2],
-    (w, h): (usize, usize),
-    margin: f64,
-    extra_width: f64,
-    clip: bool,
-) -> Option<Region> {
-    let [l0, t0, r0, b0] = ink;
-    let [mut x0, mut y0, mut x1, mut y1] = [
-        (l0 * k[0] - margin).floor() as i64,
-        (t0 * k[1] - margin).floor() as i64,
-        (r0 * k[0] + margin + extra_width).ceil() as i64,
-        (b0 * k[1] + margin).ceil() as i64,
-    ];
-    if clip {
-        x0 = x0.max(0);
-        y0 = y0.max(0);
-        x1 = x1.min(w as i64);
-        y1 = y1.min(h as i64);
-    } else if x1.saturating_sub(x0) > w as i64 || y1.saturating_sub(y0) > h as i64 {
-        return None; // Oversized lines use the clipped path instead.
-    }
-    if x1 <= x0 || y1 <= y0 {
-        return None;
-    }
-    Some(Region {
-        x: x0,
-        y: y0,
-        w: (x1 - x0) as usize,
-        h: (y1 - y0) as usize,
-    })
-}
-
-pub(crate) struct CreditLine {
-    pub region: Region,
-    pub alpha: Vec<f32>,
-    pub color: [f32; 3],
-}
-
-/// Credit lines have one color and no outline or shadow. Keep just one
-/// float per pixel so more subpixel phases fit in the roll's cache.
-pub(crate) fn credit_line_picture(
-    s: &Settings,
-    fw: f64,
-    fh: f64,
-    k: [f64; 2],
-    size: (usize, usize),
-    clip: bool,
-) -> Option<CreditLine> {
-    let (fonts, layout) = laid_out(s, fw, fh)?;
-    if layout.glyphs.is_empty() || layout.em <= 0.0 {
-        return None;
-    }
-    let big = layout.ems.iter().copied().fold(layout.em, f64::max) * k[1];
-    let region = picture_region(layout.ink, k, size, big * 0.5 + 2.0, big, clip)?;
-    let mut alpha = letters(&fonts, &layout, k, &region);
-    let [r, g, b, opacity] = s.color.map(|v| v as f32);
-    for value in &mut alpha {
-        *value = (opacity * *value).clamp(0.0, 1.0);
-    }
-    Some(CreditLine {
-        region,
-        alpha,
-        color: [r, g, b],
     })
 }
 
@@ -1408,26 +1353,16 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
         let Some(row) = out.row(y) else { return };
         // The frame's row, from its top.
         let fy = h as i64 - 1 - (y - first[1]) as i64;
-        let text = pic
-            .as_ref()
-            .filter(|p| (p.region.y..p.region.y + p.region.h as i64).contains(&fy));
-        let background = background_bounds
-            .filter(|[_, top, _, bottom]| back != [0.0; 4] && (*top..*bottom).contains(&fy));
-        let spans = text
-            .map(|p| (p.region.x, p.region.x + p.region.w as i64))
-            .into_iter()
-            .chain(background.map(|[left, _, right, _]| (left, right)));
-        // SAFETY: this worker owns this row and the columns lie inside it.
-        let drawn = unsafe { clear_outside(&out, row, columns.clone(), first[0], spans) };
-        for x in drawn {
+        for x in columns.clone() {
             let fx_ = (x - first[0]) as i64;
-            let mut v =
-                if background.is_some_and(|[left, _, right, _]| (left..right).contains(&fx_)) {
-                    back
-                } else {
-                    [0.0; 4]
-                };
-            if let Some(p) = text {
+            let mut v = if background_bounds.is_some_and(|[left, top, right, bottom]| {
+                fx_ >= left && fx_ < right && fy >= top && fy < bottom
+            }) {
+                back
+            } else {
+                [0.0; 4]
+            };
+            if let Some(p) = &pic {
                 let (i, j) = (fx_ - p.region.x, fy - p.region.y);
                 if i >= 0 && j >= 0 && (i as usize) < p.region.w && (j as usize) < p.region.h {
                     let t = p.rgba[j as usize * p.region.w + i as usize];
@@ -1450,38 +1385,6 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
     for_rows(y1.max(out.bounds[1])..y2.min(out.bounds[3]), &fill);
     drop(out);
     kOfxStatOK
-}
-
-/// Clear the transparent margins and return the part of the row that can
-/// contain text.
-///
-/// # Safety
-/// The caller owns this output row for writes, and the columns lie inside it.
-pub(crate) unsafe fn clear_outside(
-    out: &crate::ofx::Image,
-    row: *mut u8,
-    columns: std::ops::Range<c_int>,
-    origin: c_int,
-    spans: impl Iterator<Item = (i64, i64)>,
-) -> std::ops::Range<c_int> {
-    if columns.is_empty() {
-        return columns;
-    }
-    let (left, right) = spans.fold((i64::MAX, i64::MIN), |(l, r), (x1, x2)| {
-        (l.min(x1), r.max(x2))
-    });
-    let clamp = |x: i64| {
-        x.saturating_add(i64::from(origin))
-            .clamp(i64::from(columns.start), i64::from(columns.end)) as c_int
-    };
-    let start = clamp(left);
-    let end = clamp(right).max(start);
-    // SAFETY: the caller passes the host's row, and all columns are within its bounds.
-    unsafe {
-        crate::colors::clear_pixels(out, row, columns.start..start);
-        crate::colors::clear_pixels(out, row, end..columns.end);
-    }
-    start..end
 }
 
 // The text's box on the preview.

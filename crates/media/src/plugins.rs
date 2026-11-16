@@ -348,8 +348,7 @@ pub fn generator_values(
 pub(crate) struct PluginVideo {
     instance: Instance,
     rate: FrameRate,
-    title_keys: Option<Vec<String>>,
-    title_values: Vec<bv_ofx::Value>,
+    static_title: bool,
     size: (u32, u32),
     /// The length the instance was told, in frames.
     span: f64,
@@ -382,14 +381,8 @@ impl PluginVideo {
             rate,
             // The built-in title reads only its parameter values. Clip
             // transform/entrance/exit are applied later by the compositor.
-            title_keys: (fx.id == bv_timeline::fcp_import::TITLES_PLUGIN).then(|| {
-                fx.params
-                    .iter()
-                    .filter(|(_, param)| !param.keys.is_empty())
-                    .map(|(name, _)| name.clone())
-                    .collect()
-            }),
-            title_values: Vec::new(),
+            static_title: fx.id == bv_timeline::fcp_import::TITLES_PLUGIN
+                && fx.params.values().all(|param| param.keys.is_empty()),
             size: (width.max(1), height.max(1)),
             span,
             cache: None,
@@ -412,22 +405,14 @@ impl VideoReader for PluginVideo {
     }
 
     fn frame_at_scaled(&mut self, t: Tick, min_w: u32, min_h: u32) -> Result<Arc<ImageRgbaF32>> {
-        let frame = self.rate.frame_at(t);
+        let frame = if self.static_title {
+            0
+        } else {
+            self.rate.frame_at(t)
+        };
         let (w, h) = covering(self.size, (min_w, min_h));
-        // Titles depend on the sampled values, not the clock itself. Held
-        // keys and time between animations can share one raster and upload.
-        let title_values: Option<Vec<_>> = self.title_keys.as_ref().map(|names| {
-            names
-                .iter()
-                .filter_map(|name| self.instance.params().get(name))
-                .map(|param| param.value_at(frame as f64))
-                .collect()
-        });
         if let Some((f, size, img)) = &self.cache
-            && (*f == frame
-                || title_values
-                    .as_ref()
-                    .is_some_and(|values| *values == self.title_values))
+            && *f == frame
             && *size == (w, h)
         {
             return Ok(Arc::clone(img));
@@ -448,9 +433,6 @@ impl VideoReader for PluginVideo {
             .map(Arc::new)
             .map_err(|e| MediaError::Corrupt(e.to_string()))?;
         self.cache = Some((frame, (w, h), Arc::clone(&img)));
-        if let Some(values) = title_values {
-            self.title_values = values;
-        }
         Ok(img)
     }
 }

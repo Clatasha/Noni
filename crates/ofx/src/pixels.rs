@@ -378,13 +378,19 @@ pub unsafe fn from_ofx(
             let start = (base as *const u8).offset(y * row_bytes);
             std::slice::from_raw_parts(start, row_len)
         };
-        if plain {
-            out.copy_from_slice(row);
-            return;
-        }
         // SAFETY: sixteen bytes a pixel, the row's own.
         let dst =
             unsafe { std::slice::from_raw_parts_mut(out.as_mut_ptr() as *mut [f32; 4], width) };
+        if plain {
+            for (d, b) in dst
+                .as_flattened_mut()
+                .iter_mut()
+                .zip(row.as_chunks::<4>().0)
+            {
+                *d = f32::from_ne_bytes(*b);
+            }
+            return;
+        }
         for (x, px) in dst.iter_mut().enumerate() {
             let d = format.depth;
             *px = match format.components {

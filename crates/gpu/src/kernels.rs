@@ -109,11 +109,9 @@ pub(crate) enum K {
     ChromaKey,
     GlowBright,
     CopyInto,
-    UnpackTitleTiles,
     Place,
     PlaceHard,
     PlaceSoft,
-    PlaceOver,
     HalfSize,
     Composite,
     Rotate,
@@ -300,7 +298,7 @@ pub(crate) enum K {
 }
 
 impl K {
-    pub const ALL: [K; 200] = [
+    pub const ALL: [K; 198] = [
         K::Fill,
         K::Scale,
         K::ToVideoGamma,
@@ -316,11 +314,9 @@ impl K {
         K::ChromaKey,
         K::GlowBright,
         K::CopyInto,
-        K::UnpackTitleTiles,
         K::Place,
         K::PlaceHard,
         K::PlaceSoft,
-        K::PlaceOver,
         K::HalfSize,
         K::Composite,
         K::Rotate,
@@ -515,22 +511,21 @@ impl K {
             | KitBlackRestore | KitChannelBlend | KitMaskGenerator | KitBroadcastColors
             | KitLabAdjust | KitColorMatch | KitSoftTone | KitVignette | KitCheckerboard
             | KitTestPattern | KitNoiseTexture | KitFlickerAdd => Sig::InPlace,
-            CopyInto | Place | PlaceHard | PlaceSoft | PlaceOver | HalfSize | Composite
-            | Rotate | Mirror | FlickerFilter | InterpolateFields | Blend | BoxH | BoxV
-            | BlockAverage | BlockFill | Sharpen | AddGlow | Curves | FieldAlpha | FieldBoxH
-            | FieldBoxV | PixelRows | PixelCells | PixelFill | LutFilter | EqualizeRows
-            | EqualizeTotal | EqualizeApply | PictureInPicture | UnsharpMask | Overlay
-            | AcesRrt | AcesOdt | Grade | BezierMasking | KitSpherize | KitOffsetWrap
-            | KitTinyPlanet | KitDeform | KitConvolution | KitQuickBlur | KitBumpMap
-            | KitLensCorrection | KitStabilize | KitStabilizeBlur | KitSmartEnhance
-            | KitGuidedLow | KitGuidedOp | KitGuidedMean | KitDehazeDark | KitKeyMask
-            | KitKeyApply | KitChromaUv | KitChromaApply | KitShear | KitUnshear | KitPolar
-            | KitPolarMeans | KitPolarBack | KitRadialBlur | KitGaussPick | KitSharpen
-            | KitGlowBright | KitGlowApply | KitMirror | KitFillApply | KitBoxRows
-            | KitBoxColumns | KitGaussRows | KitGaussColumns | FftImage | FftKernel | FftPass
-            | FftCrop | KitRaysLights | KitGlintLights | KitFlickerMatch | KitFlickerFinish
-            | KitDenoisePlanes | KitDenoiseNlm | KitDenoiseRgb | KitDenoiseSharpen
-            | UnpackTitleTiles => Sig::Pair,
+            CopyInto | Place | PlaceHard | PlaceSoft | HalfSize | Composite | Rotate | Mirror
+            | FlickerFilter | InterpolateFields | Blend | BoxH | BoxV | BlockAverage
+            | BlockFill | Sharpen | AddGlow | Curves | FieldAlpha | FieldBoxH | FieldBoxV
+            | PixelRows | PixelCells | PixelFill | LutFilter | EqualizeRows | EqualizeTotal
+            | EqualizeApply | PictureInPicture | UnsharpMask | Overlay | AcesRrt | AcesOdt
+            | Grade | BezierMasking | KitSpherize | KitOffsetWrap | KitTinyPlanet | KitDeform
+            | KitConvolution | KitQuickBlur | KitBumpMap | KitLensCorrection | KitStabilize
+            | KitStabilizeBlur | KitSmartEnhance | KitGuidedLow | KitGuidedOp | KitGuidedMean
+            | KitDehazeDark | KitKeyMask | KitKeyApply | KitChromaUv | KitChromaApply
+            | KitShear | KitUnshear | KitPolar | KitPolarMeans | KitPolarBack | KitRadialBlur
+            | KitGaussPick | KitSharpen | KitGlowBright | KitGlowApply | KitMirror
+            | KitFillApply | KitBoxRows | KitBoxColumns | KitGaussRows | KitGaussColumns
+            | FftImage | FftKernel | FftPass | FftCrop | KitRaysLights | KitGlintLights
+            | KitFlickerMatch | KitFlickerFinish | KitDenoisePlanes | KitDenoiseNlm
+            | KitDenoiseRgb | KitDenoiseSharpen => Sig::Pair,
             Dissolve | FadeThroughBlack | Wipe | PushSlide | Iris | Clock | Zoom | LayerSurface
             | LayerUnder | FillCombine | BezierMaskFx | KitMedian | KitConvH | KitConvV
             | KitDisplace | KitHeights | KitHeightMap | KitBumpWith | KitFillMap | KitWave
@@ -566,11 +561,9 @@ impl K {
             ChromaKey => "chroma_key",
             GlowBright => "glow_bright",
             CopyInto => "copy_into",
-            UnpackTitleTiles => "unpack_title_tiles",
             Place => "place",
             PlaceHard => "place_hard",
             PlaceSoft => "place_soft",
-            PlaceOver => "place_over",
             HalfSize => "half_size",
             Composite => "composite",
             Rotate => "rotate",
