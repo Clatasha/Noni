@@ -3863,8 +3863,14 @@ mod title_cache_tests {
         );
         let mut reader = read(Generator::Plugin(fx));
         let first = reader.frame_at_scaled(first_time, size.0, size.1).unwrap();
-        let second = reader.frame_at_scaled(second_time, size.0, size.1).unwrap();
+        let second = reader
+            .frame_at_scaled(Tick::from_seconds(2), size.0, size.1)
+            .unwrap();
         assert!(!std::sync::Arc::ptr_eq(&first, &second));
         assert_ne!(first.data, second.data);
+        let held = reader
+            .frame_at_scaled(Tick::from_seconds(3), size.0, size.1)
+            .unwrap();
+        assert!(std::sync::Arc::ptr_eq(&second, &held));
     }
 }

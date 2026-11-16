@@ -839,7 +839,16 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
             .iter()
             .filter(|p| fy >= p.region.y && fy < p.region.y + p.region.h as i64)
             .collect();
-        for x in columns.clone() {
+        let drawn = if back == [0.0; 4] {
+            let spans = on_row
+                .iter()
+                .map(|p| (p.region.x, p.region.x + p.region.w as i64));
+            // SAFETY: this worker owns this row and the columns lie inside it.
+            unsafe { crate::titles::clear_outside(&out, row, columns.clone(), first[0], spans) }
+        } else {
+            columns.clone()
+        };
+        for x in drawn {
             let fx_ = (x - first[0]) as i64;
             let mut v = back;
             for p in &on_row {

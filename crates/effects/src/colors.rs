@@ -318,3 +318,21 @@ pub(crate) unsafe fn put_pixel(img: &Image, row: *mut u8, x: c_int, v: [f32; 4])
         }
     }
 }
+
+/// Clear a span of an output row in any supported component layout.
+///
+/// # Safety
+/// `row` is a row of `img` and the span lies inside its horizontal bounds.
+pub(crate) unsafe fn clear_pixels(img: &Image, row: *mut u8, span: std::ops::Range<c_int>) {
+    let bytes = img.channels
+        * match img.depth {
+            Depth::Float => 4,
+            Depth::Short => 2,
+            Depth::Byte => 1,
+        };
+    if !span.is_empty() {
+        let start = (span.start - img.bounds[0]) as usize * bytes;
+        // SAFETY: this is the requested span of the caller's output row.
+        unsafe { row.add(start).write_bytes(0, span.len() * bytes) };
+    }
+}

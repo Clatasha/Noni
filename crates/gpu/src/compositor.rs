@@ -222,6 +222,32 @@ fn luma(c: [f32; 3]) -> f32 {
     0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
 }
 
+fn title_pixels(image: &ImageRgbaF32) -> Option<[usize; 4]> {
+    let (width, height) = (image.width as usize, image.height as usize);
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let nonzero = |pixel: &[f32; 4]| *pixel != [0.0; 4];
+    let mut bounds = [width, height, 0, 0];
+    for (y, row) in image.data.chunks_exact(width).enumerate() {
+        if let Some(first) = row.iter().position(nonzero) {
+            let last = row.iter().rposition(nonzero).unwrap_or(first);
+            bounds = [
+                bounds[0].min(first),
+                bounds[1].min(y),
+                bounds[2].max(last + 1),
+                y + 1,
+            ];
+            if (bounds[2] - bounds[0]) as u64 * (bounds[3] - bounds[1]) as u64 * 2
+                >= image.data.len() as u64
+            {
+                return Some([0, 0, width, height]);
+            }
+        }
+    }
+    (bounds[2] != 0).then_some(bounds)
+}
+
 impl Compositor {
     pub fn new(gpu: Arc<Gpu>) -> Compositor {
         Compositor {
@@ -664,14 +690,7 @@ impl Compositor {
         let bytes: &[u8] = bytemuck::cast_slice(&img.data);
         let buf = match owner {
             // Kept apart from the frame's buffers.
-            Some(_) => self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("picture"),
-                size: (bytes.len() as u64).max(16),
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_SRC
-                    | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
+            Some(_) => self.picture_buffer(bytes.len() as u64),
             None => self.buffer(bytes.len() as u64),
         };
         self.gpu.queue.write_buffer(&buf, 0, bytes);
@@ -685,6 +704,73 @@ impl Compositor {
             self.uploaded.insert(o, (img.clone(), i.clone()));
         }
         i
+    }
+
+    fn picture_buffer(&self, size: u64) -> wgpu::Buffer {
+        self.gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("picture"),
+            size: size.max(16),
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    }
+
+    /// Transfer only the occupied rectangle of a transparent title and
+    /// reconstruct its original pixel grid before any placement or effects.
+    fn upload_title(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        owner: u64,
+        image: &Arc<ImageRgbaF32>,
+    ) -> (Img, u64) {
+        if let Some((previous, uploaded)) = self.uploaded.get(&owner)
+            && Arc::ptr_eq(previous, image)
+        {
+            self.seen.push(owner);
+            return (uploaded.clone(), 0);
+        }
+        let bytes = (image.data.len() * size_of::<[f32; 4]>()) as u64;
+        let bounds = title_pixels(image);
+        let [left, top, right, bottom] = bounds.unwrap_or_default();
+        let (w, h) = (right - left, bottom - top);
+        if w as u64 * h as u64 * 2 >= image.data.len() as u64 {
+            return (self.upload(Some(owner), image), bytes);
+        }
+        let full = Img {
+            buf: self.picture_buffer(bytes),
+            w: image.width,
+            h: image.height,
+            placement_bounds: None,
+        };
+        let upload_bytes = if bounds.is_some() {
+            let mut packed = Vec::with_capacity(w * h);
+            for y in top..bottom {
+                let row = y * image.width as usize;
+                packed.extend_from_slice(&image.data[row + left..row + right]);
+            }
+            let bytes: &[u8] = bytemuck::cast_slice(&packed);
+            let compact = self.buffer(bytes.len() as u64);
+            self.gpu.queue.write_buffer(&compact, 0, bytes);
+            let mut p = Params::sized(full.w, full.h);
+            (p.sw, p.sh) = (w as u32, h as u32);
+            p.i = [left as i32, top as i32, 0, 0];
+            self.kernel(
+                enc,
+                K::CopyInto,
+                p,
+                &[&compact, &full.buf],
+                Grid::Pixels(full.w, full.h),
+            );
+            bytes.len() as u64
+        } else {
+            enc.clear_buffer(&full.buf, 0, None);
+            0
+        };
+        self.seen.push(owner);
+        self.uploaded.insert(owner, (image.clone(), full.clone()));
+        (full, upload_bytes)
     }
 
     /// A transfer curve's table on the card.
@@ -1409,7 +1495,7 @@ impl Compositor {
                     self.decoded(enc, &f, m.min_size, light.map(|p| p.input), m.video_levels)
                 }
                 Ok(Picture::Linear(img)) => {
-                    let up = self.upload_overlay_picture(m.info, owner, &img);
+                    let up = self.upload_overlay_picture(enc, m.info, owner, &img);
                     match light {
                         // On a copy: the upload is kept for the next frames.
                         Some(p) => {
@@ -1471,6 +1557,7 @@ impl Compositor {
 
     fn upload_overlay_picture(
         &mut self,
+        enc: &mut wgpu::CommandEncoder,
         info: &bv_timeline::MediaInfo,
         owner: u64,
         image: &Arc<ImageRgbaF32>,
@@ -1481,11 +1568,18 @@ impl Compositor {
                 .get(&owner)
                 .is_some_and(|(previous, _)| Arc::ptr_eq(previous, image))
         });
-        let uploaded = self.upload(Some(owner), image);
+        let (uploaded, bytes) = if matches!(OverlayKind::of(info), Some(OverlayKind::Title)) {
+            self.upload_title(enc, owner, image)
+        } else {
+            (
+                self.upload(Some(owner), image),
+                (image.data.len() * size_of::<[f32; 4]>()) as u64,
+            )
+        };
         if let (Some((kind, start)), Some(timing)) = (timer, &mut self.readback_timing) {
             let overlay = kind.timing(timing);
             overlay.upload += start.elapsed();
-            overlay.upload_bytes += image.data.len() as u64 * size_of::<[f32; 4]>() as u64;
+            overlay.upload_bytes += bytes;
         }
         uploaded
     }
@@ -2550,4 +2644,33 @@ fn copy_in_bands(dst: &mut [u8], src: &[u8]) {
             s.spawn(move || d.copy_from_slice(from));
         }
     });
+}
+
+#[cfg(test)]
+mod title_upload_tests {
+    use super::*;
+
+    #[test]
+    fn compact_title_upload_round_trips_original_pixels() {
+        let Ok(gpu) = Gpu::open(None) else { return };
+        let mut compositor = Compositor::new(gpu);
+        let mut sparse = ImageRgbaF32::transparent(64, 48);
+        *sparse.pixel_mut(7, 10) = [0.0, 0.3, 0.0, 0.5];
+        *sparse.pixel_mut(12, 11) = [0.1, 0.0, 0.0, 0.0];
+        let mut opaque = ImageRgbaF32::transparent(64, 48);
+        opaque.data.fill([0.1, 0.2, 0.3, 1.0]);
+        let empty = ImageRgbaF32::transparent(64, 48);
+        let mut enc = compositor
+            .gpu
+            .device
+            .create_command_encoder(&Default::default());
+        for (image, expected_bytes) in [(sparse, 6 * 2 * 16), (opaque, 64 * 48 * 16), (empty, 0)] {
+            let image = Arc::new(image);
+            let (uploaded, bytes) = compositor.upload_title(&mut enc, 1, &image);
+            assert_eq!(bytes, expected_bytes);
+            let result = compositor.download(&mut enc, &uploaded).unwrap();
+            assert_eq!(result.data, image.data);
+            assert_eq!(compositor.upload_title(&mut enc, 1, &image).1, 0);
+        }
+    }
 }

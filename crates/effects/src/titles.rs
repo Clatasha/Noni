@@ -1353,16 +1353,26 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
         let Some(row) = out.row(y) else { return };
         // The frame's row, from its top.
         let fy = h as i64 - 1 - (y - first[1]) as i64;
-        for x in columns.clone() {
+        let text = pic
+            .as_ref()
+            .filter(|p| (p.region.y..p.region.y + p.region.h as i64).contains(&fy));
+        let background = background_bounds
+            .filter(|[_, top, _, bottom]| back != [0.0; 4] && (*top..*bottom).contains(&fy));
+        let spans = text
+            .map(|p| (p.region.x, p.region.x + p.region.w as i64))
+            .into_iter()
+            .chain(background.map(|[left, _, right, _]| (left, right)));
+        // SAFETY: this worker owns this row and the columns lie inside it.
+        let drawn = unsafe { clear_outside(&out, row, columns.clone(), first[0], spans) };
+        for x in drawn {
             let fx_ = (x - first[0]) as i64;
-            let mut v = if background_bounds.is_some_and(|[left, top, right, bottom]| {
-                fx_ >= left && fx_ < right && fy >= top && fy < bottom
-            }) {
-                back
-            } else {
-                [0.0; 4]
-            };
-            if let Some(p) = &pic {
+            let mut v =
+                if background.is_some_and(|[left, _, right, _]| (left..right).contains(&fx_)) {
+                    back
+                } else {
+                    [0.0; 4]
+                };
+            if let Some(p) = text {
                 let (i, j) = (fx_ - p.region.x, fy - p.region.y);
                 if i >= 0 && j >= 0 && (i as usize) < p.region.w && (j as usize) < p.region.h {
                     let t = p.rgba[j as usize * p.region.w + i as usize];
@@ -1385,6 +1395,38 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
     for_rows(y1.max(out.bounds[1])..y2.min(out.bounds[3]), &fill);
     drop(out);
     kOfxStatOK
+}
+
+/// Clear the transparent margins and return the part of the row that can
+/// contain text.
+///
+/// # Safety
+/// The caller owns this output row for writes, and the columns lie inside it.
+pub(crate) unsafe fn clear_outside(
+    out: &crate::ofx::Image,
+    row: *mut u8,
+    columns: std::ops::Range<c_int>,
+    origin: c_int,
+    spans: impl Iterator<Item = (i64, i64)>,
+) -> std::ops::Range<c_int> {
+    if columns.is_empty() {
+        return columns;
+    }
+    let (left, right) = spans.fold((i64::MAX, i64::MIN), |(l, r), (x1, x2)| {
+        (l.min(x1), r.max(x2))
+    });
+    let clamp = |x: i64| {
+        x.saturating_add(i64::from(origin))
+            .clamp(i64::from(columns.start), i64::from(columns.end)) as c_int
+    };
+    let start = clamp(left);
+    let end = clamp(right).max(start);
+    // SAFETY: the caller passes the host's row, and all columns are within its bounds.
+    unsafe {
+        crate::colors::clear_pixels(out, row, columns.start..start);
+        crate::colors::clear_pixels(out, row, end..columns.end);
+    }
+    start..end
 }
 
 // The text's box on the preview.
