@@ -52,6 +52,9 @@ pub(crate) struct Timing {
     painters: AtomicU64,
     prepared_frames: AtomicU64,
     prepared_pictures: AtomicU64,
+    dxgi_sources: AtomicU64,
+    system_memory_sources: AtomicU64,
+    unknown_sources: AtomicU64,
     reused_pictures: AtomicU64,
     gpu_draws: AtomicU64,
     readbacks: AtomicU64,
@@ -158,6 +161,15 @@ impl Timing {
         self.prepared_frames.fetch_add(1, Ordering::Relaxed);
         self.prepared_pictures
             .fetch_add(pictures as u64, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_decoder_output(&self, output: bv_media::DecoderOutput) {
+        let counter = match output {
+            bv_media::DecoderOutput::Dxgi => &self.dxgi_sources,
+            bv_media::DecoderOutput::SystemMemory => &self.system_memory_sources,
+            bv_media::DecoderOutput::Unknown => &self.unknown_sources,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
     }
 
     pub(super) fn draw(
@@ -335,6 +347,16 @@ impl Timing {
                 file,
                 "Prepared source picture requests reused: {}",
                 self.reused_pictures.load(Ordering::Relaxed)
+            )?;
+            writeln!(
+                file,
+                concat!(
+                    "Shared decoder output (reader's first sample): ",
+                    "{} DXGI-backed requests, {} MF system-memory requests, {} other/unknown requests"
+                ),
+                self.dxgi_sources.load(Ordering::Relaxed),
+                self.system_memory_sources.load(Ordering::Relaxed),
+                self.unknown_sources.load(Ordering::Relaxed)
             )?;
         }
         if prepared == 0 {

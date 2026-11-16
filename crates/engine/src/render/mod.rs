@@ -1455,6 +1455,9 @@ fn run(
                         Timing::measure(timing, Stage::SourceRead, || source.prepare(&needs));
                     if let (Some(timing), Some(start)) = (timing, start) {
                         timing.prepared_sources(start.elapsed(), needs.len());
+                        for need in &needs {
+                            timing.record_decoder_output(source.decoder_output(need));
+                        }
                     }
                     pool
                 },

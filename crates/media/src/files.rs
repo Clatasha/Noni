@@ -1279,6 +1279,15 @@ impl SystemVideo {
 }
 
 impl VideoReader for SystemVideo {
+    #[cfg(windows)]
+    fn decoder_output(&self) -> crate::DecoderOutput {
+        if self.dec.on_graphics_card() {
+            crate::DecoderOutput::Dxgi
+        } else {
+            crate::DecoderOutput::SystemMemory
+        }
+    }
+
     fn frame_at(&mut self, t: Tick) -> Result<Arc<ImageRgbaF32>> {
         self.frame_at_scaled(t, u32::MAX, u32::MAX)
     }

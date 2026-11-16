@@ -82,8 +82,24 @@ impl std::error::Error for MediaError {}
 
 pub type Result<T> = std::result::Result<T, MediaError>;
 
+/// Storage of the first sample returned by the source decoder.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DecoderOutput {
+    /// The Windows Media Foundation reader returned a DXGI-backed sample.
+    Dxgi,
+    /// The Windows Media Foundation reader returned a system-memory sample.
+    SystemMemory,
+    /// A different reader, or the sample's storage is unavailable.
+    #[default]
+    Unknown,
+}
+
 /// Lê quadros de vídeo de uma mídia.
 pub trait VideoReader: Send {
+    fn decoder_output(&self) -> DecoderOutput {
+        DecoderOutput::Unknown
+    }
+
     /// O quadro visível no instante `t` da mídia, em RGB linear BT.709.
     fn frame_at(&mut self, t: Tick) -> Result<Arc<ImageRgbaF32>>;
 

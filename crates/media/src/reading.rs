@@ -99,6 +99,10 @@ fn fix(p: Picture, quarters: u8, limited: bool, levels: bool, w: u32, h: u32) ->
 }
 
 impl VideoReader for Reading {
+    fn decoder_output(&self) -> crate::DecoderOutput {
+        self.inner.decoder_output()
+    }
+
     fn frame_at(&mut self, t: Tick) -> Result<Arc<ImageRgbaF32>> {
         self.frame_at_scaled(t, u32::MAX, u32::MAX)
     }

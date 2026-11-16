@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, OnceLock, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -17,7 +17,7 @@ use bv_core::{ImageRgbaF32, Tick, VideoFrame};
 use bv_timeline::scene::{FrameScene, MediaLayer};
 use bv_timeline::{MediaId, MediaInfo, MediaSource};
 
-use crate::{MediaError, Result, VideoReader};
+use crate::{DecoderOutput, MediaError, Result, VideoReader};
 
 /// A picture of a media, as a reader gives it.
 #[derive(Clone, Debug)]
@@ -254,6 +254,7 @@ enum Got {
 type Job = (Ask, mpsc::Sender<Answer>);
 
 struct Worker {
+    decoder_output: Arc<OnceLock<DecoderOutput>>,
     jobs: Option<mpsc::Sender<Job>>,
     /// The picture asked for and not collected yet.
     pending: Option<(Ask, mpsc::Receiver<Answer>)>,
@@ -285,11 +286,14 @@ impl Worker {
         let interrupt = Arc::new(AtomicBool::new(false));
         let shown = Arc::new(std::sync::Mutex::new(None));
         let (flag, mailbox) = (interrupt.clone(), shown.clone());
+        let decoder_output = Arc::new(OnceLock::new());
+        let output = decoder_output.clone();
         let thread = std::thread::Builder::new()
             .name(format!("bv-reader-{}", info.id.0))
-            .spawn(move || work(&info, &rx, &flag, &mailbox))
+            .spawn(move || work(&info, &rx, &flag, &mailbox, &output))
             .map_err(|e| MediaError::Io(e.to_string()))?;
         Ok(Worker {
+            decoder_output,
             jobs: Some(tx),
             pending: None,
             shown,
@@ -368,6 +372,7 @@ fn work(
     jobs: &mpsc::Receiver<Job>,
     interrupt: &AtomicBool,
     shown: &std::sync::Mutex<Option<Picture>>,
+    decoder_output: &OnceLock<DecoderOutput>,
 ) {
     let mut reader = match crate::open_video(info) {
         Ok(r) => r,
@@ -378,6 +383,7 @@ fn work(
             return;
         }
     };
+    let _ = decoder_output.set(reader.decoder_output());
     let mut ahead: VecDeque<(Ask, Result<Picture>)> = VecDeque::new();
     let mut last: Option<Ask> = None;
     // While pictures are asked for going forward (playback, rendering),
@@ -538,6 +544,17 @@ impl VideoPool {
             prepared,
             ..VideoPool::default()
         }
+    }
+
+    /// Describes the reader serving a request after `prepare` has returned.
+    pub fn decoder_output(&self, need: &Need<'_>) -> DecoderOutput {
+        self.slots
+            .iter()
+            .find(|slot| slot.owner == need.owner && slot.media == need.info.id)
+            .map_or(DecoderOutput::Unknown, |slot| match &slot.reader {
+                Reader::Here(reader) => reader.decoder_output(),
+                Reader::Thread(worker) => worker.decoder_output.get().copied().unwrap_or_default(),
+            })
     }
 
     /// Install the next frame's prepared sources, retaining this painter's
