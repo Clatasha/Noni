@@ -10,6 +10,8 @@ use std::sync::Arc;
 
 use bv_core::curve::CurvePoint;
 
+pub use crate::credit_roll::{CreditLinePlan, CreditMask, CreditRoll};
+
 use crate::{
     add_noise, ai_guided, bezier_masking, black_and_white, black_bar_fill, border,
     brightness_contrast, color_balance, color_corrector, color_corrector_secondary, color_curves,

@@ -895,6 +895,42 @@ pub(crate) struct Picture {
     pub em: f64,
 }
 
+/// Unclipped alpha of one plain Credit Roll line at its canonical phase.
+pub(crate) fn credit_mask(
+    s: &Settings,
+    fw: f64,
+    fh: f64,
+    k: [f64; 2],
+    (w, h): (usize, usize),
+) -> Option<(Region, Vec<f32>)> {
+    let (fonts, layout) = laid_out(s, fw, fh)?;
+    if layout.glyphs.is_empty() || layout.em <= 0.0 {
+        return None;
+    }
+    let big = layout.ems.iter().copied().fold(layout.em, f64::max) * k[1];
+    let margin = big * 0.5 + 2.0;
+    let [left, top, right, bottom] = layout.ink;
+    let x = (left * k[0] - margin).floor() as i64;
+    let y = (top * k[1] - margin).floor() as i64;
+    let rw = ((right * k[0] + margin + big).ceil() as i64).saturating_sub(x);
+    let rh = ((bottom * k[1] + margin).ceil() as i64).saturating_sub(y);
+    if !(1..=w as i64).contains(&rw) || !(1..=h as i64).contains(&rh) {
+        return None;
+    }
+    let region = Region {
+        x,
+        y,
+        w: rw as usize,
+        h: rh as usize,
+    };
+    let mut alpha = letters(&fonts, &layout, k, &region);
+    let opacity = s.color[3] as f32;
+    for value in &mut alpha {
+        *value = (opacity * *value).clamp(0.0, 1.0);
+    }
+    Some((region, alpha))
+}
+
 /// Draws `s` in a frame `fw` × `fh` (square units) shown `k` pixels to a
 /// unit across and up, as `w` × `h` pixels (Credit Roll's lines too).
 pub(crate) fn picture(

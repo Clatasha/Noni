@@ -3816,6 +3816,95 @@ pub(crate) mod tests {
 #[cfg(test)]
 mod title_cache_tests {
     #[test]
+    fn gpu_credit_masks_match_mixed_composite_and_avoid_full_frame_uploads() {
+        use bv_core::{FrameRate, Tick};
+        use bv_gpu::{Compositor, Gpu, Output, Rendered};
+        use bv_media::VideoPool;
+        use bv_timeline::{Generator, MediaInfo, PluginFx, Project, ProjectSettings, TrackKind};
+
+        super::register_own();
+        let Ok(gpu) = Gpu::open(None) else { return };
+        let (w, h) = (320, 180);
+        let rate = FrameRate::FPS_60;
+        let settings = ProjectSettings {
+            width: w,
+            height: h,
+            frame_rate: rate,
+            ..Default::default()
+        };
+        let mut project = Project::new(settings);
+        let backdrop = project.tracks[0].id;
+        let video = project.add_media(MediaInfo::generated(Generator::ColorBars, &settings));
+        project
+            .insert_media(video, Tick::ZERO, Some(backdrop), None)
+            .unwrap();
+        let top = project.insert_track_at(TrackKind::Video, 0);
+        let credit = project.add_media(MediaInfo::generated(
+            Generator::Plugin(Box::new(PluginFx {
+                id: "org.bananav.CreditRoll".into(),
+                name: "Credit Roll".into(),
+                version: [1, 0],
+                params: Default::default(),
+            })),
+            &settings,
+        ));
+        project
+            .insert_media(credit, Tick::ZERO, Some(top), None)
+            .unwrap();
+
+        let mut reference = Compositor::new(gpu.clone());
+        let mut accelerated = Compositor::new(gpu);
+        accelerated.enable_gpu_credit_rolls();
+        reference.measure_readback(true);
+        accelerated.measure_readback(true);
+        let mut reference_pool = VideoPool::new();
+        let mut accelerated_pool = VideoPool::new();
+        let (mut old_bytes, mut new_bytes, mut gpu_frames, mut mask_uploads) = (0, 0, 0, 0);
+        for frame in 70..166 {
+            let scene = bv_timeline::scene::frame_scene(&project, rate.frame_start(frame), w, h);
+            let render = |compositor: &mut Compositor, pool: &mut VideoPool| {
+                let Rendered::Linear(image) = compositor
+                    .render(
+                        &scene,
+                        settings.rotation,
+                        pool,
+                        [0.0, 0.0, 0.0, 1.0],
+                        Output::Linear,
+                    )
+                    .unwrap()
+                else {
+                    panic!("expected linear output")
+                };
+                image
+            };
+            let before = render(&mut reference, &mut reference_pool);
+            let after = render(&mut accelerated, &mut accelerated_pool);
+            let mean = before
+                .data
+                .iter()
+                .zip(&after.data)
+                .map(|(a, b)| (0..4).map(|c| (a[c] - b[c]).abs()).fold(0.0, f32::max))
+                .sum::<f32>()
+                / (w * h) as f32;
+            assert!(mean < 0.0005, "frame {frame}: mean difference {mean}");
+            old_bytes += reference.take_readback_timing().credit_rolls.upload_bytes;
+            let timing = accelerated.take_readback_timing();
+            gpu_frames += timing.gpu_credit_frames;
+            mask_uploads += timing.credit_rolls.uploads;
+            new_bytes += timing.credit_rolls.upload_bytes;
+            assert_eq!(
+                timing.credit_rolls.read_count, 0,
+                "credit roll fell back to CPU"
+            );
+        }
+        eprintln!(
+            "Credit roll A/B: {old_bytes} -> {new_bytes} upload bytes across {gpu_frames} frames ({mask_uploads} masks)"
+        );
+        assert_eq!(gpu_frames, 96);
+        assert!(new_bytes > 0 && new_bytes < old_bytes / 4);
+    }
+
+    #[test]
     fn static_title_picture_is_reused_but_keyframed_title_is_sampled() {
         super::register_own();
         let generator = bv_timeline::Generator::Plugin(Box::new(bv_timeline::PluginFx {

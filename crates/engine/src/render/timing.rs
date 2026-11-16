@@ -16,6 +16,7 @@ pub(super) enum Stage {
     SceneSetup,
     GpuCompose,
     GpuEffects,
+    GpuCreditPrepare,
     SourceUpload,
     SharedOutput,
     GpuWait,
@@ -46,6 +47,7 @@ pub(crate) struct Timing {
     belt_uploads: AtomicU64,
     titles: OverlayTotals,
     credit_rolls: OverlayTotals,
+    gpu_credit_frames: AtomicU64,
     still_images: OverlayTotals,
     painters: AtomicU64,
     prepared_frames: AtomicU64,
@@ -177,6 +179,9 @@ impl Timing {
             .fetch_add(gpu.belt_uploads, Ordering::Relaxed);
         self.titles.add(gpu.titles);
         self.credit_rolls.add(gpu.credit_rolls);
+        self.gpu_credit_frames
+            .fetch_add(gpu.gpu_credit_frames, Ordering::Relaxed);
+        self.add(Stage::GpuCreditPrepare, gpu.gpu_credit_prepare);
         self.still_images.add(gpu.still_images);
         self.add(Stage::SharedOutput, gpu.shared_output);
         self.add(Stage::GpuWait, gpu.wait);
@@ -363,6 +368,12 @@ impl Timing {
         writeln!(file, "  GPU composition (host time): {compose:.3} s")?;
         self.titles.report(&mut file, "Title")?;
         self.credit_rolls.report(&mut file, "Credit roll")?;
+        writeln!(
+            file,
+            "    Credit roll frames drawn from GPU masks: {} (host preparation: {:.3} s)",
+            self.gpu_credit_frames.load(Ordering::Relaxed),
+            self.seconds(Stage::GpuCreditPrepare)
+        )?;
         self.still_images.report(&mut file, "Still image")?;
         writeln!(
             file,

@@ -217,6 +217,7 @@ pub(crate) struct Painter {
     accel: Arc<Accel>,
     compositor: Option<Compositor>,
     measure_readback: bool,
+    gpu_credit_rolls: bool,
     scene_setup: Duration,
     #[cfg(windows)]
     shared_nv12_failed: bool,
@@ -235,7 +236,10 @@ type Readying = (Arc<Project>, Vec<Tick>, (u32, u32));
 impl Painter {
     /// A painter of frames for `purpose`.
     pub(crate) fn new(accel: Arc<Accel>, purpose: Purpose) -> Painter {
-        Painter::sharing(accel, OfxEffects::new(purpose))
+        let mut painter = Painter::sharing(accel, OfxEffects::new(purpose));
+        painter.gpu_credit_rolls = purpose == Purpose::File
+            && std::env::var("NONI_GPU_CREDIT_ROLLS").as_deref() != Ok("0");
+        painter
     }
 
     /// A painter drawing with `plugins`' instances.
@@ -244,6 +248,7 @@ impl Painter {
             accel,
             compositor: None,
             measure_readback: false,
+            gpu_credit_rolls: false,
             scene_setup: Duration::ZERO,
             #[cfg(windows)]
             shared_nv12_failed: false,
@@ -311,6 +316,9 @@ impl Painter {
         {
             let mut compositor = Compositor::new(gpu);
             compositor.measure_readback(self.measure_readback);
+            if self.gpu_credit_rolls {
+                compositor.enable_gpu_credit_rolls();
+            }
             self.compositor = Some(compositor);
         }
         self.compositor.as_mut()

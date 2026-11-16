@@ -22,6 +22,7 @@ use bv_ofx_sys::extensions::kBananaVParamPropInteract;
 use bv_ofx_sys::names::*;
 use bv_ofx_sys::*;
 
+use crate::accel::Values;
 use crate::fonts;
 use crate::kit::smooth;
 use crate::ofx::{Draw, Fx, Props, for_rows, interact_props, is, suites};
@@ -171,6 +172,21 @@ impl Style {
             tracking: p(n.tracking).f64_at(time),
             above: p(n.above).f64_at(time),
             below: p(n.below).f64_at(time),
+        }
+    }
+
+    fn from_values(v: Values<'_>, n: &Names) -> Self {
+        Self {
+            font: v.text(n.font).unwrap_or_default().into(),
+            size: v.f64(n.size, n.defaults.0),
+            bold: v.int(n.bold, i32::from(n.defaults.1)) != 0,
+            italic: v.int(n.italic, 0) != 0,
+            color: v.array(n.color, [1.0; 4]),
+            snap: n.snap.map_or(1, |name| v.int(name, n.defaults.2)),
+            kerning: v.int(n.kerning, 1) != 0,
+            tracking: v.f64(n.tracking, 0.0),
+            above: v.f64(n.above, n.defaults.3),
+            below: v.f64(n.below, n.defaults.4),
         }
     }
 
@@ -375,9 +391,9 @@ struct Frame {
     h: usize,
 }
 
-/// The pictures of `line` placed at `at` in frame `f`.
-fn draw(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<Picture> {
-    let Frame { fw, fh, k, w, h } = f;
+/// The text settings for the one or two columns of this line.
+fn line_titles(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<titles::Settings> {
+    let Frame { fw, fh, .. } = f;
     let style = s.style(line);
     let top = at.top + style.above.max(0.0) * style.em(fh);
     let title = |text: &str, x: f64, snap: i32| titles::Settings {
@@ -402,7 +418,7 @@ fn draw(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<Picture> {
     };
     let (left, right) = (s.left * fw, s.right * fw);
     let middle = (left + right) / 2.0;
-    let texts = match line {
+    match line {
         Line::Title(t) | Line::Item(t) => {
             let x = match style.snap {
                 0 => left,
@@ -415,8 +431,13 @@ fn draw(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<Picture> {
             let gap = s.center_width.max(0.0) * fw / 2.0;
             vec![title(a, middle - gap, 2), title(b, middle + gap, 0)]
         }
-    };
-    texts
+    }
+}
+
+/// The pictures of `line` placed at `at` in frame `f` on the CPU.
+fn draw(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<Picture> {
+    let Frame { fw, fh, k, w, h } = f;
+    line_titles(s, line, at, f)
         .iter()
         .filter(|t| !t.text.trim().is_empty())
         .filter_map(|t| titles::picture(t, fw, fh, k, w, h))
@@ -429,6 +450,146 @@ fn draw(s: &Settings, line: &Line, at: Place, f: Frame) -> Vec<Picture> {
             p
         })
         .collect()
+}
+
+/// Parsed settings for a roll whose text and styles are fixed during export.
+#[derive(Debug)]
+pub struct CreditRoll {
+    settings: Settings,
+    lines: Vec<Line>,
+    frame: Frame,
+}
+
+#[derive(Debug)]
+pub struct CreditLinePlan {
+    pub key: (usize, usize, u8),
+    pub y_offset: i64,
+    pub opacity: f32,
+    title: titles::Settings,
+    frame: Frame,
+}
+
+#[derive(Debug)]
+pub struct CreditMask {
+    pub origin: [i64; 2],
+    pub size: [u32; 2],
+    pub alpha: Vec<f32>,
+    pub color: [f32; 3],
+}
+
+impl CreditLinePlan {
+    /// Rasterizes one subpixel phase; the same mask can be moved and faded.
+    pub fn rasterize(&self) -> Option<CreditMask> {
+        let Frame { fw, fh, k, w, h } = self.frame;
+        let (region, alpha) = titles::credit_mask(&self.title, fw, fh, k, (w, h))?;
+        let [r, g, b, _] = self.title.color.map(|v| v as f32);
+        Some(CreditMask {
+            origin: [region.x, region.y],
+            size: [region.w as u32, region.h as u32],
+            alpha,
+            color: [r, g, b],
+        })
+    }
+}
+
+impl CreditRoll {
+    pub fn new(v: Values<'_>, full: (u32, u32), size: (u32, u32)) -> Option<Self> {
+        let settings = Settings {
+            text: v.text(TEXT)?.into(),
+            timed: v.int(EFFECT, 0) == 1,
+            down: v.int(DIRECTION, 0) == 1,
+            way_in: v.int(WAY_IN, 0),
+            way_out: v.int(WAY_OUT, 0),
+            display: v.int(DISPLAY, 5).max(1) as usize,
+            left: v.f64(LEFT, 0.1),
+            right: v.f64(RIGHT, 0.9),
+            top: v.f64(TOP, 0.1),
+            background: v.array(BACKGROUND, [0.0; 4]),
+            title: Style::from_values(v, &TITLE),
+            item: Style::from_values(v, &ITEM),
+            columns: Style::from_values(v, &COLUMNS),
+            center_width: v.f64(CENTER_WIDTH, 0.04),
+        };
+        // Horizontal movement also needs an X phase. Keep those rolls on
+        // the existing renderer until both axes can be cached affordably.
+        if settings.timed && (settings.way_in >= 4 || settings.way_out >= 4) {
+            return None;
+        }
+        let (fw, fh) = (f64::from(full.0), f64::from(full.1));
+        let scale = f64::from(size.0) / fw;
+        // The OFX generator rounds its own dimensions at this uniform scale.
+        if (fh * scale).round() != f64::from(size.1) {
+            return None;
+        }
+        let frame = Frame {
+            fw,
+            fh,
+            k: [scale; 2],
+            w: size.0 as usize,
+            h: size.1 as usize,
+        };
+        let lines = lines(&settings.text);
+        Some(Self {
+            settings,
+            lines,
+            frame,
+        })
+    }
+
+    pub fn background(&self) -> [f32; 4] {
+        premultiplied_background(&self.settings)
+    }
+
+    pub fn frame(&self, time: f64, duration: f64, rate: f64) -> Option<Vec<CreditLinePlan>> {
+        let duration = roll_duration(duration, rate);
+        let f = self.frame;
+        let mut result = Vec::new();
+        for (index, at) in places(&self.settings, &self.lines, time, duration, f.fw, f.fh) {
+            if at.alpha <= 0.0 {
+                continue;
+            }
+            for (column, mut title) in line_titles(&self.settings, &self.lines[index], at, f)
+                .into_iter()
+                .enumerate()
+            {
+                if title.text.trim().is_empty() {
+                    continue;
+                }
+                // Rasterize at one of sixteen vertical subpixel phases.
+                // Horizontal placement and the clip transform remain exact.
+                let y = (1.0 - title.location[1]) * f.fh * f.k[1];
+                if !y.is_finite() || y.abs() >= 1e9 {
+                    return None;
+                }
+                let fixed = (y * 16.0).round() as i64;
+                let phase = fixed.rem_euclid(16) as u8;
+                title.location[1] = 1.0 - f64::from(phase) / (16.0 * f.fh * f.k[1]);
+                result.push(CreditLinePlan {
+                    key: (index, column, phase),
+                    y_offset: fixed.div_euclid(16),
+                    opacity: at.alpha,
+                    title,
+                    frame: f,
+                });
+            }
+        }
+        Some(result)
+    }
+}
+
+fn premultiplied_background(s: &Settings) -> [f32; 4] {
+    let [r, g, b, a] = s.background.map(|v| v as f32);
+    let a = a.clamp(0.0, 1.0);
+    [r * a, g * a, b * a, a]
+}
+
+fn roll_duration(duration: f64, rate: f64) -> f64 {
+    let rate = rate.max(1.0);
+    if duration >= 1.0 && duration < rate * 3600.0 {
+        duration
+    } else {
+        rate * 10.0
+    }
 }
 
 /// The plug-in's entry point.
@@ -794,11 +955,7 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
     let props = fx.props();
     let rate = props.dbl_or(kOfxImageEffectPropFrameRate, 30.0).max(1.0);
     let duration = props.dbl_or(kOfxImageEffectInstancePropEffectDuration, 0.0);
-    let duration = if duration >= 1.0 && duration < rate * 3600.0 {
-        duration
-    } else {
-        rate * 10.0
-    };
+    let duration = roll_duration(duration, rate);
     let (origin, frame) = fx.frame();
     let par = if out.par > 0.0 { out.par } else { 1.0 };
     let k = [scale[0] / par, scale[1]];
@@ -820,15 +977,7 @@ fn render(fx: Fx, args: Props) -> OfxStatus {
         .into_iter()
         .flat_map(|(i, at)| draw(&s, &all[i], at, f))
         .collect();
-    let back = {
-        let a = s.background[3].clamp(0.0, 1.0) as f32;
-        [
-            s.background[0] as f32 * a,
-            s.background[1] as f32 * a,
-            s.background[2] as f32 * a,
-            a,
-        ]
-    };
+    let back = premultiplied_background(&s);
     let straight = out.channels == 4 && out.unpremultiplied;
     let columns = x1.max(out.bounds[0])..x2.min(out.bounds[2]);
     let fill = |y: c_int| {

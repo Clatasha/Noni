@@ -11,6 +11,26 @@ fn out_index(id: vec3<u32>) -> i32 {
     return i32(id.y * P.w + id.x);
 }
 
+// Masks store four consecutive alpha samples per storage element. Only the
+// portion of the mask that intersects the frame is dispatched.
+@compute @workgroup_size(16, 16)
+fn credit_mask(@builtin(global_invocation_id) id: vec3<u32>) {
+    let pos = id.xy + vec2<u32>(P.i.xy);
+    if any(pos >= P.j.xy) {
+        return;
+    }
+    let xy = vec2<u32>(vec2<i32>(pos) - P.i.zw);
+    let index = xy.y * P.sw + xy.x;
+    let a = src[index / 4u][index % 4u];
+    if a == 0.0 {
+        return;
+    }
+    let opacity = pf(3u);
+    let top = vec4<f32>(vec3<f32>(pf(0u), pf(1u), pf(2u)) * a, a) * opacity;
+    let dst_index = pos.y * P.w + pos.x;
+    dst[dst_index] = top + dst[dst_index] * (1.0 - top.w);
+}
+
 // The source placed at (`i.x`, `i.y`) without resampling; transparent
 // around it.
 @compute @workgroup_size(16, 16)

@@ -14,14 +14,15 @@ use bv_timeline::scene::{
     fit_rect_par,
 };
 use bv_timeline::{
-    Direction, Effect, EffectKind, Generator, MediaSource, OutputRotation, RenderQuality, Transform,
-    Transition,
+    Direction, Effect, EffectKind, Generator, MediaSource, OutputRotation, RenderQuality,
+    Transform, Transition,
 };
 
 use crate::kernels::{Grid, K, Params};
 use crate::shared::{self, Shared};
 
 mod color;
+mod credit;
 mod own;
 use crate::{Gpu, GpuError};
 pub use color::draws;
@@ -104,6 +105,8 @@ pub struct ReadbackTiming {
     pub belt_uploads: u64,
     pub titles: OverlayTiming,
     pub credit_rolls: OverlayTiming,
+    pub gpu_credit_frames: u64,
+    pub gpu_credit_prepare: Duration,
     pub still_images: OverlayTiming,
     /// Packing, submitting and synchronizing the shared encoder texture.
     pub shared_output: Duration,
@@ -172,6 +175,8 @@ pub struct Compositor {
     uploaded: HashMap<u64, (Arc<ImageRgbaF32>, Img)>,
     /// The events whose pictures this frame used.
     seen: Vec<u64>,
+    credits: HashMap<u64, credit::Roll>,
+    gpu_credit_rolls: bool,
     /// Transfer tables on the card: (encode, curve).
     luts: HashMap<(bool, TransferCharacteristic), wgpu::Buffer>,
     readback: Option<wgpu::Buffer>,
@@ -237,6 +242,8 @@ impl Compositor {
             used: Vec::new(),
             uploaded: HashMap::new(),
             seen: Vec::new(),
+            credits: HashMap::new(),
+            gpu_credit_rolls: false,
             luts: HashMap::new(),
             readback: None,
             #[cfg(windows)]
@@ -249,6 +256,10 @@ impl Compositor {
 
     pub fn measure_readback(&mut self, on: bool) {
         self.readback_timing = on.then(ReadbackTiming::default);
+    }
+
+    pub fn enable_gpu_credit_rolls(&mut self) {
+        self.gpu_credit_rolls = true;
     }
 
     fn overlay_timer(&self, info: &bv_timeline::MediaInfo) -> Option<(OverlayKind, Instant)> {
@@ -609,6 +620,7 @@ impl Compositor {
         }
         let seen = std::mem::take(&mut self.seen);
         self.uploaded.retain(|owner, _| seen.contains(owner));
+        self.credits.retain(|owner, _| seen.contains(owner));
     }
 
     fn buffer(&mut self, size: u64) -> wgpu::Buffer {
@@ -1314,7 +1326,12 @@ impl Compositor {
         let how = |img: &Img| m.deinterlaced(img.h);
         // BananaV's own generators draw here, on the card, as their
         // plug-ins draw them for the processor.
-        let generated = self.own_generator(enc, m);
+        let generated = if self.gpu_credit_rolls {
+            self.gpu_credit_roll(enc, m, owner, ask)
+        } else {
+            None
+        }
+        .or_else(|| self.own_generator(enc, m));
         let src = match generated {
             Some(img) => {
                 if let Some(p) = light {
