@@ -209,19 +209,23 @@ fn place_hard(@builtin(global_invocation_id) id: vec3<u32>) {
         dst[o] = vec4<f32>(0.0);
         return;
     }
-    let cx = f32(id.x) + 0.5;
-    let cy = f32(id.y) + 0.5;
+    dst[o] = sample_place_hard(id.xy);
+}
+
+fn sample_place_hard(pos: vec2<u32>) -> vec4<f32> {
+    let cx = f32(pos.x) + 0.5;
+    let cy = f32(pos.y) + 0.5;
     let u = pf(0u) * cx + pf(1u) * cy + pf(2u) - 0.5;
     let v = pf(3u) * cx + pf(4u) * cy + pf(5u) - 0.5;
     switch P.j.x {
         case 0u: {
-            dst[o] = held(i32(rround(u)), i32(rround(v)));
+            return held(i32(rround(u)), i32(rround(v)));
         }
         case 2u: {
-            dst[o] = bicubic_held(u, v);
+            return bicubic_held(u, v);
         }
         default: {
-            dst[o] = bilinear_held(u, v);
+            return bilinear_held(u, v);
         }
     }
 }
@@ -277,8 +281,12 @@ fn place_soft(@builtin(global_invocation_id) id: vec3<u32>) {
         dst[o] = vec4<f32>(0.0);
         return;
     }
-    let cx = f32(id.x) + 0.5;
-    let cy = f32(id.y) + 0.5;
+    dst[o] = sample_place_soft(id.xy);
+}
+
+fn sample_place_soft(pos: vec2<u32>) -> vec4<f32> {
+    let cx = f32(pos.x) + 0.5;
+    let cy = f32(pos.y) + 0.5;
     let uc = pf(0u) * cx + pf(1u) * cy + pf(2u);
     let vc = pf(3u) * cx + pf(4u) * cy + pf(5u);
     // Measured as sixteen bands a line do, each at its top.
@@ -295,8 +303,7 @@ fn place_soft(@builtin(global_invocation_id) id: vec3<u32>) {
         ),
     );
     if share <= 0.0 {
-        dst[o] = vec4<f32>(0.0);
-        return;
+        return vec4<f32>(0.0);
     }
     let u = uc - 0.5;
     let v = vc - 0.5;
@@ -308,7 +315,29 @@ fn place_soft(@builtin(global_invocation_id) id: vec3<u32>) {
     } else {
         picture = bilinear_open(u, v);
     }
-    dst[o] = vec4<f32>(picture.x * share, picture.y * share, picture.z * share, picture.w * share);
+    return picture * share;
+}
+
+// Place a single event over the composite without a full-frame layer.
+// j.y chooses soft edges and f[16..19] hold event, fade and track levels.
+@compute @workgroup_size(16, 16)
+fn place_over(@builtin(global_invocation_id) id: vec3<u32>) {
+    let pos = id.xy + vec2<u32>(P.i.xy);
+    if any(pos >= vec2<u32>(P.i.zw)) {
+        return;
+    }
+    var picture: vec4<f32>;
+    if P.j.y != 0u {
+        picture = sample_place_soft(pos);
+    } else {
+        picture = sample_place_hard(pos);
+    }
+    let s = ((picture * pf(16u)) * pf(17u)) * pf(18u);
+    if all(s == vec4<f32>(0.0)) {
+        return;
+    }
+    let o = pos.y * P.w + pos.x;
+    dst[o] = s + dst[o] * (1.0 - s.w);
 }
 
 // Half the size, each pixel the average of 2 × 2.

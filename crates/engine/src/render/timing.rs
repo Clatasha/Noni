@@ -43,6 +43,7 @@ pub(crate) struct Timing {
     draws: AtomicU64,
     source_uploads: AtomicU64,
     belt_uploads: AtomicU64,
+    direct_overlay_blends: AtomicU64,
     painters: AtomicU64,
     prepared_frames: AtomicU64,
     prepared_pictures: AtomicU64,
@@ -108,6 +109,8 @@ impl Timing {
             .fetch_add(gpu.source_uploads, Ordering::Relaxed);
         self.belt_uploads
             .fetch_add(gpu.belt_uploads, Ordering::Relaxed);
+        self.direct_overlay_blends
+            .fetch_add(gpu.direct_overlay_blends, Ordering::Relaxed);
         self.add(Stage::SharedOutput, gpu.shared_output);
         self.add(Stage::GpuWait, gpu.wait);
         self.add(Stage::ReadbackCopy, gpu.copy);
@@ -291,6 +294,11 @@ impl Timing {
         let shared = self.seconds(Stage::SharedOutput);
         writeln!(file, "  GPU scene setup: {setup:.3} s")?;
         writeln!(file, "  GPU composition (host time): {compose:.3} s")?;
+        writeln!(
+            file,
+            "    Single-pass overlay blends: {}",
+            self.direct_overlay_blends.load(Ordering::Relaxed)
+        )?;
         writeln!(
             file,
             "    Decoded YUV upload staging (host time): {:.3} s",

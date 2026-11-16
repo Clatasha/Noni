@@ -11,10 +11,11 @@ use bv_timeline::fx::grade;
 use bv_timeline::pancrop::Placement;
 use bv_timeline::scene::{
     CardPicture, EventLayer, FrameScene, Framing, MediaLayer, PluginCall, Plugins, TrackContent,
-    fit_rect_par,
+    TrackScene, fit_rect_par,
 };
 use bv_timeline::{
-    Direction, Effect, EffectKind, OutputRotation, RenderQuality, Transform, Transition,
+    CompositeMode, Direction, Effect, EffectKind, Generator, MediaSource, OutputRotation,
+    RenderQuality, Transform, Transition,
 };
 
 use crate::kernels::{Grid, K, Params};
@@ -101,6 +102,7 @@ pub struct ReadbackTiming {
     pub source_upload: Duration,
     pub source_uploads: u64,
     pub belt_uploads: u64,
+    pub direct_overlay_blends: u64,
     /// Packing, submitting and synchronizing the shared encoder texture.
     pub shared_output: Duration,
     /// Submission through mapping, including GPU execution and the transfer.
@@ -905,8 +907,10 @@ impl Compositor {
                     self.adjust(enc, scene, t, pool, under);
                     continue;
                 }
-                let layer = self.finished_layer(enc, scene, t, pool, under);
-                self.blend_track(enc, scene, t, &layer, under);
+                if !self.draw_simple_overlay(enc, scene, t, pool, under) {
+                    let layer = self.finished_layer(enc, scene, t, pool, under);
+                    self.blend_track(enc, scene, t, &layer, under);
+                }
                 self.post_composite(enc, scene, t, under);
             } else {
                 let group = self.transparent(enc, scene.width, scene.height);
@@ -928,6 +932,85 @@ impl Compositor {
                 }
             }
         }
+    }
+
+    /// Samples and blends a still or built-in text event directly into the
+    /// composite when no operation needs a separate full-frame layer.
+    fn draw_simple_overlay(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        scene: &FrameScene<'_>,
+        track: &TrackScene<'_>,
+        pool: &mut VideoPool,
+        under: &Img,
+    ) -> bool {
+        let TrackContent::Event(event) = &track.content else {
+            return false;
+        };
+        let Some(media) = &event.source else {
+            return false;
+        };
+        let visual = &media.clip.visual;
+        let text = matches!(&media.info.source, MediaSource::Generated(Generator::Plugin(fx))
+            if fx.id == bv_timeline::fcp_import::TITLES_PLUGIN || fx.id == "org.bananav.CreditRoll");
+        let fade = event.fade.unwrap_or(1.0);
+        if !(media.info.still || text)
+            || track.mode != CompositeMode::SourceAlpha
+            || track.compositor.is_some()
+            || track.motion.is_some()
+            || track.fade.is_some()
+            || track.effects[..track.post_from].iter().any(|fx| fx.enabled)
+            || !media.effects.is_empty()
+            || media.info.is_adjustment()
+            || media.blend.is_some()
+            || media.clip.mask.is_some()
+            || media.clip.reduce_flicker
+            || visual.background_on
+            || visual.shadow_on
+            || visual.enhancement().is_some()
+            || ![event.level, fade, track.level]
+                .into_iter()
+                .all(f32::is_finite)
+        {
+            return false;
+        }
+        let Some(src) = self.media_picture(
+            enc,
+            scene,
+            media,
+            pool,
+            event.clip.0,
+            Ask::of(media, Want::Decoded),
+        ) else {
+            return false; // Let the usual path draw the offline placeholder.
+        };
+        let size = (under.w, under.h);
+        let [left, top, right, bottom] = media.placement.pixels(size);
+        if left >= right || top >= bottom {
+            return true;
+        }
+        let (src, mut params) = self.box_sampling(enc, &src, size, &media.placement, media.quality);
+        params.j[1] = u32::from(media.placement.to_box.is_some());
+        // Match the two scale passes, including their near-unity bypass.
+        let scale = |value: f32| {
+            if (value - 1.0).abs() < 1e-6 {
+                1.0
+            } else {
+                value
+            }
+        };
+        params.f[16..19].copy_from_slice(&[scale(event.level), scale(fade), track.level]);
+        self.kernel(
+            enc,
+            K::PlaceOver,
+            params,
+            &[&src.buf, &under.buf],
+            Grid::Pixels((right - left) as u32, (bottom - top) as u32),
+        );
+        if let Some(timing) = &mut self.readback_timing {
+            timing.direct_overlay_blends += 1;
+        }
+        true
     }
 
     /// A track's layer onto what is below it through its compositing mode.
@@ -1679,10 +1762,29 @@ impl Compositor {
         place: &Placement,
         quality: RenderQuality,
     ) -> Img {
-        let out = self.image(w, h);
         if place.empty {
             return self.transparent(enc, w, h);
         }
+        let out = self.image(w, h);
+        let (s, p) = self.box_sampling(enc, src, (w, h), place, quality);
+        let k = if place.to_box.is_some() {
+            K::PlaceSoft
+        } else {
+            K::PlaceHard
+        };
+        self.kernel(enc, k, p, &[&s.buf, &out.buf], Grid::Pixels(w, h));
+        out
+    }
+
+    /// Shared sampling parameters for ordinary placement and direct blending.
+    fn box_sampling(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        src: &Img,
+        (w, h): (u32, u32),
+        place: &Placement,
+        quality: RenderQuality,
+    ) -> (Img, Params) {
         // Large reductions go through 2 × 2 averages first (Good and Best).
         let mut s = src.clone();
         if matches!(quality, RenderQuality::Good | RenderQuality::Best) {
@@ -1723,13 +1825,7 @@ impl Compositor {
             RenderQuality::Preview | RenderQuality::Good => 1,
             RenderQuality::Best => 2,
         };
-        let k = if place.to_box.is_some() {
-            K::PlaceSoft
-        } else {
-            K::PlaceHard
-        };
-        self.kernel(enc, k, p, &[&s.buf, &out.buf], Grid::Pixels(w, h));
-        out
+        (s, p)
     }
 
     /// `src` placed in a `w` × `h` layer, framed by `tf` (as

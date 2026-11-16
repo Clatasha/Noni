@@ -234,23 +234,26 @@ fn compositing_modes_and_groups() {
 #[test]
 fn small_overlay_blends_at_its_current_placement() {
     let Some(mut c) = gpu() else { return };
+    c.measure_readback(true);
     let (mut p, _, _) = bars_and_gradient();
     let top = p.insert_track_at(TrackKind::Video, 0);
-    let graphic = media(
-        &mut p,
+    let mut graphic = MediaInfo::generated(
         Generator::SolidColor {
             rgba: [0.8, 0.2, 0.4, 0.6],
         },
+        &p.settings,
     );
+    graphic.still = true;
+    let graphic = p.add_media(graphic);
     let id = p
         .insert_media(graphic, Tick::ZERO, Some(top), None)
         .unwrap()[0];
     p.track_by_id_mut(top).unwrap().level = 0.8;
     p.clip_mut(id).unwrap().level = 0.7;
-    for (name, x, y, rotation_deg) in [
-        ("small overlay", 0.31, -0.22, 0.0),
-        ("overlay clipped by the edge", -0.48, 0.35, 13.0),
-        ("overlay entirely offscreen", 1.0, 0.0, 0.0),
+    for (name, x, y, rotation_deg, dispatches) in [
+        ("small overlay", 0.31, -0.22, 0.0, 1),
+        ("overlay clipped by the edge", -0.48, 0.35, 13.0, 1),
+        ("overlay entirely offscreen", 1.0, 0.0, 0.0, 0),
     ] {
         p.set_clip_framing(
             id,
@@ -264,6 +267,15 @@ fn small_overlay_blends_at_its_current_placement() {
         )
         .unwrap();
         check(&mut c, name, &p, Tick::ZERO, TOL);
+        assert_eq!(c.take_readback_timing().direct_overlay_blends, dispatches);
+        let direct = gpu_frame(&mut c, &p, Tick::ZERO, 192, 108);
+        c.take_readback_timing();
+        // Custom without a compositor uses Source Alpha via the two-pass path.
+        let mut reference = p.clone();
+        reference.track_by_id_mut(top).unwrap().composite_mode = bv_timeline::CompositeMode::Custom;
+        let layered = gpu_frame(&mut c, &reference, Tick::ZERO, 192, 108);
+        assert_eq!(c.take_readback_timing().direct_overlay_blends, 0);
+        assert!(max_diff(&direct, &layered) <= 1e-5, "{name}");
     }
 }
 
