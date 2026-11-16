@@ -923,20 +923,7 @@ pub(crate) fn picture(
     if s.shadow {
         margin += shift[0].abs().max(shift[1].abs()) + 3.0 * sigma;
     }
-    let [l0, t0, r0, b0] = l.ink;
-    let x0 = ((l0 * k[0] - margin).floor() as i64).max(0);
-    let y0 = ((t0 * k[1] - margin).floor() as i64).max(0);
-    let x1 = ((r0 * k[0] + margin + px(big)).ceil() as i64).min(w as i64);
-    let y1 = ((b0 * k[1] + margin).ceil() as i64).min(h as i64);
-    if x1 <= x0 || y1 <= y0 {
-        return None;
-    }
-    let region = Region {
-        x: x0,
-        y: y0,
-        w: (x1 - x0) as usize,
-        h: (y1 - y0) as usize,
-    };
+    let region = picture_region(l.ink, k, (w, h), margin, px(big), true)?;
     let (rw, rh) = (region.w, region.h);
     let text = letters(&fonts, &l, k, &region);
     let edge = if outline > 0.0 {
@@ -999,6 +986,74 @@ pub(crate) fn picture(
         rgba,
         text_bounds: l.bounds,
         em: l.em,
+    })
+}
+
+fn picture_region(
+    ink: [f64; 4],
+    k: [f64; 2],
+    (w, h): (usize, usize),
+    margin: f64,
+    extra_width: f64,
+    clip: bool,
+) -> Option<Region> {
+    let [l0, t0, r0, b0] = ink;
+    let [mut x0, mut y0, mut x1, mut y1] = [
+        (l0 * k[0] - margin).floor() as i64,
+        (t0 * k[1] - margin).floor() as i64,
+        (r0 * k[0] + margin + extra_width).ceil() as i64,
+        (b0 * k[1] + margin).ceil() as i64,
+    ];
+    if clip {
+        x0 = x0.max(0);
+        y0 = y0.max(0);
+        x1 = x1.min(w as i64);
+        y1 = y1.min(h as i64);
+    } else if x1.saturating_sub(x0) > w as i64 || y1.saturating_sub(y0) > h as i64 {
+        return None; // Oversized lines use the clipped path instead.
+    }
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    Some(Region {
+        x: x0,
+        y: y0,
+        w: (x1 - x0) as usize,
+        h: (y1 - y0) as usize,
+    })
+}
+
+pub(crate) struct CreditLine {
+    pub region: Region,
+    pub alpha: Vec<f32>,
+    pub color: [f32; 3],
+}
+
+/// Credit lines have one color and no outline or shadow. Keep just one
+/// float per pixel so more subpixel phases fit in the roll's cache.
+pub(crate) fn credit_line_picture(
+    s: &Settings,
+    fw: f64,
+    fh: f64,
+    k: [f64; 2],
+    size: (usize, usize),
+    clip: bool,
+) -> Option<CreditLine> {
+    let (fonts, layout) = laid_out(s, fw, fh)?;
+    if layout.glyphs.is_empty() || layout.em <= 0.0 {
+        return None;
+    }
+    let big = layout.ems.iter().copied().fold(layout.em, f64::max) * k[1];
+    let region = picture_region(layout.ink, k, size, big * 0.5 + 2.0, big, clip)?;
+    let mut alpha = letters(&fonts, &layout, k, &region);
+    let [r, g, b, opacity] = s.color.map(|v| v as f32);
+    for value in &mut alpha {
+        *value = (opacity * *value).clamp(0.0, 1.0);
+    }
+    Some(CreditLine {
+        region,
+        alpha,
+        color: [r, g, b],
     })
 }
 

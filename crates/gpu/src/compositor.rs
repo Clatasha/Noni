@@ -1595,10 +1595,8 @@ impl Compositor {
                 .get(&owner)
                 .is_some_and(|(previous, _)| Arc::ptr_eq(previous, image))
         });
-        let (uploaded, bytes, tiled) = if matches!(
-            OverlayKind::of(info),
-            Some(OverlayKind::Title | OverlayKind::CreditRoll)
-        ) {
+        let (uploaded, bytes, tiled) = if matches!(OverlayKind::of(info), Some(OverlayKind::Title))
+        {
             self.upload_title(enc, owner, image)
         } else {
             (
