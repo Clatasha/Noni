@@ -104,6 +104,7 @@ pub struct ReadbackTiming {
     pub belt_uploads: u64,
     pub direct_overlay_blends: u64,
     pub titles: OverlayTiming,
+    pub credit_rolls: OverlayTiming,
     pub still_images: OverlayTiming,
     /// Packing, submitting and synchronizing the shared encoder texture.
     pub shared_output: Duration,
@@ -120,6 +121,8 @@ pub struct OverlayTiming {
     pub read_count: u64,
     pub upload: Duration,
     pub upload_bytes: u64,
+    pub tiled_uploads: u64,
+    pub full_uploads: u64,
     pub place: Duration,
     pub place_pixels: u64,
     pub blend: Duration,
@@ -129,25 +132,30 @@ pub struct OverlayTiming {
 #[derive(Clone, Copy)]
 enum OverlayKind {
     Title,
+    CreditRoll,
     StillImage,
 }
 
 impl OverlayKind {
     fn of(info: &bv_timeline::MediaInfo) -> Option<Self> {
-        if matches!(&info.source, MediaSource::Generated(Generator::Plugin(fx))
-            if fx.id == bv_timeline::fcp_import::TITLES_PLUGIN || fx.id == "org.bananav.CreditRoll")
-        {
-            Some(Self::Title)
-        } else if info.still {
-            Some(Self::StillImage)
-        } else {
-            None
+        match &info.source {
+            MediaSource::Generated(Generator::Plugin(fx))
+                if fx.id == bv_timeline::fcp_import::TITLES_PLUGIN =>
+            {
+                Some(Self::Title)
+            }
+            MediaSource::Generated(Generator::Plugin(fx)) if fx.id == "org.bananav.CreditRoll" => {
+                Some(Self::CreditRoll)
+            }
+            _ if info.still => Some(Self::StillImage),
+            _ => None,
         }
     }
 
     fn timing(self, timing: &mut ReadbackTiming) -> &mut OverlayTiming {
         match self {
             Self::Title => &mut timing.titles,
+            Self::CreditRoll => &mut timing.credit_rolls,
             Self::StillImage => &mut timing.still_images,
         }
     }
@@ -222,30 +230,64 @@ fn luma(c: [f32; 3]) -> f32 {
     0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
 }
 
-fn title_pixels(image: &ImageRgbaF32) -> Option<[usize; 4]> {
+// Keep in sync with `unpack_title_tiles` in pair.wgsl.
+const TITLE_TILE: usize = 32;
+
+/// Each tile has two RGBA entries in the header: a one-based payload
+/// index (zero for flat tiles), and the flat color. Non-flat tiles follow
+/// in row-major order, padded on the right and bottom at the frame edge.
+fn pack_title_tiles(image: &ImageRgbaF32) -> Option<(u32, Vec<[f32; 4]>)> {
     let (width, height) = (image.width as usize, image.height as usize);
-    if width == 0 || height == 0 {
+    let (columns, rows) = (width.div_ceil(TITLE_TILE), height.div_ceil(TITLE_TILE));
+    let header_len = columns * rows * 2;
+    // Dense titles are cheaper to copy directly than to pack and reconstruct.
+    let limit = image.data.len() * 3 / 4;
+    if header_len >= limit {
         return None;
     }
-    let nonzero = |pixel: &[f32; 4]| *pixel != [0.0; 4];
-    let mut bounds = [width, height, 0, 0];
-    for (y, row) in image.data.chunks_exact(width).enumerate() {
-        if let Some(first) = row.iter().position(nonzero) {
-            let last = row.iter().rposition(nonzero).unwrap_or(first);
-            bounds = [
-                bounds[0].min(first),
-                bounds[1].min(y),
-                bounds[2].max(last + 1),
-                y + 1,
-            ];
-            if (bounds[2] - bounds[0]) as u64 * (bounds[3] - bounds[1]) as u64 * 2
-                >= image.data.len() as u64
+    let mut packed = vec![[0.0; 4]; header_len];
+    let mut active = Vec::new();
+    for tile_y in 0..rows {
+        let y = tile_y * TITLE_TILE;
+        let tile_height = TITLE_TILE.min(height - y);
+        for tile_x in 0..columns {
+            let x = tile_x * TITLE_TILE;
+            let tile_width = TITLE_TILE.min(width - x);
+            let header = 2 * (tile_y * columns + tile_x);
+            let start = y * width + x;
+            let color = image.data[start];
+            let bits = color.map(f32::to_bits);
+            let tile_rows = (0..tile_height).map(|dy| {
+                let offset = start + dy * width;
+                &image.data[offset..offset + tile_width]
+            });
+            if tile_rows
+                .clone()
+                .all(|row| row.iter().all(|pixel| pixel.map(f32::to_bits) == bits))
             {
-                return Some([0, 0, width, height]);
+                packed[header + 1] = color;
+            } else {
+                if header_len + (active.len() + 1) * TITLE_TILE * TITLE_TILE >= limit {
+                    return None;
+                }
+                active.push((start, tile_width, tile_height));
+                packed[header][0] = active.len() as f32;
             }
         }
     }
-    (bounds[2] != 0).then_some(bounds)
+    packed.reserve_exact(active.len() * TITLE_TILE * TITLE_TILE);
+    for (start, tile_width, tile_height) in active {
+        for y in 0..tile_height {
+            let offset = start + y * width;
+            packed.extend_from_slice(&image.data[offset..offset + tile_width]);
+            packed.resize(packed.len() + TITLE_TILE - tile_width, [0.0; 4]);
+        }
+        packed.resize(
+            packed.len() + (TITLE_TILE - tile_height) * TITLE_TILE,
+            [0.0; 4],
+        );
+    }
+    Some((columns as u32, packed))
 }
 
 impl Compositor {
@@ -717,60 +759,45 @@ impl Compositor {
         })
     }
 
-    /// Transfer only the occupied rectangle of a transparent title and
-    /// reconstruct its original pixel grid before any placement or effects.
+    /// Reconstruct flat title tiles on the GPU before placement and effects.
     fn upload_title(
         &mut self,
         enc: &mut wgpu::CommandEncoder,
         owner: u64,
         image: &Arc<ImageRgbaF32>,
-    ) -> (Img, u64) {
+    ) -> (Img, u64, bool) {
         if let Some((previous, uploaded)) = self.uploaded.get(&owner)
             && Arc::ptr_eq(previous, image)
         {
             self.seen.push(owner);
-            return (uploaded.clone(), 0);
+            return (uploaded.clone(), 0, false);
         }
-        let bytes = (image.data.len() * size_of::<[f32; 4]>()) as u64;
-        let bounds = title_pixels(image);
-        let [left, top, right, bottom] = bounds.unwrap_or_default();
-        let (w, h) = (right - left, bottom - top);
-        if w as u64 * h as u64 * 2 >= image.data.len() as u64 {
-            return (self.upload(Some(owner), image), bytes);
-        }
+        let bytes = size_of_val(image.data.as_slice()) as u64;
+        let Some((columns, packed)) = pack_title_tiles(image) else {
+            return (self.upload(Some(owner), image), bytes, false);
+        };
         let full = Img {
             buf: self.picture_buffer(bytes),
             w: image.width,
             h: image.height,
             placement_bounds: None,
         };
-        let upload_bytes = if bounds.is_some() {
-            let mut packed = Vec::with_capacity(w * h);
-            for y in top..bottom {
-                let row = y * image.width as usize;
-                packed.extend_from_slice(&image.data[row + left..row + right]);
-            }
-            let bytes: &[u8] = bytemuck::cast_slice(&packed);
-            let compact = self.buffer(bytes.len() as u64);
-            self.gpu.queue.write_buffer(&compact, 0, bytes);
-            let mut p = Params::sized(full.w, full.h);
-            (p.sw, p.sh) = (w as u32, h as u32);
-            p.i = [left as i32, top as i32, 0, 0];
-            self.kernel(
-                enc,
-                K::CopyInto,
-                p,
-                &[&compact, &full.buf],
-                Grid::Pixels(full.w, full.h),
-            );
-            bytes.len() as u64
-        } else {
-            enc.clear_buffer(&full.buf, 0, None);
-            0
-        };
+        let bytes: &[u8] = bytemuck::cast_slice(&packed);
+        let compact = self.buffer(bytes.len() as u64);
+        self.gpu.queue.write_buffer(&compact, 0, bytes);
+        let mut p = Params::sized(full.w, full.h);
+        p.sw = columns;
+        p.sh = 2 * columns * full.h.div_ceil(TITLE_TILE as u32);
+        self.kernel(
+            enc,
+            K::UnpackTitleTiles,
+            p,
+            &[&compact, &full.buf],
+            Grid::Pixels(full.w, full.h),
+        );
         self.seen.push(owner);
         self.uploaded.insert(owner, (image.clone(), full.clone()));
-        (full, upload_bytes)
+        (full, bytes.len() as u64, true)
     }
 
     /// A transfer curve's table on the card.
@@ -1568,18 +1595,24 @@ impl Compositor {
                 .get(&owner)
                 .is_some_and(|(previous, _)| Arc::ptr_eq(previous, image))
         });
-        let (uploaded, bytes) = if matches!(OverlayKind::of(info), Some(OverlayKind::Title)) {
+        let (uploaded, bytes, tiled) = if matches!(
+            OverlayKind::of(info),
+            Some(OverlayKind::Title | OverlayKind::CreditRoll)
+        ) {
             self.upload_title(enc, owner, image)
         } else {
             (
                 self.upload(Some(owner), image),
-                (image.data.len() * size_of::<[f32; 4]>()) as u64,
+                size_of_val(image.data.as_slice()) as u64,
+                false,
             )
         };
         if let (Some((kind, start)), Some(timing)) = (timer, &mut self.readback_timing) {
             let overlay = kind.timing(timing);
             overlay.upload += start.elapsed();
             overlay.upload_bytes += bytes;
+            overlay.tiled_uploads += u64::from(tiled);
+            overlay.full_uploads += u64::from(!tiled);
         }
         uploaded
     }
@@ -2651,22 +2684,31 @@ mod title_upload_tests {
     use super::*;
 
     #[test]
-    fn compact_title_upload_round_trips_original_pixels() {
+    fn tiled_title_upload_round_trips_original_pixels() {
         let Ok(gpu) = Gpu::open(None) else { return };
         let mut compositor = Compositor::new(gpu);
-        let mut sparse = ImageRgbaF32::transparent(64, 48);
+        let (width, height) = (131, 99);
+        let mut sparse = ImageRgbaF32::transparent(width, height);
+        sparse.data.fill([0.1, 0.2, 0.3, 1.0]);
         *sparse.pixel_mut(7, 10) = [0.0, 0.3, 0.0, 0.5];
-        *sparse.pixel_mut(12, 11) = [0.1, 0.0, 0.0, 0.0];
-        let mut opaque = ImageRgbaF32::transparent(64, 48);
-        opaque.data.fill([0.1, 0.2, 0.3, 1.0]);
-        let empty = ImageRgbaF32::transparent(64, 48);
+        *sparse.pixel_mut(width - 1, height - 1) = [0.1, 0.0, 0.0, 0.0];
+        let mut dense = ImageRgbaF32::transparent(width, height);
+        for (i, pixel) in dense.data.iter_mut().enumerate() {
+            *pixel = [i as f32 / 16384.0, 0.2, 0.3, 1.0];
+        }
+        let empty = ImageRgbaF32::transparent(width, height);
         let mut enc = compositor
             .gpu
             .device
             .create_command_encoder(&Default::default());
-        for (image, expected_bytes) in [(sparse, 6 * 2 * 16), (opaque, 64 * 48 * 16), (empty, 0)] {
+        for (image, expected_bytes, tiled) in [
+            (sparse, (40 + 2 * 1024) * 16, true),
+            (dense, u64::from(width * height * 16), false),
+            (empty, 40 * 16, true),
+        ] {
             let image = Arc::new(image);
-            let (uploaded, bytes) = compositor.upload_title(&mut enc, 1, &image);
+            let (uploaded, bytes, used_tiles) = compositor.upload_title(&mut enc, 1, &image);
+            assert_eq!(used_tiles, tiled);
             assert_eq!(bytes, expected_bytes);
             let result = compositor.download(&mut enc, &uploaded).unwrap();
             assert_eq!(result.data, image.data);

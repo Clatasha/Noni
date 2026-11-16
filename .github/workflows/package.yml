@@ -34,6 +34,7 @@ on:
   # One-time rebuild request: direct GPU placement and blending for simple overlays.
   # One-time rebuild request: export overlay and source profiling with bounded blending by default.
   # One-time rebuild request: cached title frames and compact title uploads.
+  # One-time rebuild request: tiled text uploads and separate credit roll timing.
   push:
     branches: [noni-branding]
     paths:

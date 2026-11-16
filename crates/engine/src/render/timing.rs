@@ -46,6 +46,7 @@ pub(crate) struct Timing {
     belt_uploads: AtomicU64,
     direct_overlay_blends: AtomicU64,
     titles: OverlayTotals,
+    credit_rolls: OverlayTotals,
     still_images: OverlayTotals,
     painters: AtomicU64,
     prepared_frames: AtomicU64,
@@ -68,6 +69,8 @@ struct OverlayTotals {
     read_count: AtomicU64,
     upload: AtomicU64,
     upload_bytes: AtomicU64,
+    tiled_uploads: AtomicU64,
+    full_uploads: AtomicU64,
     place: AtomicU64,
     place_pixels: AtomicU64,
     blend: AtomicU64,
@@ -81,6 +84,8 @@ impl OverlayTotals {
             (&self.read_count, timing.read_count),
             (&self.upload, timing.upload.as_nanos() as u64),
             (&self.upload_bytes, timing.upload_bytes),
+            (&self.tiled_uploads, timing.tiled_uploads),
+            (&self.full_uploads, timing.full_uploads),
             (&self.place, timing.place.as_nanos() as u64),
             (&self.place_pixels, timing.place_pixels),
             (&self.blend, timing.blend.as_nanos() as u64),
@@ -103,9 +108,11 @@ impl OverlayTotals {
         )?;
         writeln!(
             file,
-            "    {label} RGBA uploads (host): {:.3} s / {:.1} MiB",
+            "    {label} RGBA uploads (host): {:.3} s / {:.1} MiB ({} tiled, {} full)",
             seconds(&self.upload),
-            self.upload_bytes.load(Ordering::Relaxed) as f64 / 1048576.0
+            self.upload_bytes.load(Ordering::Relaxed) as f64 / 1048576.0,
+            self.tiled_uploads.load(Ordering::Relaxed),
+            self.full_uploads.load(Ordering::Relaxed)
         )?;
         writeln!(
             file,
@@ -175,6 +182,7 @@ impl Timing {
         self.direct_overlay_blends
             .fetch_add(gpu.direct_overlay_blends, Ordering::Relaxed);
         self.titles.add(gpu.titles);
+        self.credit_rolls.add(gpu.credit_rolls);
         self.still_images.add(gpu.still_images);
         self.add(Stage::SharedOutput, gpu.shared_output);
         self.add(Stage::GpuWait, gpu.wait);
@@ -364,7 +372,8 @@ impl Timing {
             "    Single-pass overlay blends: {}",
             self.direct_overlay_blends.load(Ordering::Relaxed)
         )?;
-        self.titles.report(&mut file, "Title and credit roll")?;
+        self.titles.report(&mut file, "Title")?;
+        self.credit_rolls.report(&mut file, "Credit roll")?;
         self.still_images.report(&mut file, "Still image")?;
         writeln!(
             file,
@@ -506,7 +515,8 @@ mod tests {
         assert!(report.contains("Status: completed"));
         assert!(report.contains("GPU scene setup:"));
         assert!(report.contains("Ducking analysis before rendering: 0.000 s"));
-        assert!(report.contains("Title and credit roll source reads (including cached):"));
+        assert!(report.contains("Title source reads (including cached):"));
+        assert!(report.contains("Credit roll RGBA uploads (host):"));
         assert!(report.contains("Still image RGBA uploads (host):"));
         assert!(
             report.contains("Shared video reader fetch and decode (within source preparation):")

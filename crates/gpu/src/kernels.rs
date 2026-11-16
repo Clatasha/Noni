@@ -109,6 +109,7 @@ pub(crate) enum K {
     ChromaKey,
     GlowBright,
     CopyInto,
+    UnpackTitleTiles,
     Place,
     PlaceHard,
     PlaceSoft,
@@ -299,7 +300,7 @@ pub(crate) enum K {
 }
 
 impl K {
-    pub const ALL: [K; 199] = [
+    pub const ALL: [K; 200] = [
         K::Fill,
         K::Scale,
         K::ToVideoGamma,
@@ -315,6 +316,7 @@ impl K {
         K::ChromaKey,
         K::GlowBright,
         K::CopyInto,
+        K::UnpackTitleTiles,
         K::Place,
         K::PlaceHard,
         K::PlaceSoft,
@@ -527,7 +529,8 @@ impl K {
             | KitGlowBright | KitGlowApply | KitMirror | KitFillApply | KitBoxRows
             | KitBoxColumns | KitGaussRows | KitGaussColumns | FftImage | FftKernel | FftPass
             | FftCrop | KitRaysLights | KitGlintLights | KitFlickerMatch | KitFlickerFinish
-            | KitDenoisePlanes | KitDenoiseNlm | KitDenoiseRgb | KitDenoiseSharpen => Sig::Pair,
+            | KitDenoisePlanes | KitDenoiseNlm | KitDenoiseRgb | KitDenoiseSharpen
+            | UnpackTitleTiles => Sig::Pair,
             Dissolve | FadeThroughBlack | Wipe | PushSlide | Iris | Clock | Zoom | LayerSurface
             | LayerUnder | FillCombine | BezierMaskFx | KitMedian | KitConvH | KitConvV
             | KitDisplace | KitHeights | KitHeightMap | KitBumpWith | KitFillMap | KitWave
@@ -563,6 +566,7 @@ impl K {
             ChromaKey => "chroma_key",
             GlowBright => "glow_bright",
             CopyInto => "copy_into",
+            UnpackTitleTiles => "unpack_title_tiles",
             Place => "place",
             PlaceHard => "place_hard",
             PlaceSoft => "place_soft",

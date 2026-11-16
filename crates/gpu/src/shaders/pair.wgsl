@@ -11,6 +11,25 @@ fn out_index(id: vec3<u32>) -> i32 {
     return i32(id.y * P.w + id.x);
 }
 
+// sw is the tile stride and sh is the number of header entries.
+// See pack_title_tiles for the header and payload formats.
+@compute @workgroup_size(16, 16)
+fn unpack_title_tiles(@builtin(global_invocation_id) id: vec3<u32>) {
+    let out = out_index(id);
+    if out < 0 {
+        return;
+    }
+    let side = 32u;
+    let header = 2u * ((id.y / side) * P.sw + id.x / side);
+    let slot = u32(src[header].x);
+    if slot == 0u {
+        dst[out] = src[header + 1u];
+    } else {
+        let pixel = (id.y % side) * side + id.x % side;
+        dst[out] = src[P.sh + (slot - 1u) * side * side + pixel];
+    }
+}
+
 // The source placed at (`i.x`, `i.y`) without resampling; transparent
 // around it.
 @compute @workgroup_size(16, 16)
