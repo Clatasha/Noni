@@ -88,6 +88,8 @@ fn fix(p: Picture, quarters: u8, limited: bool, levels: bool, w: u32, h: u32) ->
         return p;
     }
     let img = match p {
+        #[cfg(windows)]
+        Picture::Surface(_) => unreachable!("turned sources request a CPU picture"),
         Picture::Linear(img) => img,
         Picture::Decoded(f) => Arc::new(bv_color::frame_to_linear_levels(
             &f,
@@ -111,6 +113,8 @@ impl VideoReader for Reading {
         let (w, h) = self.inner_size(min_w, min_h);
         let img = if self.limited {
             match self.inner.picture_at(t, w, h)? {
+                #[cfg(windows)]
+                Picture::Surface(_) => return Err(crate::MediaError::NoStream),
                 Picture::Linear(img) => img,
                 Picture::Decoded(f) => {
                     let f = limited_frame(f);

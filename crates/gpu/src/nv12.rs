@@ -14,7 +14,9 @@ use windows::Win32::Foundation::{GENERIC_ALL, HANDLE, HMODULE};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Direct3D12::*;
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC};
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT_NV12, DXGI_FORMAT_UNKNOWN, DXGI_SAMPLE_DESC,
+};
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, DXGI_SHARED_RESOURCE_READ, DXGI_SHARED_RESOURCE_WRITE, IDXGIAdapter,
     IDXGIFactory4, IDXGIResource1,
@@ -675,5 +677,167 @@ mod tests {
                     .all(|(a, b)| a.abs_diff(*b) <= 1)
             );
         }
+    }
+}
+
+/// Copy the shared NV12 planes into a GPU storage buffer for the existing
+/// color conversion kernel. Offsets include the decoder's display aperture.
+pub(crate) fn import_decoded(
+    gpu: &Gpu,
+    frame: &Arc<bv_media::DecodeSurface>,
+) -> Result<(wgpu::Buffer, [u32; 3], [i32; 4]), GpuError> {
+    if gpu.dx12_luid() != Some(frame.adapter) {
+        return Err(GpuError::NoAdapter);
+    }
+
+    // SAFETY: the texture belongs to this adapter. The shared fence orders
+    // the D3D11 decoder copy before D3D12 reads. Retain the source and the
+    // command objects until the copy is complete, including on cancellation.
+    unsafe {
+        let hal = gpu.device.as_hal::<Dx12>().ok_or(GpuError::NoAdapter)?;
+        let device = hal.raw_device();
+        let mut source: Option<ID3D12Resource> = None;
+        device
+            .OpenSharedHandle(HANDLE(frame.texture_handle().as_raw_handle()), &mut source)
+            .map_err(stage("importing decoded NV12 texture"))?;
+        let source = source.ok_or(GpuError::NoAdapter)?;
+        let desc = source.GetDesc();
+        let mut planes = [D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default(); 2];
+        let mut bytes = 0;
+        device.GetCopyableFootprints(
+            &desc,
+            0,
+            2,
+            0,
+            Some(planes.as_mut_ptr()),
+            None,
+            None,
+            Some(&mut bytes),
+        );
+        let bytes = bytes
+            .checked_next_multiple_of(4)
+            .ok_or(GpuError::NoAdapter)?;
+        let limits = gpu.device.limits();
+        if bytes == 0
+            || bytes > limits.max_buffer_size
+            || bytes > limits.max_storage_buffer_binding_size
+        {
+            return Err(GpuError::Failed(
+                "decoded NV12 exceeds storage buffer limits".into(),
+            ));
+        }
+        let (handle, value) = frame.ready();
+        let mut fence: Option<ID3D12Fence> = None;
+        device
+            .OpenSharedHandle(HANDLE(handle.as_raw_handle()), &mut fence)
+            .map_err(stage("importing decoder readiness fence"))?;
+        let fence = fence.ok_or(GpuError::NoAdapter)?;
+        let slot = CopySlot::new(device)?;
+        let heap = D3D12_HEAP_PROPERTIES {
+            Type: D3D12_HEAP_TYPE_DEFAULT,
+            ..Default::default()
+        };
+        let buffer_desc = D3D12_RESOURCE_DESC {
+            Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
+            Width: bytes,
+            Height: 1,
+            DepthOrArraySize: 1,
+            MipLevels: 1,
+            Format: DXGI_FORMAT_UNKNOWN,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+            Flags: D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            ..Default::default()
+        };
+        // Committed memory is initialized to zero, including row padding.
+        // Importing it through HAL prevents wgpu from clearing the planes.
+        let mut destination: Option<ID3D12Resource> = None;
+        device
+            .CreateCommittedResource(
+                &heap,
+                D3D12_HEAP_FLAG_NONE,
+                &buffer_desc,
+                D3D12_RESOURCE_STATE_COMMON,
+                None,
+                &mut destination,
+            )
+            .map_err(stage("allocating GPU memory for decoded NV12 planes"))?;
+        let destination = destination.ok_or(GpuError::NoAdapter)?;
+        drop(hal);
+        let words = gpu.device.create_buffer_from_hal::<Dx12>(
+            wgpu::hal::dx12::Device::buffer_from_raw(destination.clone(), bytes),
+            &wgpu::BufferDescriptor {
+                label: Some("decoded NV12 planes"),
+                size: bytes,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            },
+        );
+        slot.list.Reset(&slot.allocator, None).map_err(error)?;
+        slot.list.ResourceBarrier(&[transition(
+            &source,
+            D3D12_RESOURCE_STATE_COMMON,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+        )]);
+        // A fresh D3D12 buffer promotes from COMMON to COPY_DEST, then
+        // decays to COMMON after ExecuteCommandLists. wgpu tracks its first
+        // use after this native copy.
+        for (i, plane) in planes.iter().enumerate() {
+            let src = D3D12_TEXTURE_COPY_LOCATION {
+                pResource: ManuallyDrop::new(Some(ID3D12Resource::from_raw(source.as_raw()))),
+                Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+                    SubresourceIndex: i as u32,
+                },
+            };
+            let dst = D3D12_TEXTURE_COPY_LOCATION {
+                pResource: ManuallyDrop::new(Some(ID3D12Resource::from_raw(destination.as_raw()))),
+                Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+                    PlacedFootprint: *plane,
+                },
+            };
+            slot.list.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
+        }
+        slot.list.ResourceBarrier(&[transition(
+            &source,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            D3D12_RESOURCE_STATE_COMMON,
+        )]);
+        slot.list.Close().map_err(error)?;
+        let queue = gpu.queue.as_hal::<Dx12>().ok_or(GpuError::NoAdapter)?;
+        queue
+            .as_raw()
+            .Wait(&fence, value)
+            .map_err(stage("waiting for decoded NV12"))?;
+        queue
+            .as_raw()
+            .ExecuteCommandLists(&[Some(slot.command.clone())]);
+        drop(queue);
+        gpu.queue.submit([]);
+        let lease = (slot, source, fence, words.clone(), frame.clone());
+        gpu.queue.on_submitted_work_done(move || drop(lease));
+
+        let (x, y) = frame.offset;
+        let luma = planes[0].Footprint.RowPitch;
+        let chroma = planes[1].Footprint.RowPitch;
+        let starts = [
+            planes[0].Offset as u32 + y * luma + x,
+            planes[1].Offset as u32 + (y / 2) * chroma + x,
+            0,
+        ];
+        Ok((
+            words,
+            starts,
+            [
+                luma as i32,
+                chroma as i32,
+                (frame.width / 2) as i32,
+                (frame.height / 2) as i32,
+            ],
+        ))
     }
 }

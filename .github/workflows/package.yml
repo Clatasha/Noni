@@ -39,7 +39,7 @@ on:
   # One-time rebuild request: restore the measured bounded blending baseline with diagnostics.
   # One-time rebuild request: verified GPU credits and a wider Credit Roll editor.
   push:
-    branches: [noni-branding, source-decode-profile]
+    branches: [noni-branding, source-decode-profile, source-gpu-nv12]
     paths:
       - .github/workflows/package.yml
   workflow_dispatch:

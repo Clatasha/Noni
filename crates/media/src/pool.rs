@@ -27,6 +27,8 @@ pub enum Picture {
     /// As decoded: whoever shows it converts it (the graphics card does it
     /// faster than the processor).
     Decoded(Arc<VideoFrame>),
+    #[cfg(windows)]
+    Surface(Arc<crate::DecodeSurface>),
 }
 
 /// The form a picture is wanted in.
@@ -36,6 +38,8 @@ pub enum Want {
     Linear,
     /// As decoded when the reader can (the graphics card's compositor).
     Decoded,
+    /// Export may accept an adapter-compatible decoder surface.
+    Export,
 }
 
 /// Who uses a reader: an event's id. Pictures asked for outside events
@@ -362,6 +366,7 @@ fn fetch(reader: &mut dyn VideoReader, ask: Ask) -> Result<Picture> {
     match ask.want {
         Want::Linear => reader.frame_at_scaled(ask.time, w, h).map(Picture::Linear),
         Want::Decoded => reader.picture_at(ask.time, w, h),
+        Want::Export => reader.picture_on_the_way(ask.time, w, h, ask.want, &mut |_| Onward::Go),
     }
 }
 
@@ -527,11 +532,39 @@ impl VideoPool {
     /// Other requests (CPU fallback, motion blur, different sizes) still use
     /// ordinary readers, so no nearby frame ever substitutes for an exact one.
     pub fn prepare(&mut self, needs: &[Need<'_>]) -> VideoPool {
+        self.prepare_pictures(needs, false)
+    }
+
+    pub fn prepare_export(&mut self, needs: &[Need<'_>]) -> VideoPool {
+        static ENABLED: OnceLock<bool> = OnceLock::new();
+        let enabled = cfg!(windows)
+            && *ENABLED
+                .get_or_init(|| std::env::var("NONI_GPU_DECODE_SURFACES").as_deref() != Ok("0"));
+        self.prepare_pictures(needs, enabled)
+    }
+
+    fn prepare_pictures(&mut self, needs: &[Need<'_>], surfaces: bool) -> VideoPool {
+        let export_needs;
+        let requested = if surfaces {
+            export_needs = needs
+                .iter()
+                .map(|n| Need {
+                    ask: Ask {
+                        want: Want::Export,
+                        ..n.ask
+                    },
+                    ..*n
+                })
+                .collect::<Vec<_>>();
+            &export_needs[..]
+        } else {
+            needs
+        };
         self.begin_frame();
-        self.prefetch(needs);
+        self.prefetch(requested);
         let mut prepared = Vec::with_capacity(needs.len());
-        for n in needs {
-            let picture = self.picture(n.owner, n.info, n.ask);
+        for (n, request) in needs.iter().zip(requested) {
+            let picture = self.picture(n.owner, n.info, request.ask);
             prepared.push(Prepared {
                 owner: n.owner,
                 media: n.info.id,
@@ -686,6 +719,16 @@ impl VideoPool {
             self.prepared_hits += 1;
             return picture;
         }
+        self.picture_unprepared(owner, info, ask)
+    }
+
+    /// Request the ordinary picture if GPU interop cannot import a prepared surface.
+    pub fn picture_unprepared(
+        &mut self,
+        owner: Owner,
+        info: &MediaInfo,
+        ask: Ask,
+    ) -> Result<Picture> {
         if let Some(e) = self.errors.get(&info.id) {
             return Err(e.clone());
         }
@@ -752,6 +795,8 @@ impl VideoPool {
         match self.picture(NO_EVENT, info, ask)? {
             Picture::Linear(img) => Ok(img),
             Picture::Decoded(f) => Ok(Arc::new(bv_color::frame_to_linear(&f))),
+            #[cfg(windows)]
+            Picture::Surface(_) => Err(MediaError::NoStream),
         }
     }
 

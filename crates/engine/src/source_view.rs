@@ -267,6 +267,8 @@ fn display(picture: &Picture, min_size: (u32, u32), video_levels: bool) -> (Vec<
             video_levels,
         ),
         Picture::Linear(img) => shrunk(img, step(img.width, img.height)),
+        #[cfg(windows)]
+        Picture::Surface(_) => unreachable!("the source view requests CPU pixels"),
     };
     (
         bv_color::linear_to_display_rgba8(&linear, TransferCharacteristic::Bt709),

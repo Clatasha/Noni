@@ -1335,9 +1335,20 @@ impl VideoReader for SystemVideo {
             hurry: false,
             stopped: false,
         };
+        #[cfg(windows)]
+        if want == crate::Want::Export {
+            return self
+                .dec
+                .export_picture_at(t, &mut way)
+                .map(|frame| match frame {
+                    bv_mf::ExportPicture::Cpu(frame) => crate::Picture::Decoded(frame),
+                    bv_mf::ExportPicture::Surface(frame) => crate::Picture::Surface(frame),
+                })
+                .map_err(mf_err);
+        }
         self.dec.frame_at_with(t, &mut way).map_err(mf_err)?;
         match want {
-            crate::Want::Decoded => self.picture_at(t, min_w, min_h),
+            crate::Want::Decoded | crate::Want::Export => self.picture_at(t, min_w, min_h),
             crate::Want::Linear => self
                 .frame_at_scaled(t, min_w, min_h)
                 .map(crate::Picture::Linear),
@@ -1388,7 +1399,7 @@ impl bv_mf::Way for OnTheWay<'_> {
         self.hurry = false;
         self.next = std::time::Instant::now() + Self::EVERY;
         let p = match self.want {
-            crate::Want::Decoded => crate::Picture::Decoded(f.clone()),
+            crate::Want::Decoded | crate::Want::Export => crate::Picture::Decoded(f.clone()),
             crate::Want::Linear => {
                 let (w, h) = self.min_size;
                 let factor = crate::reduction(f.width, f.height, w, h);
@@ -1714,7 +1725,7 @@ mod tests {
         };
         let linear = |p: crate::Picture| match p {
             crate::Picture::Linear(img) => img,
-            crate::Picture::Decoded(_) => panic!("a picture in linear light"),
+            _ => panic!("a picture in linear light"),
         };
         let img = linear(pool.picture(0, &info, ask(4, 2)).unwrap());
         assert_eq!((img.width, img.height), (4, 2));

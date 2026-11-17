@@ -5,7 +5,7 @@
 // Parameters: `sw` × `sh` the picture, `w` × `h` the result;
 // `i` = (luma stride, chroma stride, chroma width, chroma height) in
 // samples; `j` = (factor, flags, chroma shift x, chroma shift y), flags:
-// 1 16-bit samples, 2 GBR (no matrix), 4 other primaries;
+// 1 16-bit samples, 2 GBR (no matrix), 4 other primaries, 8 interleaved Cb and Cr;
 // `f[0..4]` luma offset and scale, chroma offset and scale;
 // `f[4]`, `f[5]` Kr, Kb; `f[8..17]` the primaries' matrix; `o.xyz` where
 // the Y, Cb and Cr planes start (bytes).
@@ -36,6 +36,9 @@ fn y_at(x: u32, y: u32) -> u32 {
 }
 
 fn c_at(plane: u32, x: u32, y: u32) -> u32 {
+    if (P.j.y & 8u) != 0u {
+        return sample(P.o.y, u32(P.i.y), x * 2u + plane, y);
+    }
     return sample(P.o[1u + plane], u32(P.i.y), x, y);
 }
 

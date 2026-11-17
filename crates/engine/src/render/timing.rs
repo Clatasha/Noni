@@ -18,6 +18,7 @@ pub(super) enum Stage {
     GpuEffects,
     GpuCreditPrepare,
     SourceUpload,
+    SourceImport,
     SharedOutput,
     GpuWait,
     ReadbackCopy,
@@ -44,6 +45,9 @@ pub(crate) struct Timing {
     nanos: [AtomicU64; Stage::Finish as usize + 1],
     draws: AtomicU64,
     source_uploads: AtomicU64,
+    decoded_surfaces: AtomicU64,
+    decoded_surface_rejected: AtomicU64,
+    decoded_surface_error: std::sync::OnceLock<String>,
     belt_uploads: AtomicU64,
     titles: OverlayTotals,
     credit_rolls: OverlayTotals,
@@ -185,6 +189,14 @@ impl Timing {
         self.add(Stage::GpuCompose, gpu.compose);
         self.add(Stage::GpuEffects, gpu.effects);
         self.add(Stage::SourceUpload, gpu.source_upload);
+        self.decoded_surfaces
+            .fetch_add(gpu.decoded_surfaces, Ordering::Relaxed);
+        self.add(Stage::SourceImport, gpu.decoded_surface_import);
+        self.decoded_surface_rejected
+            .fetch_add(gpu.decoded_surface_rejected, Ordering::Relaxed);
+        if let Some(error) = gpu.decoded_surface_error {
+            let _ = self.decoded_surface_error.set(error);
+        }
         self.source_uploads
             .fetch_add(gpu.source_uploads, Ordering::Relaxed);
         self.belt_uploads
@@ -329,6 +341,15 @@ impl Timing {
             self.belt_uploads.load(Ordering::Relaxed),
             self.source_uploads.load(Ordering::Relaxed)
         )?;
+        writeln!(
+            file,
+            "Decoded NV12 surfaces imported by the compositor: {} ({} rejected)",
+            self.decoded_surfaces.load(Ordering::Relaxed),
+            self.decoded_surface_rejected.load(Ordering::Relaxed),
+        )?;
+        if let Some(error) = self.decoded_surface_error.get() {
+            writeln!(file, "First decoder surface import error: {error}")?;
+        }
         let painters = self.painters.load(Ordering::Relaxed);
         writeln!(file, "Video drawing workers: {painters}")?;
         let prepared = self.prepared_frames.load(Ordering::Relaxed);
@@ -401,6 +422,11 @@ impl Timing {
             file,
             "    Decoded YUV upload staging (host time): {:.3} s",
             self.seconds(Stage::SourceUpload)
+        )?;
+        writeln!(
+            file,
+            "    Decoded NV12 import and copy submission (host time): {:.3} s",
+            self.seconds(Stage::SourceImport)
         )?;
         writeln!(
             file,

@@ -2,7 +2,9 @@
 
 use std::cell::Cell;
 use std::collections::VecDeque;
-use std::sync::Once;
+use std::sync::{Arc, Once};
+
+use crate::decode_surface::{DecodeSurface, SurfacePool};
 
 use bv_core::{
     AudioBuffer, ChannelLayout, ColorInfo, ColorPrimaries, ColorRange, FrameRate,
@@ -431,6 +433,7 @@ struct Unopened {
     changed: bool,
     /// The picture's copy from the card, started when it was read.
     copy: Option<Copying>,
+    surface: Option<Arc<DecodeSurface>>,
 }
 
 /// A decoded picture being copied from the card to memory.
@@ -485,6 +488,7 @@ fn next_sample(reader: &IMFSourceReader, stream: u32) -> Result<Option<Unopened>
             time,
             changed,
             copy: None,
+            surface: None,
         }));
     }
 }
@@ -496,6 +500,7 @@ fn open_sample(u: Unopened) -> Result<RawSample> {
         time,
         changed,
         copy,
+        ..
     } = u;
     if let Some(c) = copy {
         let (duration, keyframe) = (c.duration, c.keyframe);
@@ -745,6 +750,21 @@ impl Mode {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ExportPicture {
+    Cpu(Arc<VideoFrame>),
+    Surface(Arc<DecodeSurface>),
+}
+
+impl ExportPicture {
+    fn pts(&self) -> Tick {
+        match self {
+            Self::Cpu(frame) => frame.pts,
+            Self::Surface(frame) => frame.pts,
+        }
+    }
+}
+
 pub struct VideoDecoder {
     reader: Reader,
     /// To open the file again (see `frame_at`).
@@ -773,7 +793,9 @@ pub struct VideoDecoder {
     field_order: bv_core::FieldOrder,
     /// The last frames decoded (shared: a picture is not copied each time
     /// it is asked for).
-    recent: VecDeque<std::sync::Arc<VideoFrame>>,
+    recent: VecDeque<ExportPicture>,
+    gpu_export: bool,
+    surface_pool: Option<SurfacePool>,
     /// The time of the last frame decoded (to go on without seeking).
     last: Option<Tick>,
     /// The first frame decoded since the last seek.
@@ -945,6 +967,8 @@ impl VideoDecoder {
                 pixel_aspect: pixel_aspect(&current),
                 field_order: field_order(native),
                 recent: VecDeque::new(),
+                gpu_export: false,
+                surface_pool: None,
                 last: None,
                 first: None,
                 eos: false,
@@ -962,7 +986,7 @@ impl VideoDecoder {
                 .ok_or_else(|| Error::Windows("unexpected frame layout".into()))?;
             d.last = Some(frame.pts);
             d.first = Some(frame.pts);
-            d.recent.push_back(std::sync::Arc::new(frame));
+            d.recent.push_back(ExportPicture::Cpu(Arc::new(frame)));
             Ok(d)
         }
     }
@@ -1148,16 +1172,16 @@ impl VideoDecoder {
 
     /// The frame visible at `t` among those decoded: the last one at or
     /// before `t`, as long as the next one (if any) starts after `t`.
-    fn cached(&self, t: Tick) -> Option<&std::sync::Arc<VideoFrame>> {
+    fn cached(&self, t: Tick) -> Option<&ExportPicture> {
         let nominal = self.rate.frame_duration();
         let n = self.recent.len();
         (0..n).find_map(|i| {
             let f = &self.recent[i];
             let next = self.recent.get(i + 1);
-            let visible = f.pts <= t
+            let visible = f.pts() <= t
                 && match next {
-                    Some(nx) => t < nx.pts,
-                    None => t < f.pts + nominal,
+                    Some(nx) => t < nx.pts(),
+                    None => t < f.pts() + nominal,
                 };
             visible.then_some(f)
         })
@@ -1176,6 +1200,34 @@ impl VideoDecoder {
         t: Tick,
         way: &mut dyn crate::Way,
     ) -> Result<std::sync::Arc<VideoFrame>> {
+        self.set_gpu_export(false)?;
+        match self.picture_at_with(t, way)? {
+            ExportPicture::Cpu(frame) => Ok(frame),
+            ExportPicture::Surface(_) => Err(Error::Unavailable),
+        }
+    }
+
+    pub fn export_picture_at(
+        &mut self,
+        t: Tick,
+        way: &mut dyn crate::Way,
+    ) -> Result<ExportPicture> {
+        self.set_gpu_export(true)?;
+        self.picture_at_with(t, way)
+    }
+
+    fn set_gpu_export(&mut self, enabled: bool) -> Result<()> {
+        if self.gpu_export != enabled {
+            if !enabled {
+                self.reopen()?;
+                self.surface_pool = None;
+            }
+            self.gpu_export = enabled;
+        }
+        Ok(())
+    }
+
+    fn picture_at_with(&mut self, t: Tick, way: &mut dyn crate::Way) -> Result<ExportPicture> {
         init()?;
         if let Some(f) = self.cached(t) {
             return Ok(f.clone());
@@ -1245,7 +1297,27 @@ impl VideoDecoder {
             match next_sample(&self.reader.0, VIDEO)? {
                 Some(mut u) => {
                     if ahead > 0 {
-                        start_copy(&mut u, &mut self.spare)?;
+                        if self.gpu_export
+                            && self.layout == Layout::Nv12
+                            && !u.changed
+                            && let Some(sample) = u.sample.as_ref()
+                        {
+                            let pts = self.snap(hns_to_tick(u.time - self.time_offset));
+                            u.surface = SurfacePool::copy(
+                                &mut self.surface_pool,
+                                sample,
+                                pts,
+                                (self.width, self.height),
+                                self.offset,
+                                self.color,
+                            )
+                            .map(Arc::new);
+                        }
+                        if u.surface.is_some() {
+                            u.sample = None;
+                        } else {
+                            start_copy(&mut u, &mut self.spare)?;
+                        }
                     }
                     self.queue.push_back(u);
                 }
@@ -1257,22 +1329,26 @@ impl VideoDecoder {
 
     /// Opens a sample (its copy from the card, or its buffer) into a frame
     /// kept among the recent ones (`None`: a layout not understood).
-    fn keep(&mut self, mut u: Unopened) -> Result<Option<std::sync::Arc<VideoFrame>>> {
-        let frame = match u.copy.take() {
-            Some(c) => {
-                let duration = c.duration;
-                let (frame, staging) = open_copy(c, |data, pitch| {
-                    self.frame_from_bytes(data, pitch, u.time, duration)
-                })?;
-                self.spare.push(staging);
-                frame
-            }
-            None => self.to_frame(&open_sample(u)?),
+    fn keep(&mut self, mut u: Unopened) -> Result<Option<ExportPicture>> {
+        let f = if let Some(surface) = u.surface.take() {
+            ExportPicture::Surface(surface)
+        } else {
+            let frame = match u.copy.take() {
+                Some(c) => {
+                    let duration = c.duration;
+                    let (frame, staging) = open_copy(c, |data, pitch| {
+                        self.frame_from_bytes(data, pitch, u.time, duration)
+                    })?;
+                    self.spare.push(staging);
+                    frame
+                }
+                None => self.to_frame(&open_sample(u)?),
+            };
+            let Some(frame) = frame else {
+                return Ok(None);
+            };
+            ExportPicture::Cpu(Arc::new(frame))
         };
-        let Some(frame) = frame else {
-            return Ok(None);
-        };
-        let f = std::sync::Arc::new(frame);
         self.recent.push_back(f.clone());
         if self.recent.len() > 8 {
             self.recent.pop_front();
@@ -1294,11 +1370,7 @@ impl VideoDecoder {
     /// at `t`, the few before it (asked for next, often) and those `way`
     /// wants to show — a seek in a recording with a keyframe every few
     /// seconds decodes hundreds.
-    fn decode_to(
-        &mut self,
-        t: Tick,
-        way: &mut dyn crate::Way,
-    ) -> Result<Option<std::sync::Arc<VideoFrame>>> {
+    fn decode_to(&mut self, t: Tick, way: &mut dyn crate::Way) -> Result<Option<ExportPicture>> {
         let near = self.rate.frame_duration().0 * 8;
         // The sample before, not opened yet: it is the one visible at `t`
         // when the next one starts after `t`.
@@ -1325,7 +1397,7 @@ impl VideoDecoder {
                 if pts > t || held_pts.0 + near >= t.0 {
                     self.keep(h)?;
                 } else if way.want() {
-                    if let Some(f) = self.keep(h)? {
+                    if let Some(ExportPicture::Cpu(f)) = self.keep(h)? {
                         way.show(&f);
                     }
                 } else {
@@ -1341,7 +1413,7 @@ impl VideoDecoder {
                 }
                 // The visible one is the one before (if at or before `t`);
                 // right after an imprecise seek, the first one does.
-                let pick = if n >= 2 && self.recent[n - 2].pts <= t {
+                let pick = if n >= 2 && self.recent[n - 2].pts() <= t {
                     n - 2
                 } else {
                     n - 1

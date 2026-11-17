@@ -11,6 +11,8 @@ mod pool;
 mod reading;
 mod stamps;
 
+#[cfg(windows)]
+pub use bv_mf::DecodeSurface;
 pub use bv_mp4::facts::TrackFacts;
 pub use files::{
     AUDIO_EXTENSIONS, FileDescription, FileReader, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS,
@@ -154,7 +156,7 @@ pub trait VideoReader: Send {
         let _ = on;
         match want {
             Want::Linear => self.frame_at_scaled(t, min_w, min_h).map(Picture::Linear),
-            Want::Decoded => self.picture_at(t, min_w, min_h),
+            Want::Decoded | Want::Export => self.picture_at(t, min_w, min_h),
         }
     }
 }

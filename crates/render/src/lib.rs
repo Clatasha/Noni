@@ -750,6 +750,8 @@ fn media_layer(
             Ok(Picture::Decoded(f)) => {
                 Arc::new(bv_color::frame_to_linear_levels(&f, 1, m.video_levels))
             }
+            #[cfg(windows)]
+            Ok(Picture::Surface(_)) => return None,
             Err(_) => return None,
         };
         let how = m.deinterlaced(src.height);

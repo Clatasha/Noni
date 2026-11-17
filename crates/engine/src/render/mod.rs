@@ -1180,6 +1180,10 @@ fn run(
     )?;
     #[cfg(windows)]
     let shared_nv12 = out.takes_shared_nv12();
+    #[cfg(windows)]
+    let decode_surfaces = shared_nv12 && gpu.as_ref().and_then(|g| g.dx12_luid()).is_some();
+    #[cfg(not(windows))]
+    let decode_surfaces = false;
     let encoder = out.encoder_name();
     let packed = out.packed_420();
     // Smart rendering (Options › Preferences › File I/O's "Enable
@@ -1451,8 +1455,13 @@ fn run(
                             bv_media::needs_of(clip.0, m, bv_media::Want::Decoded)
                         })
                         .collect();
-                    let pool =
-                        Timing::measure(timing, Stage::SourceRead, || source.prepare(&needs));
+                    let pool = Timing::measure(timing, Stage::SourceRead, || {
+                        if decode_surfaces {
+                            source.prepare_export(&needs)
+                        } else {
+                            source.prepare(&needs)
+                        }
+                    });
                     if let (Some(timing), Some(start)) = (timing, start) {
                         timing.prepared_sources(start.elapsed(), needs.len());
                         for need in &needs {

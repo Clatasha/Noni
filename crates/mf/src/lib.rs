@@ -411,6 +411,13 @@ mod nvenc;
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
+mod decode_surface;
+#[cfg(windows)]
+pub use decode_surface::DecodeSurface;
+#[cfg(windows)]
+pub use imp::ExportPicture;
+#[cfg(windows)]
+#[allow(unsafe_code)]
 mod dxva;
 
 #[cfg(windows)]

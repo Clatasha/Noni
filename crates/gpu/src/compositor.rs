@@ -102,6 +102,10 @@ pub struct ReadbackTiming {
     /// Host time staging decoded YUV planes for upload.
     pub source_upload: Duration,
     pub source_uploads: u64,
+    pub decoded_surfaces: u64,
+    pub decoded_surface_import: Duration,
+    pub decoded_surface_rejected: u64,
+    pub decoded_surface_error: Option<String>,
     pub belt_uploads: u64,
     pub titles: OverlayTiming,
     pub credit_rolls: OverlayTiming,
@@ -1321,7 +1325,7 @@ impl Compositor {
             .and_then(|(p, s)| p.media_input(s));
         let light = scene
             .color
-            .as_ref()
+            .as_deref()
             .filter(|_| !scene.video_gamma && space.is_none());
         let how = |img: &Img| m.deinterlaced(img.h);
         // BananaV's own generators draw here, on the card, as their
@@ -1339,24 +1343,7 @@ impl Compositor {
                 }
                 img
             }
-            None => match self.read_overlay_picture(pool, m, owner, ask) {
-                Ok(Picture::Decoded(f)) => {
-                    self.decoded(enc, &f, m.min_size, light.map(|p| p.input), m.video_levels)
-                }
-                Ok(Picture::Linear(img)) => {
-                    let up = self.upload_overlay_picture(m.info, owner, &img);
-                    match light {
-                        // On a copy: the upload is kept for the next frames.
-                        Some(p) => {
-                            let img = self.copy(enc, &up);
-                            self.enter_working_space(enc, &img, p);
-                            img
-                        }
-                        None => up,
-                    }
-                }
-                Err(_) => return None,
-            },
+            None => self.read_media_input(enc, pool, m, owner, ask, light)?,
         };
         // 8-bit formats and the 2.222 compositing gamma work on the encoded
         // values (on a copy: the picture may be kept for the next frame);
@@ -1384,6 +1371,74 @@ impl Compositor {
         Some(match how(&img) {
             Some(h) => self.deinterlace(enc, &img, h),
             None => img,
+        })
+    }
+
+    fn read_media_input(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        pool: &mut VideoPool,
+        m: &MediaLayer<'_>,
+        owner: u64,
+        ask: Ask,
+        light: Option<&bv_timeline::ColorPipeline>,
+    ) -> Option<Img> {
+        let picture = self.read_overlay_picture(pool, m, owner, ask).ok()?;
+        #[cfg(windows)]
+        let picture = if let Picture::Surface(frame) = picture {
+            let started = self.readback_timing.as_ref().map(|_| Instant::now());
+            let imported = crate::nv12::import_decoded(&self.gpu, &frame);
+            if let Some((timing, started)) = self.readback_timing.as_mut().zip(started) {
+                timing.decoded_surface_import += started.elapsed();
+                match &imported {
+                    Ok(_) => timing.decoded_surfaces += 1,
+                    Err(err) => {
+                        timing.decoded_surface_rejected += 1;
+                        timing
+                            .decoded_surface_error
+                            .get_or_insert_with(|| err.to_string());
+                    }
+                }
+            }
+            match imported {
+                Ok((planes, starts, geometry)) => {
+                    return Some(self.yuv_to_linear(
+                        enc,
+                        &planes,
+                        starts,
+                        geometry,
+                        (frame.width, frame.height),
+                        PixelFormat::Yuv420P8,
+                        frame.color,
+                        true,
+                        m.min_size,
+                        light.map(|p| p.input),
+                        m.video_levels,
+                    ));
+                }
+                Err(_) => pool.picture_unprepared(owner, m.info, ask).ok()?,
+            }
+        } else {
+            picture
+        };
+        Some(match picture {
+            Picture::Decoded(f) => {
+                self.decoded(enc, &f, m.min_size, light.map(|p| p.input), m.video_levels)
+            }
+            Picture::Linear(img) => {
+                let up = self.upload_overlay_picture(m.info, owner, &img);
+                match light {
+                    // On a copy: the upload is kept for the next frames.
+                    Some(p) => {
+                        let img = self.copy(enc, &up);
+                        self.enter_working_space(enc, &img, p);
+                        img
+                    }
+                    None => up,
+                }
+            }
+            #[cfg(windows)]
+            Picture::Surface(_) => return None,
         })
     }
 
@@ -1715,14 +1770,49 @@ impl Compositor {
             timing.source_uploads += 1;
             timing.belt_uploads += u64::from(self.upload_belt.is_some());
         }
-        let lut = self.lut(false, f.color.transfer);
-        let (ow, oh) = (f.width.div_ceil(factor), f.height.div_ceil(factor));
+        self.yuv_to_linear(
+            enc,
+            &planes,
+            starts,
+            [
+                f.planes[0].stride as i32,
+                f.planes[1].stride as i32,
+                f.planes[1].width as i32,
+                f.planes[1].height as i32,
+            ],
+            (f.width, f.height),
+            f.format,
+            f.color,
+            false,
+            min_size,
+            enter,
+            video_levels,
+        )
+    }
+
+    fn yuv_to_linear(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        planes: &wgpu::Buffer,
+        starts: [u32; 3],
+        geometry: [i32; 4],
+        (width, height): (u32, u32),
+        format: PixelFormat,
+        color: bv_core::ColorInfo,
+        interleaved: bool,
+        min_size: (u32, u32),
+        enter: Option<[[f32; 3]; 3]>,
+        video_levels: bool,
+    ) -> Img {
+        let factor = bv_media::reduction(width, height, min_size.0, min_size.1);
+        let lut = self.lut(false, color.transfer);
+        let (ow, oh) = (width.div_ceil(factor), height.div_ceil(factor));
         let out = self.image(ow, oh);
-        let depth = f.format.bit_depth();
-        let (sx, sy) = f.format.chroma_shift();
-        let coeffs = bv_color::matrix::kr_kb(f.color.matrix);
-        let gamut = (f.color.primaries != bv_color::convert::WORKING_PRIMARIES).then(|| {
-            bv_color::primaries::conversion(f.color.primaries, bv_color::convert::WORKING_PRIMARIES)
+        let depth = format.bit_depth();
+        let (sx, sy) = format.chroma_shift();
+        let coeffs = bv_color::matrix::kr_kb(color.matrix);
+        let gamut = (color.primaries != bv_color::convert::WORKING_PRIMARIES).then(|| {
+            bv_color::primaries::conversion(color.primaries, bv_color::convert::WORKING_PRIMARIES)
         });
         // ACES's working space after the working primaries, one matrix.
         let gamut = match (gamut, enter) {
@@ -1736,23 +1826,19 @@ impl Compositor {
         let range = if video_levels {
             bv_core::ColorRange::Full
         } else {
-            f.color.range
+            color.range
         };
         let n = bv_color::matrix::Normalizer::new(range, depth).params();
         let (kr, kb) = coeffs.unwrap_or((0.0, 0.0));
         let mut p = Params::sized(ow, oh);
-        (p.sw, p.sh) = (f.width, f.height);
-        p.i = [
-            f.planes[0].stride as i32,
-            f.planes[1].stride as i32,
-            f.planes[1].width as i32,
-            f.planes[1].height as i32,
-        ];
+        (p.sw, p.sh) = (width, height);
+        p.i = geometry;
         p.j = [
             factor,
             u32::from(depth > 8)
                 | (u32::from(coeffs.is_none()) << 1)
-                | (u32::from(gamut.is_some()) << 2),
+                | (u32::from(gamut.is_some()) << 2)
+                | (u32::from(interleaved) << 3),
             sx as u32,
             sy as u32,
         ];
@@ -1769,7 +1855,7 @@ impl Compositor {
             enc,
             K::YuvToLinear,
             p,
-            &[&planes, &lut, &out.buf],
+            &[planes, &lut, &out.buf],
             Grid::Pixels(ow, oh),
         );
         out
